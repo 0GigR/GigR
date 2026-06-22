@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import AuthDialog from '@/components/AuthDialog'
-import HeaderParticles from '@/components/HeaderParticles'
+//import HeaderParticles from '@/components/HeaderParticles'
 import { Logo } from '@/components/Logo'
 import { Shield, Users, Smartphone, ArrowRight, Zap } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'framer-motion'
@@ -130,7 +130,6 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative flex flex-col items-center justify-center text-center px-6 pt-32 md:pt-40 pb-32 max-w-6xl mx-auto">
         <BackgroundBlobs />
-        <HeaderParticles />
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
