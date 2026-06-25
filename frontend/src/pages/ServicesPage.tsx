@@ -61,11 +61,13 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 // ---------- Service Card with provider info ----------
-function ServiceCard({ service, onEdit, onDelete, onRequest }: {
+function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isRequesting }: {
   service: Service
   onEdit: (s: Service) => void
   onDelete: (s: Service) => void
   onRequest: (s: Service) => void
+  hasRequested?: boolean
+  isRequesting?: boolean
 }) {
   const { user } = useAuthStore()
   const isOwner = user?.id === service.provider_id
@@ -107,7 +109,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest }: {
           <span className="text-gray-400 text-xs">{service.radius_km} km radius</span>
         </div>
       </CardContent>
-      <CardFooter className="pt-0 flex gap-2 justify-end">
+      <CardFooter className="pt-4 flex gap-2 justify-end items-center">
         {isOwner ? (
           <>
             <Button size="sm" variant="ghost" onClick={() => onEdit(service)} className="text-gray-600 hover:text-black">
@@ -118,9 +120,16 @@ function ServiceCard({ service, onEdit, onDelete, onRequest }: {
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="default" onClick={() => onRequest(service)} className="bg-black text-white hover:bg-gray-800">
-            <Send className="w-4 h-4 mr-1" /> Request
-          </Button>
+          <>
+            {hasRequested && (
+              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full mr-auto">
+                <Send className="w-3 h-3" /> Requested
+              </span>
+            )}
+            <Button size="sm" variant="default" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
+              <Send className="w-4 h-4 mr-1" /> {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
+            </Button>
+          </>
         )}
       </CardFooter>
     </Card>
@@ -144,6 +153,7 @@ export default function ServicesPage() {
   const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [requestingId, setRequestingId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState({
@@ -162,6 +172,15 @@ export default function ServicesPage() {
     queryKey: ['myServices'],
     queryFn: async () => { const { data } = await api.get('/services/'); return data },
   })
+
+  // Services the user has already requested (for the "Requested" indicator)
+  const { data: myClientJobs } = useQuery<any[]>({
+    queryKey: ['myClientJobs'],
+    queryFn: async () => { const { data } = await api.get('/jobs/', { params: { my: 'client' } }); return data },
+  })
+  const requestedServiceIds = new Set(
+    (myClientJobs || []).map((j) => j.service_listing_id).filter(Boolean)
+  )
 
   // Fetch nearby services (browse tab)
   const { data: nearbyServices, isLoading: nearbyLoading } = useQuery<Service[]>({
@@ -307,11 +326,12 @@ export default function ServicesPage() {
       image_url: imageUrl,
     }
 
+    // Guard against double-submits while a create/update is already in flight
+    if (createMutation.isPending || updateMutation.isPending) return
+
     if (editService) {
       updateMutation.mutate({ id: editService.id, data: payload })
     } else {
-      console.log('Service payload:', payload)
-      // createMutation.mutate(payload)
       createMutation.mutate(payload)
     }
   }
@@ -334,14 +354,17 @@ export default function ServicesPage() {
   const handleDelete = (service: Service) => setDeleteTarget(service)
   // const handleRequest = (service: Service) => toast.success(`Request sent for "${service.title}"`)
   const handleRequest = async (service: Service) => {
+    // Guard against double-clicks creating duplicate requests/jobs
+    if (requestingId) return
+    setRequestingId(service.id)
     try {
-      const { data: _data } = await api.post(`/jobs/request-service/${service.id}`)
-
+      await api.post(`/jobs/request-service/${service.id}`)
+      queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })
       toast.success(`Request sent! View it in My Jobs.`)
-      // Optionally navigate to the activity page
-      // navigate('/dashboard/activity')
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to request service')
+    } finally {
+      setRequestingId(null)
     }
   }
   return (
@@ -376,7 +399,13 @@ export default function ServicesPage() {
                 <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">
                   <Input type="number" placeholder="Price (₦) *" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
-                  <Input type="number" placeholder="Radius (km)" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
+                  <div>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">Service radius</p>
+                  </div>
                 </div>
 
                 {/* Category search & create */}
@@ -461,8 +490,10 @@ export default function ServicesPage() {
 
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
-                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading}>
-                    {editService ? 'Save Changes' : 'Create'}
+                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || createMutation.isPending || updateMutation.isPending}>
+                    {createMutation.isPending || updateMutation.isPending
+                      ? (editService ? 'Saving...' : 'Creating...')
+                      : (editService ? 'Save Changes' : 'Create')}
                   </Button>
                 </div>
               </div>
@@ -500,7 +531,7 @@ export default function ServicesPage() {
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <h2 className="text-lg font-semibold mb-4">Search Results ({searchResults.length})</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              {searchResults.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} />)}
+              {searchResults.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
             </div>
           </motion.div>
         ) : activeTab === 'browse' ? (
@@ -512,7 +543,7 @@ export default function ServicesPage() {
               </div>
             ) : nearbyServices?.length ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {nearbyServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} />)}
+                {nearbyServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
               </div>
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
@@ -530,7 +561,7 @@ export default function ServicesPage() {
               </div>
             ) : myServices?.length ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {myServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} />)}
+                {myServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
               </div>
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">

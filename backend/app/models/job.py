@@ -42,6 +42,12 @@ class Job(Base):
 
     image_url = Column(String(500), nullable=True)
 
+    # Auto-release: set when the provider submits completed work. The background
+    # scanner releases the escrow to the provider once auto_release_at passes,
+    # unless the client releases or disputes first.
+    work_submitted_at = Column(DateTime(timezone=True), nullable=True)
+    auto_release_at = Column(DateTime(timezone=True), nullable=True)
+
     @property
     def latitude(self) -> float | None:
         if self.location is None:

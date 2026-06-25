@@ -25,6 +25,15 @@ async def get_applications_by_applicant(db: AsyncSession, applicant_id: UUID, li
     )
     return result.scalars().all()
 
+async def get_application_by_applicant_and_job(db: AsyncSession, applicant_id: UUID, job_id: UUID) -> Application | None:
+    result = await db.execute(
+        select(Application)
+        .where(Application.applicant_id == applicant_id, Application.job_id == job_id)
+        .order_by(Application.created_at.asc())
+    )
+    return result.scalars().first()
+
+
 async def create_application(db: AsyncSession, applicant_id: UUID, app_in: ApplicationCreate) -> Application:
     application = Application(
         job_id=app_in.job_id,

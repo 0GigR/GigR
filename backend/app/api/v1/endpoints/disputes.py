@@ -18,11 +18,14 @@ from ....crud.vote import create_vote, get_votes_for_dispute
 from ....crud.jury_panel import create_jury_panel, is_juror
 from ....models.user import User
 from ....models.vote import VoteOption
+from ....models.dispute import Dispute
 from ....schemas.dispute import DisputeCreate, DisputeResolve, DisputeOut
 from ....schemas.vote import VoteCreate, VoteOut
-from ....services.solana_client import release_escrow, cancel_escrow
+from ....services.solana_client import release_escrow, cancel_escrow, ensure_ata_exists
+from ....services.wallet import get_user_keypair
 from ....services.brevo_client import send_email
 from solders.pubkey import Pubkey
+from spl.token.instructions import get_associated_token_address
 
 router = APIRouter()
 
@@ -31,6 +34,60 @@ USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
 
 # Admin secret for admin-only endpoints
 ADMIN_SECRET = settings.ADMIN_SECRET
+
+
+async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> str:
+    """Run the on-chain escrow action for a resolved dispute and update job status.
+
+    outcome == "refund"  -> cancel_escrow (USDC back to client), job -> cancelled
+    outcome == "release" -> release_escrow (USDC to provider),  job -> completed
+
+    Returns the Solana transaction signature. Raises HTTPException(502) on failure.
+    Mirrors the working derivation in jobs.py (vault is the [b"vault", escrow] PDA,
+    NOT an SPL ATA).
+    """
+    client_user = await get_user_by_id(db, job.client_id)
+    provider_user = await get_user_by_id(db, job.provider_id)
+    client_kp = get_user_keypair(client_user)
+    client_pubkey = Pubkey.from_string(client_user.wallet_public_key)
+    provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
+
+    job_id_int = int(job.contract_job_id, 16)
+    escrow_pubkey = Pubkey.find_program_address(
+        [b"escrow", bytes(client_pubkey), job_id_int.to_bytes(8, "little")],
+        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
+    )[0]
+    vault_ata = Pubkey.find_program_address(
+        [b"vault", bytes(escrow_pubkey)],
+        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
+    )[0]
+    client_ata = get_associated_token_address(client_pubkey, USDC_MINT)
+    provider_ata = get_associated_token_address(provider_pubkey, USDC_MINT)
+
+    try:
+        if outcome == "refund":
+            tx_sig = await cancel_escrow(
+                client_kp=client_kp,
+                client_ata=str(client_ata),
+                vault_ata=str(vault_ata),
+                escrow_address=str(escrow_pubkey),
+            )
+            await update_job_status(db, job, "cancelled")
+        else:  # release
+            await ensure_ata_exists(client_kp, provider_pubkey, USDC_MINT)
+            tx_sig = await release_escrow(
+                client_kp=client_kp,
+                provider_ata=str(provider_ata),
+                vault_ata=str(vault_ata),
+                escrow_address=str(escrow_pubkey),
+            )
+            await update_job_status(db, job, "completed")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Solana transaction failed: {str(e)}")
+
+    return str(tx_sig)
 
 
 async def verify_admin(x_admin_secret: str | None = Header(None)):
@@ -58,6 +115,46 @@ async def raise_dispute(
     await update_job_status(db, job, "disputed")
     dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data)
     return dispute
+
+
+@router.get("/my-jury")
+async def my_jury_disputes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """All disputes where the current user is a selected juror, enriched with the
+    job title and whether they've already voted. Powers the jury voting page."""
+    from sqlalchemy import select
+    from ....models.jury_panel import JuryPanel
+
+    panel_rows = await db.execute(
+        select(JuryPanel.dispute_id).where(JuryPanel.juror_id == current_user.id)
+    )
+    dispute_ids = [row[0] for row in panel_rows.all()]
+    if not dispute_ids:
+        return []
+
+    result = await db.execute(
+        select(Dispute).where(Dispute.id.in_(dispute_ids)).order_by(Dispute.created_at.desc())
+    )
+    disputes = result.scalars().all()
+
+    out = []
+    for d in disputes:
+        job = await get_job_by_id(db, d.job_id)
+        votes = await get_votes_for_dispute(db, d.id)
+        has_voted = any(v.juror_id == current_user.id for v in votes)
+        out.append({
+            "id": str(d.id),
+            "job_id": str(d.job_id),
+            "job_title": job.title if job else None,
+            "reason": d.reason,
+            "status": d.status.value if hasattr(d.status, "value") else str(d.status),
+            "resolution": d.resolution,
+            "has_voted": has_voted,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        })
+    return out
 
 
 @router.get("/{dispute_id}", response_model=DisputeOut)
@@ -180,55 +277,7 @@ async def tally_votes(
     if not job or job.status != "disputed":
         raise HTTPException(status_code=400, detail="Job is not in disputed state")
 
-    client_user = await get_user_by_id(db, job.client_id)
-    provider_user = await get_user_by_id(db, job.provider_id)
-
-    TOKEN_PROGRAM = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-    ATA_PROGRAM = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
-
-    # Derive escrow PDA
-    job_id_int = int(job.contract_job_id, 16)
-    escrow_pubkey = Pubkey.find_program_address(
-        [b"escrow", bytes(Pubkey.from_string(client_user.wallet_public_key)), job_id_int.to_bytes(8, "little")],
-        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
-    )[0]
-
-    # Derive vault ATA
-    vault_ata = Pubkey.find_program_address(
-        [bytes(escrow_pubkey), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM,
-    )[0]
-
-    # Derive client and provider ATAs
-    client_ata = Pubkey.find_program_address(
-        [bytes(Pubkey.from_string(client_user.wallet_public_key)), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM,
-    )[0]
-    provider_ata = Pubkey.find_program_address(
-        [bytes(Pubkey.from_string(provider_user.wallet_public_key)), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM,
-    )[0]
-
-    tx_sig = ""
-    try:
-        if outcome == "refund":
-            tx_sig = await cancel_escrow(
-                client_pubkey=client_user.wallet_public_key,
-                client_ata=str(client_ata),
-                vault_ata=str(vault_ata),
-                escrow_address=str(escrow_pubkey),
-            )
-            await update_job_status(db, job, "cancelled")
-        else:  # release
-            tx_sig = await release_escrow(
-                client_pubkey=client_user.wallet_public_key,
-                provider_ata=str(provider_ata),
-                vault_ata=str(vault_ata),
-                escrow_address=str(escrow_pubkey),
-            )
-            await update_job_status(db, job, "completed")
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Solana transaction failed: {str(e)}")
+    tx_sig = await _execute_resolution(db, dispute, job, outcome)
 
     # Mark dispute resolved
     dispute = await resolve_dispute(db, dispute, outcome)
@@ -260,59 +309,9 @@ async def resolve_dispute_route(
     if not job or job.status != "disputed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job not in disputed state")
 
-    client_user = await get_user_by_id(db, job.client_id)
-    provider_user = await get_user_by_id(db, job.provider_id)
-
-    TOKEN_PROGRAM = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
-    ATA_PROGRAM = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
-
-    escrow_pubkey = Pubkey.find_program_address(
-        [b"escrow", bytes(Pubkey.from_string(client_user.wallet_public_key)), int(job.contract_job_id, 16).to_bytes(8, "little")],
-        Pubkey.from_string(settings.GIGR_PROGRAM_ID)
-    )[0]
-
-    vault_ata = Pubkey.find_program_address(
-        [bytes(escrow_pubkey), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM
-    )[0]
-
-    client_ata = Pubkey.find_program_address(
-        [bytes(Pubkey.from_string(client_user.wallet_public_key)), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM
-    )[0]
-
-    provider_ata = Pubkey.find_program_address(
-        [bytes(Pubkey.from_string(provider_user.wallet_public_key)), bytes(TOKEN_PROGRAM), bytes(USDC_MINT)],
-        ATA_PROGRAM
-    )[0]
-
-    try:
-        if resolution_data.resolution == "refund":
-            await cancel_escrow(
-                client_pubkey=str(client_user.wallet_public_key),
-                client_ata=str(client_ata),
-                vault_ata=str(vault_ata),
-                escrow_address=str(escrow_pubkey),
-            )
-            await update_job_status(db, job, "cancelled")
-        elif resolution_data.resolution == "release":
-            await release_escrow(
-                client_pubkey=str(client_user.wallet_public_key),
-                provider_ata=str(provider_ata),
-                vault_ata=str(vault_ata),
-                escrow_address=str(escrow_pubkey),
-            )
-            await update_job_status(db, job, "completed")
-        else:  # fallback to release
-            await release_escrow(
-                client_pubkey=str(client_user.wallet_public_key),
-                provider_ata=str(provider_ata),
-                vault_ata=str(vault_ata),
-                escrow_address=str(escrow_pubkey),
-            )
-            await update_job_status(db, job, "completed")
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Solana transaction failed: {str(e)}")
+    # "refund" cancels the escrow; anything else (incl. "release") pays the provider.
+    outcome = "refund" if resolution_data.resolution == "refund" else "release"
+    await _execute_resolution(db, dispute, job, outcome)
 
     dispute = await resolve_dispute(db, dispute, resolution_data.resolution)
     return dispute

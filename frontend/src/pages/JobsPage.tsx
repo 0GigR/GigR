@@ -143,6 +143,16 @@ export default function JobsPage() {
   })
   const ngnRate = rateData?.ngn_per_usd ?? null
 
+  // Jobs the current user has already applied to (for the "Applied" indicator)
+  const { data: myApplied } = useQuery<string[]>({
+    queryKey: ['myApplications'],
+    queryFn: async () => {
+      const { data } = await api.get('/applications/mine')
+      return data.job_ids as string[]
+    },
+  })
+  const appliedJobIds = new Set(myApplied || [])
+
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
     queryKey: ['messages', contractRoomJobId],
@@ -193,6 +203,8 @@ export default function JobsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['myApplications'] })
+      queryClient.invalidateQueries({ queryKey: ['applicationCount', applyJobId] })
       toast.success('Application sent!')
       setApplyOpen(false)
     },
@@ -387,6 +399,7 @@ export default function JobsPage() {
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
                   onAccept={handleAccept}
+                  hasApplied={appliedJobIds.has(job.id)}
                 />
               ))
             ) : (
@@ -413,6 +426,7 @@ export default function JobsPage() {
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
                   onAccept={handleAccept}
+                  hasApplied={appliedJobIds.has(job.id)}
                 />
               ))
             ) : (
@@ -428,7 +442,7 @@ export default function JobsPage() {
           <DialogHeader><DialogTitle>Post a New Job</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-            <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+            <Textarea placeholder="Describe what you want done." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
             <Input placeholder="Price (₦) *" type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
             {/* Live NGN → USDC conversion hint */}
             {ngnRate && formData.price && parseFloat(formData.price) > 0 && (
@@ -616,7 +630,7 @@ export default function JobsPage() {
 }
 
 // ─── JobCard ─────────────────────────────────────────
-function JobCard({ job, user, onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onAccept }: {
+function JobCard({ job, user, onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onAccept, hasApplied }: {
   job: Job
   user: any
   onApply: (job: Job) => void
@@ -627,12 +641,20 @@ function JobCard({ job, user, onApply, onAssign, onFund, onRelease, onVouch, onD
   onDetail: (job: Job) => void
   onContractRoom: (job: Job) => void
   onAccept: (jobId: string) => void
+  hasApplied?: boolean
 }) {
   const isClient = user?.id === job.client_id
   const isProvider = user?.id === job.provider_id
   const [showAssign, setShowAssign] = useState(false)
 
   const { data: poster } = useUserInfo(job.client_id)
+  const { data: appCount } = useQuery<number>({
+    queryKey: ['applicationCount', job.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/applications/job/${job.id}/count`)
+      return data.count as number
+    },
+  })
   const { data: applicants, isLoading: appsLoading } = useQuery<Application[]>({
     queryKey: ['applicants', job.id],
     queryFn: async () => {
@@ -674,8 +696,21 @@ function JobCard({ job, user, onApply, onAssign, onFund, onRelease, onVouch, onD
           <span className="font-semibold">₦{parseFloat(job.price as string).toLocaleString()}</span>
           {job.escrow_address && <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Escrowed</span>}
         </div>
+        {/* Indicators */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {appCount !== undefined && (
+            <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
+              <UserPlus className="w-3 h-3" /> {appCount} application{appCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {hasApplied && (
+            <span className="inline-flex items-center gap-1 text-xs bg-black text-white px-2 py-0.5 rounded-full">
+              <CheckCircle className="w-3 h-3" /> You applied
+            </span>
+          )}
+        </div>
       </CardContent>
-      <CardFooter className="pt-0 flex gap-2 flex-wrap">
+      <CardFooter className="pt-4 flex gap-2 flex-wrap">
         {/* Actions based on role and status */}
         {job.status === 'open' && (
           <Button size="sm" variant="outline" onClick={() => onContractRoom(job)}>
@@ -683,8 +718,8 @@ function JobCard({ job, user, onApply, onAssign, onFund, onRelease, onVouch, onD
           </Button>
         )}
         {job.status === 'open' && !isClient && (
-          <Button size="sm" onClick={() => onApply(job)} className="bg-black text-white">
-            <Send className="w-3 h-3 mr-1" /> Apply
+          <Button size="sm" onClick={() => onApply(job)} disabled={hasApplied} className="bg-black text-white disabled:opacity-60">
+            <Send className="w-3 h-3 mr-1" /> {hasApplied ? 'Applied' : 'Apply'}
           </Button>
         )}
         {job.status === 'open' && isClient && (

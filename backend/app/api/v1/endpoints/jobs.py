@@ -14,6 +14,7 @@ from ....crud.user import get_user_by_id
 from ....schemas.job import JobCreate, JobOut, JobAssign
 from ....models.user import User
 from ....services.solana_client import init_escrow, release_escrow, cancel_escrow
+from ....services.wallet import get_user_keypair as _get_user_keypair
 from ....services.exchange_rate import get_ngn_usd_rate
 from ....core.config import settings
 from solders.pubkey import Pubkey
@@ -21,6 +22,7 @@ from solders.keypair import Keypair
 from anchorpy import Program, Provider, Wallet, Idl
 import uuid
 import logging
+from datetime import datetime, timedelta, timezone
 from ....models.job import Job
 
 logger = logging.getLogger(__name__)
@@ -40,20 +42,6 @@ router = APIRouter()
 #     f = Fernet(settings.WALLET_ENCRYPTION_KEY)
 #     secret = f.decrypt(user._wallet_private_key.encode()).decode()
 #     return Keypair.from_base58_string(secret)
-
-def _get_user_keypair(user: User) -> Keypair:
-    from cryptography.fernet import Fernet, InvalidToken
-    import base58
-
-    f = Fernet(settings.WALLET_ENCRYPTION_KEY.encode())
-    try:
-        encrypted = user._wallet_private_key.encode()
-        decrypted_bytes = f.decrypt(encrypted)
-        secret_base58 = decrypted_bytes.decode()
-        secret_bytes = base58.b58decode(secret_base58)
-        return Keypair.from_seed(secret_bytes)
-    except Exception:
-        raise HTTPException(status_code=500, detail="Wallet key corrupted – please re‑create your account.")
 
 @router.post("/", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job_route(
@@ -79,6 +67,21 @@ async def request_service(
     if service.provider_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot request your own service")
 
+    # Redundancy guard: a client should only ever have ONE active chat/job per service.
+    # If they already requested this service (or it's mid-flight and not yet terminal),
+    # return the existing job instead of spawning a duplicate.
+    from sqlalchemy import select as _select
+    existing_result = await db.execute(
+        _select(Job)
+        .where(Job.client_id == current_user.id)
+        .where(Job.service_listing_id == service.id)
+        .where(Job.status.notin_(["completed", "cancelled"]))
+        .order_by(Job.created_at.asc())
+    )
+    existing_job = existing_result.scalars().first()
+    if existing_job:
+        return existing_job
+
     # Create job with status 'requested', provider = service owner
     job = Job(
         client_id=current_user.id,
@@ -93,6 +96,15 @@ async def request_service(
     db.add(job)
     await db.commit()
     await db.refresh(job)
+
+    # Auto-message in the new chat so the provider gets an in-app notification
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"👋 {current_user.display_name or 'Someone'} requested this service. Let's discuss the details!"
+    )
+    await manager.broadcast_new_message(auto)
 
     # Email the provider
     from ....services.brevo_client import send_email
@@ -124,6 +136,15 @@ async def accept_request(
     await db.commit()
     await db.refresh(job)
 
+    # In-app notification: auto-message in the job chat so the client gets a live notification
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"✅ {current_user.display_name or 'The provider'} accepted your request for \"{job.title}\". You can now fund the escrow."
+    )
+    await manager.broadcast_new_message(auto)
+
     # Notify the client
     from ....services.brevo_client import send_email
     client = await get_user_by_id(db, job.client_id)
@@ -145,6 +166,26 @@ async def get_exchange_rate():
     rate = await get_ngn_usd_rate()
     logger.info(f"[jobs] Exchange rate endpoint: {rate} NGN/USD")
     return {"ngn_per_usd": rate}
+
+
+@router.get("/my-conversations", response_model=list[JobOut])
+async def my_conversations(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """All jobs the user has a chat in: as client, as provider, or anyone they've
+    messaged (e.g. discussing an open job they don't own). Powers the Messages list."""
+    from sqlalchemy import select as _select, or_ as _or
+    from ....models.message import Message
+    msg_jobs = _select(Message.job_id).where(Message.sender_id == current_user.id)
+    result = await db.execute(
+        _select(Job).where(_or(
+            Job.client_id == current_user.id,
+            Job.provider_id == current_user.id,
+            Job.id.in_(msg_jobs),
+        )).order_by(Job.created_at.desc())
+    )
+    return result.scalars().unique().all()
 
 
 @router.get("/{job_id}", response_model=JobOut)
@@ -230,6 +271,15 @@ async def assign_job_route(
     await db.refresh(job)
     from ....crud.application import get_applications_for_job
     from ....services.brevo_client import send_email
+
+    # In-app notification: auto-message in the job chat so the hired provider gets a live notification
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"🎉 {current_user.display_name or 'The client'} hired you for \"{job.title}\"! Once they fund the escrow you can begin work."
+    )
+    await manager.broadcast_new_message(auto)
 
     # After assigning, notify other applicants
     try:
@@ -352,8 +402,8 @@ async def release_job_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if job.client_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the client can release")
-    if job.status != "funded":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not in funded state")
+    if job.status not in ("funded", "in_progress"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not in a releasable state")
 
     # Idempotency
     if job.status == "completed":
@@ -418,6 +468,57 @@ async def release_job_route(
     job = await update_job_status(db, job, "completed")
     await db.commit()
     await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/submit-work", response_model=JobOut)
+async def submit_work_route(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Provider marks the job's work as completed. This moves the job to
+    in_progress and starts the auto-release timer: if the client doesn't release
+    or dispute within AUTO_RELEASE_SECONDS, the background scanner releases the
+    escrow to the provider automatically."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.provider_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the provider can submit work")
+    if job.status != "funded":
+        raise HTTPException(status_code=400, detail="Job must be funded before submitting work")
+
+    now = datetime.now(timezone.utc)
+    job.status = "in_progress"
+    job.work_submitted_at = now
+    job.auto_release_at = now + timedelta(seconds=settings.AUTO_RELEASE_SECONDS)
+    await db.commit()
+    await db.refresh(job)
+
+    # In-app + email notification to the client
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"📦 {current_user.display_name or 'The provider'} marked \"{job.title}\" as complete. "
+        f"Please review and release the escrow — it will auto-release if no action is taken."
+    )
+    await manager.broadcast_new_message(auto)
+
+    from ....services.brevo_client import send_email
+    client = await get_user_by_id(db, job.client_id)
+    if client and client.email:
+        try:
+            await send_email(
+                to_email=client.email,
+                subject=f"Work submitted for {job.title}",
+                html_content=f"<p>{current_user.display_name} marked <strong>{job.title}</strong> as complete. "
+                             f"Review and release the escrow, or it will auto-release after the review window.</p>"
+            )
+        except Exception:
+            pass
+
     return job
 
 

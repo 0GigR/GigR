@@ -164,6 +164,17 @@ export default function ActivityPage() {
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Release failed'),
   })
 
+  const submitWorkMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      await api.post(`/jobs/${jobId}/submit-work`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+      toast.success('Work submitted — the client has been notified.')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Submit failed'),
+  })
+
   const vouchMutation = useMutation({
     mutationFn: async (jobId: string) => {
       await api.post('/vouches/', { job_id: jobId })
@@ -231,6 +242,20 @@ export default function ActivityPage() {
       setContractRoomOpen(false)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Action failed'),
+  })
+
+  const raiseDisputeMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const reason = window.prompt('Briefly describe the problem you want the jury to review:')
+      if (!reason) return
+      await api.post('/disputes/', { job_id: jobId, reason })
+    },
+    onSuccess: () => {
+      toast.success('Dispute raised — a jury will be selected to review it.')
+      queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+      setContractRoomOpen(false)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to raise dispute'),
   })
 
   const openContractRoom = (job: Job) => {
@@ -346,8 +371,22 @@ export default function ActivityPage() {
                                 Fund
                               </Button>
                             )}
-                          {tab === 'clienting' &&
+                          {tab === 'providing' &&
                             job.status === 'funded' && (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  submitWorkMutation.mutate(job.id)
+                                }
+                                className="bg-purple-600 text-white"
+                              >
+                                <CheckCircle className="w-3 h-3 mr-1" />{' '}
+                                Submit Work
+                              </Button>
+                            )}
+                          {tab === 'clienting' &&
+                            (job.status === 'funded' ||
+                              job.status === 'in_progress') && (
                               <Button
                                 size="sm"
                                 onClick={() =>
@@ -358,6 +397,15 @@ export default function ActivityPage() {
                                 <CheckCircle className="w-3 h-3 mr-1" />{' '}
                                 Release
                               </Button>
+                            )}
+                          {job.status === 'in_progress' &&
+                            (job as any).auto_release_at && (
+                              <span className="text-xs text-purple-600 self-center">
+                                Auto-releases{' '}
+                                {new Date(
+                                  (job as any).auto_release_at
+                                ).toLocaleString()}
+                              </span>
                             )}
                           {tab === 'completed' &&
                             job.client_id === user?.id && (
@@ -504,6 +552,19 @@ export default function ActivityPage() {
                 >
                   <FileText className="w-4 h-4 mr-1" /> Amend
                 </Button>
+                {(contractRoomJob.status === 'funded' ||
+                  contractRoomJob.status === 'in_progress') && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() =>
+                      raiseDisputeMutation.mutate(contractRoomJob.id)
+                    }
+                    disabled={raiseDisputeMutation.isPending}
+                  >
+                    <Shield className="w-4 h-4 mr-1" /> Dispute
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="border-t pt-2 space-y-2">

@@ -31,7 +31,9 @@ class JobOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     image_url: Optional[str] = None
-    
+    work_submitted_at: Optional[datetime] = None
+    auto_release_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 

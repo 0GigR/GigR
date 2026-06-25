@@ -10,6 +10,7 @@ import JobsPage from '@/pages/JobsPage'
 import ServicesPage from '@/pages/ServicesPage'
 import ActivityPage from '@/pages/ActivityPage'
 import MessagesPage from '@/pages/MessagesPage'
+import DisputesPage from '@/pages/DisputesPage'
 import ProfilePage from '@/pages/ProfilePage'
 import { CookieConsentBanner } from '@/components/CookieConsent'
 
@@ -51,6 +52,7 @@ function App() {
             <Route path="services" element={<ServicesPage />} />
             <Route path="activity" element={<ActivityPage />} />
             <Route path="messages" element={<MessagesPage />} />
+            <Route path="disputes" element={<DisputesPage />} />
             <Route path="profile" element={<ProfilePage />} />
           </Route>
         </Routes>

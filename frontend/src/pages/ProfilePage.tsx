@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge'
 // import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/store/authStore'
-import { Clock, Coins } from 'lucide-react'
+import { Clock, Coins, RefreshCw } from 'lucide-react'
+import { FundWalletButton } from '@/components/FundWalletButton'
 
 import {
   Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle
@@ -84,16 +85,32 @@ export default function ProfilePage() {
     },
   })
 
-  // Live SOL + USDC balances — polled every 10 seconds
+  // Live USDC balance — polled every 10 seconds
   const { data: walletBalance, isLoading: balanceLoading } = useQuery<{ sol: number; usdc: string }>({
     queryKey: ['wallet-balance'],
     queryFn: async () => {
       const { data } = await api.get('/users/me/balance')
       return data
     },
-    refetchInterval: 10000, // every 10 seconds
+    refetchInterval: 10000,
     staleTime: 8000,
   })
+
+  // NGN/USD exchange rate for balance display
+  const { data: rateData } = useQuery<{ ngn_per_usd: number }>({
+    queryKey: ['exchange-rate'],
+    queryFn: async () => {
+      const { data } = await api.get('/jobs/exchange-rate')
+      return data
+    },
+    staleTime: 60000,
+  })
+
+  const [showUSDC, setShowUSDC] = useState(false)
+
+  const usdcFloat = parseFloat(walletBalance?.usdc ?? '0')
+  const ngnRate = rateData?.ngn_per_usd ?? null
+  const ngnBalance = ngnRate ? usdcFloat * ngnRate : null
 
   const completedJobs = myJobs?.filter(j => j.status === 'completed') || []
   const pendingJobs = myJobs?.filter(j => !['completed', 'cancelled'].includes(j.status)) || []
@@ -235,46 +252,48 @@ export default function ProfilePage() {
               <Button size="sm" variant="ghost" onClick={() => copyToClipboard(walletInfo.wallet_public_key)}>
                 <Copy className="w-3 h-3" />
               </Button>
-              <Button variant="outline" onClick={() => window.open('https://faucet.circle.com', '_blank')}>
-                Get Test USDC (Free)
-              </Button>
+              <FundWalletButton walletAddress={walletInfo.wallet_public_key} />
             </div>
           ) : (
             <Skeleton className="h-10 w-full" />
           )}
 
-          {/* Live balances */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <Coins className="w-4 h-4 text-purple-600" />
-                <span className="text-xs font-medium text-purple-700">SOL Balance</span>
-              </div>
-              {balanceLoading ? (
-                <Skeleton className="h-6 w-20" />
-              ) : (
-                <p className="text-xl font-bold text-purple-900">
-                  {walletBalance?.sol?.toFixed(4) ?? '0.0000'}
-                  <span className="text-sm font-normal text-purple-600 ml-1">SOL</span>
-                </p>
-              )}
-            </div>
-            <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-1">
+          {/* Live balance */}
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
                 <Coins className="w-4 h-4 text-green-600" />
-                <span className="text-xs font-medium text-green-700">USDC Balance</span>
+                <span className="text-xs font-medium text-green-700">Wallet Balance</span>
               </div>
-              {balanceLoading ? (
-                <Skeleton className="h-6 w-20" />
-              ) : (
-                <p className="text-xl font-bold text-green-900">
-                  {walletBalance?.usdc ?? '0.00'}
-                  <span className="text-sm font-normal text-green-600 ml-1">USDC</span>
-                </p>
-              )}
+              <button
+                onClick={() => setShowUSDC((v) => !v)}
+                className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
+              >
+                <RefreshCw className="w-3 h-3" />
+                {showUSDC ? 'Show NGN' : 'Show USDC'}
+              </button>
             </div>
+            {balanceLoading ? (
+              <Skeleton className="h-8 w-32" />
+            ) : showUSDC ? (
+              <p className="text-2xl font-bold text-green-900">
+                {usdcFloat.toFixed(2)}
+                <span className="text-sm font-normal text-green-600 ml-1">USDC</span>
+              </p>
+            ) : (
+              <p className="text-2xl font-bold text-green-900">
+                {ngnBalance != null
+                  ? `₦${ngnBalance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : `₦—`}
+                {ngnRate && (
+                  <span className="text-xs font-normal text-green-600 ml-2">
+                    ≈ {usdcFloat.toFixed(2)} USDC
+                  </span>
+                )}
+              </p>
+            )}
           </div>
-          <p className="text-xs text-gray-400">Balances refresh every 10 seconds • Devnet</p>
+          <p className="text-xs text-gray-400">Balance refreshes every 10 seconds • Devnet</p>
         </CardContent>
       </Card>
 

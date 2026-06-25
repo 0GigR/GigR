@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location
@@ -16,9 +18,55 @@ app = FastAPI(title="Gigr API", version="1.0.0")
 #     # Actually the simplest way:
 # )
 
+async def _dedup_duplicate_jobs():
+    """One-time cleanup: collapse redundant chats/jobs.
+
+    Older users sometimes clicked "Request" on the same service multiple times,
+    creating several non-terminal jobs (and thus several chat rooms) for a single
+    client+service pair. Keep the earliest job for each (client_id, service_listing_id)
+    and mark the rest as cancelled so each service shows only one chat per user.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from .models.job import Job
+
+    async with AsyncSession(engine) as db:
+        result = await db.execute(
+            select(Job)
+            .where(Job.service_listing_id.isnot(None))
+            .where(Job.status.notin_(["completed", "cancelled"]))
+            .order_by(Job.created_at.asc())
+        )
+        jobs = result.scalars().all()
+
+        seen: set = set()
+        cancelled = 0
+        for job in jobs:
+            key = (job.client_id, job.service_listing_id)
+            if key in seen:
+                job.status = "cancelled"
+                cancelled += 1
+            else:
+                seen.add(key)
+
+        if cancelled:
+            await db.commit()
+            print(f"[dedup] Cancelled {cancelled} duplicate service-request job(s)")
+
+
 @app.on_event("startup")
 async def on_startup():
+    import asyncio
+    from .services.auto_release import auto_release_loop
+
     await init_db()
+    try:
+        await _dedup_duplicate_jobs()
+    except Exception as e:  # never block startup on cleanup
+        print(f"[dedup] skipped: {e}")
+
+    # Background scanner that auto-releases escrow after the client review window.
+    asyncio.create_task(auto_release_loop())
 
 # CORS
 # app.add_middleware(
@@ -70,3 +118,15 @@ app.include_router(amendments.router, prefix="/api/v1/amendments", tags=["amendm
 
 from .api.v1.endpoints import upload
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
+
+from .api.v1.endpoints import ws_messages
+app.include_router(ws_messages.router)
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
+    }

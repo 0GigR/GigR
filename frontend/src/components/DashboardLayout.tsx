@@ -2,13 +2,17 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
+import OnboardingOverlay from '@/components/OnboardingOverlay'
 import { useThemeStore } from '@/store/themeStore'
+import { useUnreadStore } from '@/store/unreadStore'
+import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import {
   LayoutDashboard,
   Briefcase,
   Wrench,
   Clock,
   MessageSquare,
+  Gavel,
   User,
   Sun,
   Moon,
@@ -21,15 +25,21 @@ const navItems = [
   { to: '/dashboard/services', icon: Wrench, label: 'Services' },
   { to: '/dashboard/activity', icon: Clock, label: 'Activity' },
   { to: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
+  { to: '/dashboard/disputes', icon: Gavel, label: 'Jury' },
   { to: '/dashboard/profile', icon: User, label: 'Profile' },
 ]
 
 export default function DashboardLayout() {
   const { logout } = useAuthStore()
   const { theme, toggle } = useThemeStore()
+  const messageUnread = useUnreadStore((s) => s.messageUnread)
+
+  // Global live message notifications (light + toast on any page)
+  useMessageNotifications()
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
+      <OnboardingOverlay />
       {/* Top Bar */}
       <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
@@ -69,7 +79,12 @@ export default function DashboardLayout() {
                 }`
               }
             >
-              <item.icon className="h-5 w-5 mb-0.5" />
+              <span className="relative">
+                <item.icon className="h-5 w-5 mb-0.5" />
+                {item.to === '/dashboard/messages' && messageUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-900" />
+                )}
+              </span>
               {item.label}
             </NavLink>
           ))}
@@ -94,6 +109,9 @@ export default function DashboardLayout() {
             >
               <item.icon className="h-5 w-5" />
               {item.label}
+              {item.to === '/dashboard/messages' && messageUnread > 0 && (
+                <span className="ml-auto w-2.5 h-2.5 rounded-full bg-blue-900" />
+              )}
             </NavLink>
           ))}
         </nav>

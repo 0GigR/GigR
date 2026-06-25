@@ -62,3 +62,17 @@ async def init_db() -> None:
                         print(f"Added column {col.name} to {table_name}")
 
         await conn.run_sync(add_missing_columns)
+
+        # ---- One-time cleanup: remove duplicate applications ----
+        # Keep the earliest application per (applicant_id, job_id); delete the rest.
+        await conn.execute(
+            text(
+                """
+                DELETE FROM applications a
+                USING applications b
+                WHERE a.applicant_id = b.applicant_id
+                  AND a.job_id = b.job_id
+                  AND a.created_at > b.created_at
+                """
+            )
+        )

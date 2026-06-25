@@ -15,8 +15,10 @@ from ....schemas.scope_amendment import (
     ScopeAmendmentAccept,
 )
 from ....services.solana_client import cancel_escrow
+from ....services.wallet import get_user_keypair
 from ....core.config import settings
 from solders.pubkey import Pubkey
+from spl.token.instructions import get_associated_token_address
 import uuid
 from ....core.config import settings
 
@@ -106,14 +108,12 @@ async def accept_amendment_route(
             [b"vault", bytes(escrow_pubkey)],
             Pubkey.from_string(settings.GIGR_PROGRAM_ID),
         )[0]
-        client_ata = Pubkey.find_program_address(
-            [bytes(client_pubkey), bytes(Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")), bytes(USDC_MINT)],
-            Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
-        )[0]
+        client_ata = get_associated_token_address(client_pubkey, USDC_MINT)
+        client_kp = get_user_keypair(current_user)
 
         try:
             await cancel_escrow(
-                client_pubkey=str(client_pubkey),
+                client_kp=client_kp,
                 client_ata=str(client_ata),
                 vault_ata=str(vault_ata),
                 escrow_address=str(escrow_pubkey),

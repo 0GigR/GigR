@@ -48,6 +48,11 @@ class Settings(BaseSettings):
 
     SECURE_COOKIES: bool = Field(default=False, env="SECURE_COOKIES")
 
+    # Auto-release: seconds after a provider submits work before the escrow is
+    # automatically released to them (if the client hasn't released or disputed).
+    # Defaults to 1 hour. Lower it (e.g. 120) to demo the scanner on devnet.
+    AUTO_RELEASE_SECONDS: int = Field(default=3600, env="AUTO_RELEASE_SECONDS")
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

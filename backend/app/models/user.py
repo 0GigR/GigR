@@ -6,6 +6,7 @@ from geoalchemy2 import Geography
 from cryptography.fernet import Fernet
 from ..core.database import Base
 from ..core.config import settings
+from .service import ServiceListing
 
 
 class User(Base):

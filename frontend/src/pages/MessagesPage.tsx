@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,14 +9,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
+import { useUnreadStore } from '@/store/unreadStore'
 import {
   MessageCircle,
   Send,
   ImagePlus,
   FileText,
-  // X,
+  Loader2,
 } from 'lucide-react'
 import type { components } from '@/types/api'
+import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -42,26 +44,39 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 const statusBadge = (status: string) => {
+  const base = 'rounded-full px-2.5 py-0.5 text-xs font-medium border'
   switch (status) {
     case 'open':
-      return <Badge className="bg-blue-100 text-blue-800">Open</Badge>
+      return <Badge className={`${base} bg-blue-50 text-blue-700 border-blue-200`}>Open</Badge>
+    case 'requested':
+      return <Badge className={`${base} bg-indigo-50 text-indigo-700 border-indigo-200`}>Requested</Badge>
     case 'assigned':
-      return <Badge className="bg-yellow-100 text-yellow-800">Assigned</Badge>
+      return <Badge className={`${base} bg-amber-50 text-amber-700 border-amber-200`}>Assigned</Badge>
     case 'funded':
-      return <Badge className="bg-green-100 text-green-800">Funded</Badge>
+      return <Badge className={`${base} bg-emerald-50 text-emerald-700 border-emerald-200`}>Funded</Badge>
     case 'in_progress':
-      return <Badge className="bg-purple-100 text-purple-800">In Progress</Badge>
+      return <Badge className={`${base} bg-purple-50 text-purple-700 border-purple-200`}>In Progress</Badge>
     case 'completed':
-      return <Badge className="bg-black text-white">Completed</Badge>
+      return <Badge className={`${base} bg-gray-900 text-white border-gray-900`}>Completed</Badge>
     case 'cancelled':
-      return <Badge className="bg-red-100 text-red-800">Canceled</Badge>
+      return <Badge className={`${base} bg-red-50 text-red-700 border-red-200`}>Canceled</Badge>
     default:
-      return <Badge>{status}</Badge>
+      return <Badge className={`${base} bg-gray-50 text-gray-700 border-gray-200`}>{status}</Badge>
   }
 }
 
 export default function MessagesPage() {
   const { user } = useAuthStore()
+  const setMessageUnread = useUnreadStore((s) => s.setMessageUnread)
+  const setMessagesPageActive = useUnreadStore((s) => s.setMessagesPageActive)
+  const queryClient = useQueryClient()
+
+  // While the Messages page is mounted it owns unread tracking; tell the global
+  // notifier to defer so we don't double-count or fire duplicate toasts.
+  useEffect(() => {
+    setMessagesPageActive(true)
+    return () => setMessagesPageActive(false)
+  }, [setMessagesPageActive])
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
   const [messageText, setMessageText] = useState('')
   const [showScopeAmend, setShowScopeAmend] = useState(false)
@@ -70,29 +85,71 @@ export default function MessagesPage() {
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
 
-  // Fetch all my jobs that are active (for the sidebar)
+  // ── Fetch all my jobs ──────────────────────────────────────
   const { data: myJobs, isLoading: jobsLoading } = useQuery<Job[]>({
     queryKey: ['myJobsForMessages'],
     queryFn: async () => {
-      const [c, p] = await Promise.all([
-        api.get('/jobs/', { params: { my: 'client' } }),
-        api.get('/jobs/', { params: { my: 'provider' } }),
-      ])
-      return [...c.data, ...p.data]
+      // Includes jobs you own AND any job you've chatted in (e.g. discussing an open job)
+      const { data } = await api.get('/jobs/my-conversations')
+      return data
     },
   })
 
-  const activeJobs =
-    myJobs?.filter(
-      (j) => !['completed', 'cancelled'].includes(j.status)
-    ) || []
+  const activeJobs = (() => {
+    const list =
+      myJobs?.filter((j) => !['completed', 'cancelled'].includes(j.status)) || []
+    // Dedup by job id first (client+provider overlap can return the same job twice)
+    const byId = list.filter((j, i, arr) => arr.findIndex((x) => x.id === j.id) === i)
+    // Then collapse redundant chats: one chat per service per counterparty.
+    // Old users sometimes requested the same service multiple times — keep just one.
+    const seen = new Set<string>()
+    return byId.filter((j) => {
+      const counterparty = j.client_id === user?.id ? j.provider_id : j.client_id
+      const key = j.service_listing_id
+        ? `svc:${j.service_listing_id}:${counterparty}`
+        : `job:${j.id}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  })()
 
-  // Messages for the selected job
-  const {
-    data: messages,
-    isLoading: msgsLoading,
-    refetch,
-  } = useQuery<Message[]>({
+  // ── Track the last message timestamp per job for sorting & unread ──
+  // Map: jobId -> { lastCreatedAt: string, unreadCount: number }
+  const [jobMeta, setJobMeta] = useState<Record<string, { lastCreatedAt: string; unreadCount: number }>>({})
+
+  // Keep the global nav indicator in sync with total unread across all jobs
+  useEffect(() => {
+    const total = Object.values(jobMeta).reduce((sum, m) => sum + (m.unreadCount || 0), 0)
+    setMessageUnread(total)
+  }, [jobMeta, setMessageUnread])
+
+  // Also store a ref to know which job the user last had selected
+  const lastSelectedJobIdRef = useRef<string | null>(null)
+
+  // Update selectedJobId ref whenever it changes
+  useEffect(() => {
+    if (selectedJob?.id) {
+      lastSelectedJobIdRef.current = selectedJob.id
+      // Clear unread for this job
+      setJobMeta((prev) => ({
+        ...prev,
+        [selectedJob.id]: { ...prev[selectedJob.id], unreadCount: 0 },
+      }))
+    }
+  }, [selectedJob?.id])
+
+  // ── Live messages state ─────────────────────────────────────
+  const [liveMessages, setLiveMessages] = useState<Message[]>([])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to the latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [liveMessages.length, selectedJob?.id])
+
+  // Fetch messages for the selected job (initial load only, no polling)
+  const { isLoading: msgsLoading, data: fetchedMessages, refetch } = useQuery<Message[]>({
     queryKey: ['messages', selectedJob?.id],
     queryFn: async () => {
       if (!selectedJob?.id) return []
@@ -100,20 +157,83 @@ export default function MessagesPage() {
       return data
     },
     enabled: !!selectedJob?.id,
-    refetchInterval: 5000,
+  })
+
+  // When fetched data changes (initial load or job switch), reset liveMessages
+  useEffect(() => {
+    if (fetchedMessages) {
+      setLiveMessages(fetchedMessages)
+      // Update last message timestamp for this job
+      if (fetchedMessages.length > 0) {
+        const last = fetchedMessages[fetchedMessages.length - 1]
+        setJobMeta((prev) => ({
+          ...prev,
+          [selectedJob!.id]: {
+            lastCreatedAt: last.created_at,
+            unreadCount: prev[selectedJob!.id]?.unreadCount ?? 0,
+          },
+        }))
+      }
+    }
+  }, [fetchedMessages])
+
+  // WebSocket: listen for new messages in real time
+  const handleNewMessage = useCallback((msg: Message) => {
+    // Append to live messages if currently viewing that job
+    setLiveMessages((prev) => {
+      if (prev.some((m) => m.id === msg.id)) return prev
+      return [...prev, msg]
+    })
+
+    // Update jobMeta for sorting and unread tracking
+    setJobMeta((prev) => {
+      const current = prev[msg.job_id] || { lastCreatedAt: '', unreadCount: 0 }
+      const isUnread = msg.job_id !== lastSelectedJobIdRef.current
+      return {
+        ...prev,
+        [msg.job_id]: {
+          lastCreatedAt: msg.created_at,
+          unreadCount: current.unreadCount + (isUnread ? 1 : 0),
+        },
+      }
+    })
+  }, [])
+
+  // Connect to ALL active job rooms so messages from any job arrive in real time.
+  // Memoize by a stable key so the array identity only changes when the set of ids changes,
+  // avoiding constant WS reconnect churn (the [WS] Disconnected ... 1006 spam).
+  const allJobIdsKey = activeJobs.map((j) => j.id).sort().join(',')
+  const allJobIds = useMemo(
+    () => (allJobIdsKey ? allJobIdsKey.split(',') : []),
+    [allJobIdsKey]
+  )
+
+  useWebSocketMessages({
+    jobIds: allJobIds,
+    onNewMessage: handleNewMessage,
+    enabled: allJobIds.length > 0,
   })
 
   const { data: amendments } = useQuery({
     queryKey: ['amendments', selectedJob?.id],
     queryFn: async () => {
       if (!selectedJob?.id) return []
-      const { data } = await api.get(`/amendments/${selectedJob.id}`)
+      const { data } = await api.get(`/amendments/job/${selectedJob.id}`)
       return data
     },
     enabled: !!selectedJob?.id,
   })
 
-  // Send text message
+  // ── Sort active jobs by newest message (jobs with no messages go to bottom) ──
+  const sortedActiveJobs = [...activeJobs].sort((a, b) => {
+    const metaA = jobMeta[a.id]
+    const metaB = jobMeta[b.id]
+    const timeA = metaA?.lastCreatedAt ? new Date(metaA.lastCreatedAt).getTime() : 0
+    const timeB = metaB?.lastCreatedAt ? new Date(metaB.lastCreatedAt).getTime() : 0
+    return timeB - timeA // descending (newest first)
+  })
+
+  // ── Send text message ───────────────────────────────────────
   const sendTextMutation = useMutation({
     mutationFn: async () => {
       if (!selectedJob?.id || !messageText.trim()) return
@@ -137,7 +257,7 @@ export default function MessagesPage() {
       if (!selectedJob?.id) return
       await api.post('/messages/', {
         job_id: selectedJob.id,
-        content: url, // send image URL as message content
+        content: url,
       })
     },
     onSuccess: () => {
@@ -157,6 +277,7 @@ export default function MessagesPage() {
         imageUrl = await uploadFile(amendImage)
       }
       await api.post(`/amendments/${selectedJob.id}`, {
+        job_id: selectedJob.id,
         proposed_by: 'provider',
         reason: amendReason,
         new_total_price: amendNewPrice,
@@ -166,6 +287,7 @@ export default function MessagesPage() {
     },
     onSuccess: () => {
       toast.success('Scope amendment proposed')
+      queryClient.invalidateQueries({ queryKey: ['amendments', selectedJob?.id] })
       setShowScopeAmend(false)
       setAmendReason('')
       setAmendNewPrice('')
@@ -188,6 +310,8 @@ export default function MessagesPage() {
     }
   }
 
+  const isSending = sendTextMutation.isPending || sendImageMutation.isPending
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div>
@@ -202,44 +326,63 @@ export default function MessagesPage() {
         <div className="md:col-span-1 space-y-2">
           {jobsLoading ? (
             <Skeleton className="h-12 w-full" />
-          ) : activeJobs.length === 0 ? (
+          ) : sortedActiveJobs.length === 0 ? (
             <p className="text-sm text-gray-500">
-              No active jobs with messages.
+              No active jobs yet.
             </p>
           ) : (
-            activeJobs.map((job) => (
-              <Card
-                key={job.id}
-                className={`cursor-pointer hover:shadow-md transition-shadow ${
-                  selectedJob?.id === job.id
-                    ? 'border-black'
-                    : 'border-gray-100'
-                }`}
-                onClick={() => {
-                  setSelectedJob(job)
-                  setShowScopeAmend(false) // reset amendment view
-                }}
-              >
-                <CardContent className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">
+            sortedActiveJobs.map((job) => {
+              const meta = jobMeta[job.id]
+              const unreadCount = meta?.unreadCount ?? 0
+              return (
+                <button
+                  key={job.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedJob(job)
+                    setShowScopeAmend(false)
+                  }}
+                  className={`w-full text-left rounded-xl border p-3 flex gap-3 items-center transition-all ${
+                    selectedJob?.id === job.id
+                      ? 'border-black bg-gray-50 dark:bg-gray-800 dark:border-gray-600 shadow-sm'
+                      : 'border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                  }`}
+                >
+                  {/* Avatar / job image */}
+                  {job.image_url ? (
+                    <img
+                      src={job.image_url}
+                      className="w-11 h-11 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <span className="w-11 h-11 rounded-full bg-black text-white flex items-center justify-center text-sm font-semibold flex-shrink-0">
+                      {job.title?.[0]?.toUpperCase() || '?'}
+                    </span>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-sm truncate ${unreadCount > 0 ? 'font-bold' : 'font-medium'}`}>
                         {job.title}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {statusBadge(job.status)}
-                      </p>
+                      {meta?.lastCreatedAt && (
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">
+                          {new Date(meta.lastCreatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
-                    {job.image_url && (
-                      <img
-                        src={job.image_url}
-                        className="w-10 h-10 rounded-lg object-cover ml-2 flex-shrink-0"
-                      />
-                    )}
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      {statusBadge(job.status)}
+                      {unreadCount > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-[10px] font-bold text-white bg-black rounded-full flex-shrink-0">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))
+                </button>
+              )
+            })
           )}
         </div>
 
@@ -266,11 +409,11 @@ export default function MessagesPage() {
                 )}
               </CardHeader>
 
-              <CardContent className="flex-1 overflow-y-auto space-y-3 py-4">
+              <CardContent className="flex-1 overflow-y-auto space-y-3 py-4 bg-gray-50/50 dark:bg-gray-900/40">
                 {msgsLoading ? (
                   <Skeleton className="h-20 w-full" />
-                ) : messages?.length ? (
-                  messages.map((msg) => (
+                ) : liveMessages?.length ? (
+                  liveMessages.map((msg) => (
                     <div
                       key={msg.id}
                       className={`flex ${
@@ -280,26 +423,32 @@ export default function MessagesPage() {
                       }`}
                     >
                       <div
-                        className={`max-w-[75%] rounded-lg p-3 ${
+                        className={`max-w-[75%] px-3.5 py-2.5 shadow-sm ${
                           msg.sender_id === user?.id
-                            ? 'bg-black text-white'
-                            : 'bg-gray-100 text-black'
+                            ? 'bg-black text-white rounded-2xl rounded-br-md'
+                            : 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white rounded-2xl rounded-bl-md'
                         }`}
                       >
-                        {/* If message is an image URL, display image */}
+                        {/* If message is an image URL, only the sender sees the image; the receiver sees a placeholder */}
                         {msg.content.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ? (
-                          <a href={msg.content} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={msg.content}
-                              alt="sent image"
-                              className="rounded-lg max-w-full max-h-60 object-cover cursor-pointer"
-                            />
-                          </a>
+                          msg.sender_id === user?.id ? (
+                            <a href={msg.content} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={msg.content}
+                                alt="sent image"
+                                className="rounded-lg max-w-full max-h-60 object-cover cursor-pointer"
+                              />
+                            </a>
+                          ) : (
+                            <p className="text-sm italic flex items-center gap-1.5">
+                              <ImagePlus className="w-4 h-4" /> Image sent
+                            </p>
+                          )
                         ) : (
                           <p className="text-sm">{msg.content}</p>
                         )}
-                        <span className="text-xs opacity-70">
-                          {new Date(msg.created_at).toLocaleTimeString()}
+                        <span className="block text-[10px] opacity-60 mt-1 text-right">
+                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                     </div>
@@ -310,39 +459,6 @@ export default function MessagesPage() {
                   </p>
                 )}
 
-                {/* Inline amendment proposal display */}
-                {/* {selectedJob?.scope_amendments?.map((am: any) => (
-                  <div
-                    key={am.id}
-                    className="flex justify-center"
-                  >
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 max-w-[85%] text-sm">
-                      <p className="font-medium">
-                        Scope Amendment Proposed
-                      </p>
-                      <p>{am.reason}</p>
-                      <p className="font-semibold">
-                        New price: ₦
-                        {parseFloat(
-                          am.new_total_price as string
-                        ).toLocaleString()}
-                      </p>
-                      {am.image_url && (
-                        <img
-                          src={am.image_url}
-                          className="rounded-lg w-20 h-20 object-cover mt-1"
-                        />
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        {am.is_accepted === null
-                          ? 'Pending'
-                          : am.is_accepted
-                          ? 'Accepted'
-                          : 'Rejected'}
-                      </p>
-                    </div>
-                  </div>
-                ))} */}
                 {amendments?.map((am: any) => (
                   <div key={am.id} className="flex justify-center">
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 max-w-[85%] text-sm">
@@ -360,6 +476,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </CardContent>
 
               {/* Input area */}
@@ -379,17 +496,21 @@ export default function MessagesPage() {
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleSendMessage()
+                      if (e.key === 'Enter' && !isSending) handleSendMessage()
                     }}
                     className="flex-1"
                   />
                   <Button
                     size="sm"
                     onClick={handleSendMessage}
-                    disabled={!messageText.trim()}
-                    className="bg-black text-white"
+                    disabled={!messageText.trim() || isSending}
+                    className="bg-black text-white min-w-[40px]"
                   >
-                    <Send className="w-4 h-4" />
+                    {isSending ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </Button>
                   <Button
                     size="sm"
@@ -421,8 +542,7 @@ export default function MessagesPage() {
                           ?.click()
                       }
                     >
-                      <ImagePlus className="w-4 h-4 mr-1" /> Attach
-                      Image
+                      <ImagePlus className="w-4 h-4 mr-1" /> Attach Image
                     </Button>
                     <input
                       id="msgAmendImage"
