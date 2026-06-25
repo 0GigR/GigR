@@ -63,16 +63,83 @@ async def init_db() -> None:
 
         await conn.run_sync(add_missing_columns)
 
-        # ---- One-time cleanup: remove duplicate applications ----
-        # Keep the earliest application per (applicant_id, job_id); delete the rest.
-        await conn.execute(
-            text(
-                """
-                DELETE FROM applications a
-                USING applications b
-                WHERE a.applicant_id = b.applicant_id
-                  AND a.job_id = b.job_id
-                  AND a.created_at > b.created_at
-                """
+        # ---- One-time cleanup: remove duplicate applications / service requests ----
+        # If the same user applies to the same job (or requests the same service)
+        # multiple times within 60 seconds, keep only the earliest record.
+        try:
+            # ===================================================================
+            # GLOBAL DUPLICATE CLEANUP (omnipotent version)
+            # Deletes child rows first, then parent rows, in dependency order.
+            # Keeps the earliest record per logical group using DISTINCT ON.
+            # ===================================================================
+
+            # ---- helpers ----
+            KEEP_JOB = """
+                SELECT DISTINCT ON (client_id, title, price, COALESCE(description,''), status)
+                    id
+                FROM jobs
+                ORDER BY client_id, title, price, COALESCE(description,''), status, created_at ASC
+            """
+            KEEP_SVC = """
+                SELECT DISTINCT ON (provider_id, title, price, COALESCE(description,''))
+                    id
+                FROM service_listings
+                ORDER BY provider_id, title, price, COALESCE(description,''), created_at ASC
+            """
+            KEEP_APP = """
+                SELECT DISTINCT ON (applicant_id, job_id)
+                    id
+                FROM applications
+                ORDER BY applicant_id, job_id, created_at ASC
+            """
+
+            # IDs of all duplicate jobs (open/requested)
+            DUPE_JOB_IDS = f"SELECT id FROM jobs WHERE status IN ('open','requested') AND id NOT IN ({KEEP_JOB})"
+
+            # IDs of jobs referencing duplicate service listings
+            DUPE_SVC_JOB_IDS = f"""
+                SELECT id FROM jobs
+                WHERE service_listing_id IN (
+                    SELECT id FROM service_listings WHERE id NOT IN ({KEEP_SVC})
+                )
+            """
+
+            # Union of all job IDs that will be deleted
+            ALL_DELETED_JOB_IDS = f"({DUPE_JOB_IDS}) UNION ({DUPE_SVC_JOB_IDS})"
+
+            # ─── 1. Child tables referencing ANY job that will be deleted ───
+            for tbl in ["messages", "scope_amendments", "disputes", "vouches",
+                        "applications"]:
+                await conn.execute(
+                    text(f"DELETE FROM {tbl} WHERE job_id IN ({ALL_DELETED_JOB_IDS})")
+                )
+
+            # ─── 2. Duplicate APPLICATIONS (direct) ─────────────────────────
+            await conn.execute(
+                text(f"DELETE FROM applications WHERE id NOT IN ({KEEP_APP})")
             )
-        )
+
+            # ─── 3. Duplicate JOBS (open & requested) ───────────────────────
+            for status in ["open", "requested"]:
+                await conn.execute(
+                    text(f"""
+                        DELETE FROM jobs
+                        WHERE status = '{status}'
+                        AND id NOT IN ({KEEP_JOB})
+                    """)
+                )
+
+            # ─── 4. Jobs referencing duplicate service listings ─────────────
+            await conn.execute(
+                text(f"DELETE FROM jobs WHERE id IN ({DUPE_SVC_JOB_IDS})")
+            )
+
+            # ─── 5. Duplicate SERVICE LISTINGS ──────────────────────────────
+            await conn.execute(
+                text(f"DELETE FROM service_listings WHERE id NOT IN ({KEEP_SVC})")
+            )
+
+            print("[init_db] Duplicate cleanup completed successfully.")
+
+        except Exception as e:
+            print(f"[init_db] Duplicate cleanup skipped: {e}")
