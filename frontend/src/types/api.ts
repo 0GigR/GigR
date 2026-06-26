@@ -365,9 +365,28 @@ export interface paths {
         /**
          * Get Exchange Rate
          * @description Returns the current NGN/USD exchange rate (cached 60 min).
-         *     Used by the frontend to show live Naira → USDC conversion in the job-creation form.
          */
         get: operations["get_exchange_rate_api_v1_jobs_exchange_rate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/jobs/my-conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Conversations
+         * @description All jobs the user has a chat in.
+         */
+        get: operations["my_conversations_api_v1_jobs_my_conversations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -444,6 +463,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/jobs/{job_id}/submit-work": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Work Route
+         * @description Provider marks the job's work as completed. This moves the job to
+         *     in_progress and starts the auto-release timer: if the client doesn't release
+         *     or dispute within AUTO_RELEASE_SECONDS, the background scanner releases the
+         *     escrow to the provider automatically.
+         */
+        post: operations["submit_work_route_api_v1_jobs__job_id__submit_work_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{job_id}/cancel": {
         parameters: {
             query?: never;
@@ -472,6 +514,46 @@ export interface paths {
         put?: never;
         /** Apply */
         post: operations["apply_api_v1_applications__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Applications
+         * @description Job ids the current user has applied to — used to show an 'Applied' indicator.
+         */
+        get: operations["my_applications_api_v1_applications_mine_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/applications/job/{job_id}/count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Application Count
+         * @description Number of applications on a job (for the count indicator on cards).
+         */
+        get: operations["application_count_api_v1_applications_job__job_id__count_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -574,6 +656,48 @@ export interface paths {
         put?: never;
         /** Raise Dispute */
         post: operations["raise_dispute_api_v1_disputes__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/disputes/{dispute_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Dispute
+         * @description Either party can withdraw a dispute before any juror votes. The job returns
+         *     to its previous state (funded or in_progress) so normal release can continue.
+         */
+        post: operations["withdraw_dispute_api_v1_disputes__dispute_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/disputes/my-jury": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Jury Disputes
+         * @description All disputes where the current user is a selected juror, enriched with the
+         *     job title and whether they've already voted. Powers the jury voting page.
+         */
+        get: operations["my_jury_disputes_api_v1_disputes_my_jury_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -785,6 +909,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/admins/create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Admin
+         * @description Superadmin creates a new admin account.
+         */
+        post: operations["create_admin_api_v1_admin_admins_create_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/admins/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Admin
+         * @description Superadmin deletes an admin (demotes to user).
+         */
+        delete: operations["delete_admin_api_v1_admin_admins__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/amendments/job/{job_id}": {
         parameters: {
             query?: never;
@@ -853,6 +1017,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health Check */
+        get: operations["health_check_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -912,12 +1093,14 @@ export interface components {
             /** Portfolio Url */
             portfolio_url?: string | null;
         };
+        /** Body_create_admin_api_v1_admin_admins_create_post */
+        Body_create_admin_api_v1_admin_admins_create_post: {
+            /** Email */
+            email: string;
+        };
         /** Body_upload_image_api_v1_upload__post */
         Body_upload_image_api_v1_upload__post: {
-            /**
-             * File
-             * Format: binary
-             */
+            /** File */
             file: string;
         };
         /** Body_verify_identity_api_v1_users_me_verify_identity_post */
@@ -1071,6 +1254,10 @@ export interface components {
             updated_at?: string | null;
             /** Image Url */
             image_url?: string | null;
+            /** Work Submitted At */
+            work_submitted_at?: string | null;
+            /** Auto Release At */
+            auto_release_at?: string | null;
         };
         /** MessageCreate */
         MessageCreate: {
@@ -1313,6 +1500,8 @@ export interface components {
             google_id?: string | null;
             /** Is Verified */
             is_verified: boolean;
+            /** Role */
+            role?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -1336,6 +1525,10 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
         };
         /** VoteCreate */
         VoteCreate: {
@@ -2195,6 +2388,26 @@ export interface operations {
             };
         };
     };
+    my_conversations_api_v1_jobs_my_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"][];
+                };
+            };
+        };
+    };
     get_job_route_api_v1_jobs__job_id__get: {
         parameters: {
             query?: never;
@@ -2323,6 +2536,37 @@ export interface operations {
             };
         };
     };
+    submit_work_route_api_v1_jobs__job_id__submit_work_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cancel_job_route_api_v1_jobs__job_id__cancel_post: {
         parameters: {
             query?: never;
@@ -2374,6 +2618,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_applications_api_v1_applications_mine_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    application_count_api_v1_applications_job__job_id__count_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -2571,6 +2866,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_dispute_api_v1_disputes__dispute_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_jury_disputes_api_v1_disputes_my_jury_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -2992,6 +3338,74 @@ export interface operations {
             };
         };
     };
+    create_admin_api_v1_admin_admins_create_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-admin-secret"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_create_admin_api_v1_admin_admins_create_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_admin_api_v1_admin_admins__user_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-admin-secret"?: string | null;
+            };
+            path: {
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_amendments_by_job_api_v1_amendments_job__job_id__get: {
         parameters: {
             query?: never;
@@ -3122,6 +3536,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    health_check_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

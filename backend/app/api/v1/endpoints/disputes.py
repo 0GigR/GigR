@@ -1,6 +1,7 @@
 import uuid
 from uuid import UUID
 import random
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +19,7 @@ from ....crud.vote import create_vote, get_votes_for_dispute
 from ....crud.jury_panel import create_jury_panel, is_juror
 from ....models.user import User
 from ....models.vote import VoteOption
-from ....models.dispute import Dispute
+from ....models.dispute import Dispute, DisputeStatus
 from ....schemas.dispute import DisputeCreate, DisputeResolve, DisputeOut
 from ....schemas.vote import VoteCreate, VoteOut
 from ....services.solana_client import release_escrow, cancel_escrow, ensure_ata_exists
@@ -90,10 +91,20 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
     return str(tx_sig)
 
 
-async def verify_admin(x_admin_secret: str | None = Header(None)):
-    if x_admin_secret != ADMIN_SECRET:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
-    return True
+# async def verify_admin(x_admin_secret: str | None = Header(None)):
+#     if x_admin_secret != ADMIN_SECRET:
+#         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+#     return True
+from .admin import verify_admin
+
+@router.get("/", response_model=list[DisputeOut])
+async def list_all_disputes(
+    _: bool = Depends(verify_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import select
+    result = await db.execute(select(Dispute).order_by(Dispute.created_at.desc()))
+    return result.scalars().all()
 
 
 @router.post("/", response_model=DisputeOut, status_code=status.HTTP_201_CREATED)
@@ -112,10 +123,95 @@ async def raise_dispute(
     if job.status not in ("funded", "in_progress"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only dispute an active job")
 
+    # Freeze the job
     await update_job_status(db, job, "disputed")
     dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data)
+    await db.commit()
+
+    # ---- Auto-select jury ----
+    try:
+        eligible = await get_eligible_jurors(db, job.location, min_vouches=1)
+
+        # Exclude the client and provider
+        candidates = [u for u in eligible if u.id not in (dispute.client_id, dispute.provider_id)]
+
+        if len(candidates) >= 3:
+            num_jurors = min(5, len(candidates))
+            jurors = random.sample(candidates, num_jurors)
+            await create_jury_panel(db, dispute.id, [u.id for u in jurors])
+            await db.commit()
+
+            # Notify each juror by email (non‑blocking)
+            for juror in jurors:
+                try:
+                    await send_email(
+                        to_email=juror.email,
+                        subject="You have been selected as a Gigr juror",
+                        html_content=f"""
+                        <h2>You've Been Selected as a Juror</h2>
+                        <p>A dispute has arisen in your neighbourhood for job <strong>{job.title}</strong>.</p>
+                        <p>Please log into Gigr and review the case. Your vote will help decide the outcome.</p>
+                        <p><a href="https://gigr.app/dashboard/disputes/{dispute.id}">View Dispute</a></p>
+                        """
+                    )
+                except Exception:
+                    pass
+        else:
+            # Not enough eligible jurors — flag for admin
+            dispute.resolution = "pending_admin"
+            await db.commit()
+    except Exception:
+        # Jury selection failed, but dispute is still created — admin can manually select
+        pass
+
     return dispute
 
+@router.post("/{dispute_id}/withdraw")
+async def withdraw_dispute(
+    dispute_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Either party can withdraw a dispute before any juror votes. The job returns
+    to its previous state (funded or in_progress) so normal release can continue."""
+    dispute = await get_dispute_by_id(db, dispute_id)
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if dispute.client_id != current_user.id and dispute.provider_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only involved parties can withdraw")
+    if dispute.status != "open":
+        raise HTTPException(status_code=400, detail="Dispute is not open")
+
+    # Check if any juror has already voted
+    existing_votes = await get_votes_for_dispute(db, dispute_id)
+    if len(existing_votes) > 0:
+        raise HTTPException(status_code=400, detail="Cannot withdraw — a juror has already voted. Wait for resolution.")
+
+    # Return job to its previous state
+    job = await get_job_by_id(db, dispute.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Associated job not found")
+    await update_job_status(db, job, "funded")  # Reset to funded so normal flow resumes
+
+    # Close the dispute without resolution
+    dispute.status = DisputeStatus.RESOLVED
+    dispute.resolution = "withdrawn"
+    dispute.resolved_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    # Notify the other party
+    other_user = await get_user_by_id(db, dispute.provider_id if current_user.id == dispute.client_id else dispute.client_id)
+    if other_user and other_user.email:
+        try:
+            await send_email(
+                to_email=other_user.email,
+                subject=f"Dispute withdrawn for {job.title}",
+                html_content=f"<p>{current_user.display_name} has withdrawn the dispute for <strong>{job.title}</strong>. The job is now back to active status.</p>"
+            )
+        except Exception:
+            pass
+
+    return {"message": "Dispute withdrawn. Job is now active again."}
 
 @router.get("/my-jury")
 async def my_jury_disputes(

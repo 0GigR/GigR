@@ -24,6 +24,7 @@ class UserOut(BaseModel):
     profile_image_url: Optional[str] = None
     google_id: Optional[str] = None          # <-- add this
     is_verified: bool
+    role: Optional[str] = None
     created_at: datetime
 
     class Config:

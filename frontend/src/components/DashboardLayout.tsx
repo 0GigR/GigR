@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -12,27 +13,34 @@ import {
   Wrench,
   Clock,
   MessageSquare,
+  Shield,
   Gavel,
   User,
   Sun,
   Moon,
   LogOut,
+  MoreHorizontal,
+  X,
 } from 'lucide-react'
 
-const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Home', end: true },
-  { to: '/dashboard/jobs', icon: Briefcase, label: 'Jobs' },
-  { to: '/dashboard/services', icon: Wrench, label: 'Services' },
-  { to: '/dashboard/activity', icon: Clock, label: 'Activity' },
-  { to: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
-  { to: '/dashboard/disputes', icon: Gavel, label: 'Jury' },
-  { to: '/dashboard/profile', icon: User, label: 'Profile' },
-]
-
 export default function DashboardLayout() {
-  const { logout } = useAuthStore()
+  const { user, logout } = useAuthStore()
   const { theme, toggle } = useThemeStore()
   const messageUnread = useUnreadStore((s) => s.messageUnread)
+  const [showMore, setShowMore] = useState(false)
+
+  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+
+  const navItems = [
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Home', end: true },
+    { to: '/dashboard/jobs', icon: Briefcase, label: 'Jobs' },
+    { to: '/dashboard/services', icon: Wrench, label: 'Services' },
+    { to: '/dashboard/activity', icon: Clock, label: 'Activity' },
+    { to: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
+    { to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' },
+    { to: '/dashboard/profile', icon: User, label: 'Profile' },
+    ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),
+  ]
 
   // Global live message notifications (light + toast on any page)
   useMessageNotifications()
@@ -66,13 +74,13 @@ export default function DashboardLayout() {
       {/* Bottom Navigation (mobile) */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 md:hidden z-50">
         <div className="flex justify-around py-2">
-          {navItems.map((item) => (
+          {navItems.slice(0, 4).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
               className={({ isActive }) =>
-                `flex flex-col items-center px-3 py-1 rounded-lg text-xs ${
+                `flex flex-col items-center px-2 py-1 rounded-lg text-xs ${
                   isActive
                     ? 'text-black dark:text-white font-semibold'
                     : 'text-gray-500 dark:text-gray-400'
@@ -88,6 +96,13 @@ export default function DashboardLayout() {
               {item.label}
             </NavLink>
           ))}
+          <button
+            onClick={() => setShowMore(true)}
+            className="flex flex-col items-center px-2 py-1 rounded-lg text-xs text-gray-500 dark:text-gray-400"
+          >
+            <MoreHorizontal className="h-5 w-5 mb-0.5" />
+            More
+          </button>
         </div>
       </nav>
 
@@ -116,6 +131,41 @@ export default function DashboardLayout() {
           ))}
         </nav>
       </aside>
+
+      {/* "More" Sheet (mobile) */}
+      {showMore && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMore(false)} />
+          {/* Sheet */}
+          <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-950 rounded-t-2xl p-4 animate-in slide-in-from-bottom duration-300">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-semibold text-lg">More</h2>
+              <button onClick={() => setShowMore(false)} className="p-1">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {navItems.slice(4).map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={() => setShowMore(false)}
+                  className={({ isActive }) =>
+                    `flex flex-col items-center gap-1 p-2 rounded-lg ${
+                      isActive ? 'bg-gray-100 dark:bg-gray-800' : ''
+                    }`
+                  }
+                >
+                  <item.icon className="h-6 w-6" />
+                  <span className="text-xs">{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
