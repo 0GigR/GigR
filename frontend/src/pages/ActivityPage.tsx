@@ -22,6 +22,7 @@ import {
   ImagePlus,
 } from 'lucide-react'
 import type { components } from '@/types/api'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -92,6 +93,7 @@ export default function ActivityPage() {
   const [amendNewPrice, setAmendNewPrice] = useState('')
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
+  const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
 
   // Fetch all my jobs
   const { data: allJobs, isLoading } = useQuery<Job[]>({
@@ -115,7 +117,9 @@ export default function ActivityPage() {
       (j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)
     ) || []
   const completedJobs =
-    allJobs?.filter((j) => j.status === 'completed' || j.status === 'cancelled') || []
+    allJobs?.filter((j) => j.status === 'completed') || []
+  const cancelledJobs =
+    allJobs?.filter((j) => j.status === 'cancelled') || []
 
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
@@ -245,9 +249,7 @@ export default function ActivityPage() {
   })
 
   const raiseDisputeMutation = useMutation({
-    mutationFn: async (jobId: string) => {
-      const reason = window.prompt('Briefly describe the problem you want the jury to review:')
-      if (!reason) return
+    mutationFn: async ({ jobId, reason }: { jobId: string; reason: string }) => {
       await api.post('/disputes/', { job_id: jobId, reason })
     },
     onSuccess: () => {
@@ -295,9 +297,12 @@ export default function ActivityPage() {
           <TabsTrigger value="completed">
             Completed ({completedJobs.length})
           </TabsTrigger>
+          <TabsTrigger value="cancelled">
+            Cancelled ({cancelledJobs.length})
+          </TabsTrigger>
         </TabsList>
 
-        {(['clienting', 'providing', 'completed'] as const).map((tab) => (
+        {(['clienting', 'providing', 'completed', 'cancelled'] as const).map((tab) => (
           <TabsContent key={tab} value={tab} className="mt-4">
             {isLoading ? (
               <Skeleton className="h-20 w-full" />
@@ -306,7 +311,9 @@ export default function ActivityPage() {
                 ? clientingJobs
                 : tab === 'providing'
                 ? providingJobs
-                : completedJobs
+                : tab === 'completed' 
+                ? completedJobs 
+                : cancelledJobs
               ).length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   No jobs here yet.
@@ -317,7 +324,9 @@ export default function ActivityPage() {
                     ? clientingJobs
                     : tab === 'providing'
                     ? providingJobs
-                    : completedJobs
+                    : tab === 'completed'
+                    ? completedJobs
+                    : cancelledJobs
                   ).map((job) => (
                     <Card
                       key={job.id}
@@ -362,42 +371,36 @@ export default function ActivityPage() {
                             job.status === 'assigned' && (
                               <Button
                                 size="sm"
-                                onClick={() =>
-                                  fundMutation.mutate(job.id)
-                                }
+                                onClick={() => setConfirmAction({ type: 'fund', jobId: job.id, title: job.title })}
                                 className="bg-green-600 text-white"
                               >
                                 <Shield className="w-3 h-3 mr-1" />{' '}
                                 Fund
                               </Button>
-                            )}
+                          )}
                           {tab === 'providing' &&
                             job.status === 'funded' && (
                               <Button
                                 size="sm"
-                                onClick={() =>
-                                  submitWorkMutation.mutate(job.id)
-                                }
+                                onClick={() => setConfirmAction({ type: 'submit', jobId: job.id, title: job.title })}
                                 className="bg-purple-600 text-white"
                               >
                                 <CheckCircle className="w-3 h-3 mr-1" />{' '}
                                 Submit Work
                               </Button>
-                            )}
+                          )}
                           {tab === 'clienting' &&
                             (job.status === 'funded' ||
                               job.status === 'in_progress') && (
                               <Button
                                 size="sm"
-                                onClick={() =>
-                                  releaseMutation.mutate(job.id)
-                                }
+                                onClick={() => setConfirmAction({ type: 'release', jobId: job.id, title: job.title })}
                                 className="bg-blue-600 text-white"
                               >
                                 <CheckCircle className="w-3 h-3 mr-1" />{' '}
                                 Release
                               </Button>
-                            )}
+                          )}
                           {job.status === 'in_progress' &&
                             (job as any).auto_release_at && (
                               <span className="text-xs text-purple-600 self-center">
@@ -557,9 +560,7 @@ export default function ActivityPage() {
                   <Button
                     size="sm"
                     variant="destructive"
-                    onClick={() =>
-                      raiseDisputeMutation.mutate(contractRoomJob.id)
-                    }
+                    onClick={() => setConfirmAction({ type: 'dispute', jobId: contractRoomJob.id, title: contractRoomJob.title })}
                     disabled={raiseDisputeMutation.isPending}
                   >
                     <Shield className="w-4 h-4 mr-1" /> Dispute
@@ -635,6 +636,43 @@ export default function ActivityPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        onOpenChange={() => setConfirmAction(null)}
+        title={
+          confirmAction?.type === 'fund' ? 'Fund Escrow' :
+          confirmAction?.type === 'release' ? 'Release Payment' :
+          confirmAction?.type === 'submit' ? 'Submit Work' :
+          confirmAction?.type === 'dispute' ? 'Raise Dispute' : ''
+        }
+        description={
+          confirmAction?.type === 'fund'
+            ? `Are you sure you want to fund "${confirmAction?.title}"? USDC will be locked in a smart contract.`
+            : confirmAction?.type === 'release'
+            ? `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`
+            : confirmAction?.type === 'submit'
+            ? `Submit work for "${confirmAction?.title}"? The client will be notified and auto-release will start.`
+            : confirmAction?.type === 'dispute'
+            ? `Raise a dispute for "${confirmAction?.title}"? A reason will be requested next.`
+            : ''
+        }
+        onConfirm={() => {
+          if (!confirmAction) return
+          const { type, jobId } = confirmAction
+          if (type === 'fund') fundMutation.mutate(jobId)
+          else if (type === 'release') releaseMutation.mutate(jobId)
+          else if (type === 'submit') submitWorkMutation.mutate(jobId)
+          else if (type === 'dispute') {
+            const reason = window.prompt('Briefly describe the problem you want the jury to review:')
+            if (!reason) return
+            raiseDisputeMutation.mutate({ jobId, reason })
+          }
+          setConfirmAction(null)
+        }}
+        confirmLabel="Proceed"
+        cancelLabel="Cancel"
+      />
     </div>
   )
 }
