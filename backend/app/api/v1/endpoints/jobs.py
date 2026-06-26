@@ -22,6 +22,7 @@ from solders.keypair import Keypair
 from anchorpy import Program, Provider, Wallet, Idl
 import uuid
 import logging
+import asyncio
 from datetime import datetime, timedelta, timezone
 from ....models.job import Job
 
@@ -30,18 +31,22 @@ logger = logging.getLogger(__name__)
 # USDC Devnet mint
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
 
-# Get payer keypair from config (platform wallet)
-# PAYER_KEYPAIR = Keypair.from_bytes(bytes(settings.PLATFORM_KEYPAIR))
-
 router = APIRouter()
 
 
-# def _get_user_keypair(user: User) -> Keypair:
-#     """Decrypt user's private key from DB."""
-#     from cryptography.fernet import Fernet
-#     f = Fernet(settings.WALLET_ENCRYPTION_KEY)
-#     secret = f.decrypt(user._wallet_private_key.encode()).decode()
-#     return Keypair.from_base58_string(secret)
+# ------------------------------------------------------------------
+# Background email helper (C1 fix)
+# ------------------------------------------------------------------
+def _send_email_background(to_email: str, subject: str, html_content: str):
+    """Fire‑and‑forget email sending. Does NOT block or fail the current request."""
+    async def _send():
+        try:
+            from ....services.brevo_client import send_email
+            await send_email(to_email, subject, html_content)
+        except Exception as e:
+            logger.warning(f"Background email failed: {e}")
+    asyncio.create_task(_send())
+
 
 @router.post("/", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def create_job_route(
@@ -53,6 +58,7 @@ async def create_job_route(
     await db.commit()
     await db.refresh(job)
     return job
+
 
 @router.post("/request-service/{service_id}", response_model=JobOut, status_code=status.HTTP_201_CREATED)
 async def request_service(
@@ -67,9 +73,7 @@ async def request_service(
     if service.provider_id == current_user.id:
         raise HTTPException(status_code=400, detail="You cannot request your own service")
 
-    # Redundancy guard: a client should only ever have ONE active chat/job per service.
-    # If they already requested this service (or it's mid-flight and not yet terminal),
-    # return the existing job instead of spawning a duplicate.
+    # Redundancy guard: return existing active job for this service
     from sqlalchemy import select as _select
     existing_result = await db.execute(
         _select(Job)
@@ -82,7 +86,6 @@ async def request_service(
     if existing_job:
         return existing_job
 
-    # Create job with status 'requested', provider = service owner
     job = Job(
         client_id=current_user.id,
         provider_id=service.provider_id,
@@ -91,32 +94,32 @@ async def request_service(
         price=service.price,
         status="requested",
         service_listing_id=service.id,
-        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)   # ← add this
+        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
 
-    # Auto-message in the new chat so the provider gets an in-app notification
+    # Auto‑message in the chat room
     from ....crud.message import create_message
     from ....services.ws_manager import manager
     auto = await create_message(
         db, job.id, current_user.id,
-        f"👋 {current_user.display_name or 'Someone'} requested this service. Let's discuss the details!"
+        f"{current_user.display_name or 'Someone'} requested this service. Let's discuss the details!"
     )
     await manager.broadcast_new_message(auto)
 
-    # Email the provider
-    from ....services.brevo_client import send_email
+    # Background email
     provider = await get_user_by_id(db, service.provider_id)
     if provider and provider.email:
-        await send_email(
+        _send_email_background(
             to_email=provider.email,
             subject=f"New request for {service.title}",
             html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='https://baros.app/dashboard/jobs/{job.id}'>View request</a></p>"
         )
 
     return job
+
 
 @router.post("/{job_id}/accept-request", response_model=JobOut)
 async def accept_request(
@@ -136,20 +139,19 @@ async def accept_request(
     await db.commit()
     await db.refresh(job)
 
-    # In-app notification: auto-message in the job chat so the client gets a live notification
+    # In‑app notification
     from ....crud.message import create_message
     from ....services.ws_manager import manager
     auto = await create_message(
         db, job.id, current_user.id,
-        f"✅ {current_user.display_name or 'The provider'} accepted your request for \"{job.title}\". You can now fund the escrow."
-    )
+        f">> {current_user.display_name or 'The provider'} accepted your request for \"{job.title}\". You can now fund the escrow."   
+        )
     await manager.broadcast_new_message(auto)
 
-    # Notify the client
-    from ....services.brevo_client import send_email
+    # Background email
     client = await get_user_by_id(db, job.client_id)
     if client and client.email:
-        await send_email(
+        _send_email_background(
             to_email=client.email,
             subject="Your service request was accepted",
             html_content=f"<p>{current_user.display_name} accepted your request for <strong>{job.title}</strong>. You can now fund the escrow.</p>"
@@ -157,12 +159,10 @@ async def accept_request(
 
     return job
 
+
 @router.get("/exchange-rate")
 async def get_exchange_rate():
-    """
-    Returns the current NGN/USD exchange rate (cached 60 min).
-    Used by the frontend to show live Naira → USDC conversion in the job-creation form.
-    """
+    """Returns the current NGN/USD exchange rate (cached 60 min)."""
     rate = await get_ngn_usd_rate()
     logger.info(f"[jobs] Exchange rate endpoint: {rate} NGN/USD")
     return {"ngn_per_usd": rate}
@@ -173,8 +173,7 @@ async def my_conversations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """All jobs the user has a chat in: as client, as provider, or anyone they've
-    messaged (e.g. discussing an open job they don't own). Powers the Messages list."""
+    """All jobs the user has a chat in."""
     from sqlalchemy import select as _select, or_ as _or
     from ....models.message import Message
     msg_jobs = _select(Message.job_id).where(Message.sender_id == current_user.id)
@@ -214,17 +213,6 @@ async def list_jobs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # print(f"DEBUG list_jobs: my={my}, status={status_filter}, client_id={current_user.id}")
-
-    # # ---- diagnostic ----
-    # from sqlalchemy import select
-    # all_jobs_result = await db.execute(select(Job))
-    # all_jobs = all_jobs_result.scalars().all()
-    # print(f"DIAG: Total Job rows in DB: {len(all_jobs)}")
-    # for j in all_jobs:
-    #     print(f"   id={j.id} client_id={j.client_id} provider_id={j.provider_id} status={j.status}")
-
-
     client_id = None
     provider_id = None
     if my == "client":
@@ -246,8 +234,6 @@ async def list_jobs(
         search_text=q,
         sort_by=sort,
     )
-    # print(f"DEBUG list_jobs: result count = {len(result)}")
-
     return result
 
 
@@ -269,34 +255,34 @@ async def assign_job_route(
     job = await assign_job(db, job, assign_data.provider_id)
     await db.commit()
     await db.refresh(job)
-    from ....crud.application import get_applications_for_job
-    from ....services.brevo_client import send_email
 
-    # In-app notification: auto-message in the job chat so the hired provider gets a live notification
+    from ....crud.application import get_applications_for_job
     from ....crud.message import create_message
     from ....services.ws_manager import manager
+
+    # In‑app notification for the hired provider
     auto = await create_message(
         db, job.id, current_user.id,
-        f"🎉 {current_user.display_name or 'The client'} hired you for \"{job.title}\"! Once they fund the escrow you can begin work."
-    )
+        f">> {current_user.display_name or 'The client'} hired you for \"{job.title}\"! Once they fund the escrow you can begin work."    
+        )
     await manager.broadcast_new_message(auto)
 
-    # After assigning, notify other applicants
+    # Background emails to rejected applicants
     try:
         all_apps = await get_applications_for_job(db, job_id)
         for app in all_apps:
             if app.applicant_id != assign_data.provider_id:
                 applicant = await get_user_by_id(db, app.applicant_id)
                 if applicant and applicant.email:
-                    await send_email(
+                    _send_email_background(
                         to_email=applicant.email,
                         subject="Job update – you were not selected",
                         html_content=f"<p>Unfortunately, another provider was chosen for the job <strong>{job.title}</strong>. Keep browsing other jobs!</p>"
                     )
     except Exception:
         pass  # non‑critical
-    return job
 
+    return job
 
 @router.post("/{job_id}/fund", response_model=JobOut)
 async def fund_job_route(
@@ -470,7 +456,6 @@ async def release_job_route(
     await db.refresh(job)
     return job
 
-
 @router.post("/{job_id}/submit-work", response_model=JobOut)
 async def submit_work_route(
     job_id: uuid.UUID,
@@ -501,26 +486,22 @@ async def submit_work_route(
     from ....services.ws_manager import manager
     auto = await create_message(
         db, job.id, current_user.id,
-        f"📦 {current_user.display_name or 'The provider'} marked \"{job.title}\" as complete. "
+        f">> {current_user.display_name or 'The provider'} marked \"{job.title}\" as complete. Please review and release the escrow -- it will auto-release if no action is taken."
         f"Please review and release the escrow — it will auto-release if no action is taken."
     )
     await manager.broadcast_new_message(auto)
 
-    from ....services.brevo_client import send_email
+    # from ....services.brevo_client import send_email
+    # Background email
     client = await get_user_by_id(db, job.client_id)
     if client and client.email:
-        try:
-            await send_email(
-                to_email=client.email,
-                subject=f"Work submitted for {job.title}",
-                html_content=f"<p>{current_user.display_name} marked <strong>{job.title}</strong> as complete. "
-                             f"Review and release the escrow, or it will auto-release after the review window.</p>"
-            )
-        except Exception:
-            pass
-
+        _send_email_background(
+            to_email=client.email,
+            subject=f"Work submitted for {job.title}",
+            html_content=f"<p>{current_user.display_name} marked <strong>{job.title}</strong> as complete. "
+                         f"Review and release the escrow, or it will auto-release after the review window.</p>"
+        )
     return job
-
 
 @router.post("/{job_id}/cancel", response_model=JobOut)
 async def cancel_job_route(
