@@ -96,7 +96,6 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
 #         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 #     return True
 from .admin import verify_admin
-
 @router.get("/", response_model=list[DisputeOut])
 async def list_all_disputes(
     _: bool = Depends(verify_admin),
@@ -104,8 +103,67 @@ async def list_all_disputes(
 ):
     from sqlalchemy import select
     result = await db.execute(select(Dispute).order_by(Dispute.created_at.desc()))
-    return result.scalars().all()
+    disputes = result.scalars().all()
 
+    out = []
+    for d in disputes:
+        job = await get_job_by_id(db, d.job_id)
+        client_user = await get_user_by_id(db, d.client_id)
+        provider_user = await get_user_by_id(db, d.provider_id)
+        out.append({
+            "id": str(d.id),
+            "job_id": str(d.job_id),
+            "client_id": str(d.client_id),                # Required by DisputeOut
+            "provider_id": str(d.provider_id),            # Required by DisputeOut
+            "job_title": job.title if job else None,
+            "price": str(job.price) if job else "0",
+            "client_name": client_user.display_name if client_user else "Unknown",
+            "provider_name": provider_user.display_name if provider_user else "Unknown",
+            "reason": d.reason,
+            "status": d.status.value if hasattr(d.status, "value") else str(d.status),
+            "resolution": d.resolution,
+            "raised_by": str(d.raised_by),
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        })
+    return out
+
+@router.get("/my-disputes")
+async def my_disputes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns disputes where the current user is the client or provider,
+    enriched with job title and the other party's name."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(Dispute)
+        .where(
+            (Dispute.client_id == current_user.id) | (Dispute.provider_id == current_user.id)
+        )
+        .order_by(Dispute.created_at.desc())
+    )
+    disputes = result.scalars().all()
+
+    out = []
+    for d in disputes:
+        job = await get_job_by_id(db, d.job_id)
+        client_user = await get_user_by_id(db, d.client_id)
+        provider_user = await get_user_by_id(db, d.provider_id)
+        out.append({
+            "id": str(d.id),
+            "job_id": str(d.job_id),
+            "job_title": job.title if job else "Untitled",
+            "price": str(job.price) if job else "0",
+            "escrow_address": job.escrow_address if job else None,
+            "reason": d.reason,
+            "status": d.status.value if hasattr(d.status, "value") else str(d.status),
+            "resolution": d.resolution,
+            "raised_by": str(d.raised_by),
+            "client_name": client_user.display_name if client_user else "Unknown",
+            "provider_name": provider_user.display_name if provider_user else "Unknown",
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        })
+    return out
 
 @router.post("/", response_model=DisputeOut, status_code=status.HTTP_201_CREATED)
 async def raise_dispute(
@@ -125,7 +183,8 @@ async def raise_dispute(
 
     # Freeze the job
     await update_job_status(db, job, "disputed")
-    dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data)
+    dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data, raised_by=current_user.id)
+    # dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data)
     await db.commit()
 
     # ---- Auto-select jury ----
@@ -174,13 +233,19 @@ async def withdraw_dispute(
 ):
     """Either party can withdraw a dispute before any juror votes. The job returns
     to its previous state (funded or in_progress) so normal release can continue."""
+    # I later thought that was stupid, if i didn;t raise the dispute I should not be able to withdraw it. So now only the person who raised the dispute can withdraw it.
     dispute = await get_dispute_by_id(db, dispute_id)
+
+    if dispute.raised_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the person who raised the dispute can withdraw it")
+
     if not dispute:
         raise HTTPException(status_code=404, detail="Dispute not found")
     if dispute.client_id != current_user.id and dispute.provider_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only involved parties can withdraw")
     if dispute.status != "open":
         raise HTTPException(status_code=400, detail="Dispute is not open")
+
 
     # Check if any juror has already voted
     existing_votes = await get_votes_for_dispute(db, dispute_id)

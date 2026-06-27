@@ -62,11 +62,8 @@ export default function DisputesPage() {
   const { data: myDisputes, isLoading: myLoading } = useQuery({
     queryKey: ['my-disputes'],
     queryFn: async () => {
-      const [asClient, asProvider] = await Promise.all([
-        api.get('/jobs/', { params: { my: 'client', status: 'disputed' } }),
-        api.get('/jobs/', { params: { my: 'provider', status: 'disputed' } }),
-      ])
-      return [...asClient.data, ...asProvider.data]
+      const { data } = await api.get('/disputes/my-disputes')
+      return data
     },
   })
 
@@ -206,34 +203,52 @@ export default function DisputesPage() {
             <div className="text-center py-12 text-gray-500">You have no active disputes.</div>
           ) : (
             <div className="space-y-3">
-              {(myDisputes as any[]).map((job: any) => (
-                <Card key={job.id} className="bg-white border border-gray-100">
+              {(myDisputes as any[]).map((d: any) => (
+                <Card key={d.id} className="bg-white border border-gray-100">
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
-                      <CardTitle className="text-base">{job.title}</CardTitle>
+                      <CardTitle className="text-base">{d.job_title || 'Untitled'}</CardTitle>
                       <Badge className="bg-red-100 text-red-800">Disputed</Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
-                    <p className="text-gray-600">Price: ₦{parseFloat(job.price as string).toLocaleString()}</p>
-                    {job.escrow_address && (
-                      <p className="text-xs text-green-600">Escrow: {job.escrow_address.slice(0, 8)}...</p>
+                    <p className="text-gray-600"><strong>Reason:</strong> {d.reason}</p>
+                    <p className="text-gray-600">
+                      <strong>With:</strong> {d.client_name} (client) ↔ {d.provider_name} (provider)
+                    </p>
+                    {d.escrow_address && (
+                      <p className="text-xs text-green-600">Escrow: {d.escrow_address.slice(0, 8)}...</p>
                     )}
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => {
-                        // Find the dispute for this job and open courtroom
-                        const d = juryDisputes?.find(dd => dd.job_id === job.id)
-                        if (d) openCourtroom(d)
+                        const juryDispute = juryDisputes?.find(jd => jd.id === d.id)
+                        if (juryDispute) openCourtroom(juryDispute)
+                        else {
+                          // Build a minimal object to open courtroom
+                          openCourtroom({
+                            id: d.id,
+                            job_id: d.job_id,
+                            job_title: d.job_title,
+                            reason: d.reason,
+                            status: d.status,
+                            resolution: d.resolution,
+                            has_voted: false,
+                            created_at: d.created_at,
+                          })
+                        }
                       }}>
                         <MessageCircle className="w-3 h-3 mr-1" /> Courtroom
                       </Button>
-                      <Button size="sm" variant="destructive" onClick={() => {
-                        // Withdraw dispute — need dispute ID
-                        const d = juryDisputes?.find(dd => dd.job_id === job.id)
-                        if (d) withdrawMutation.mutate(d.id)
-                      }}>
-                        <AlertTriangle className="w-3 h-3 mr-1" /> Withdraw
-                      </Button>
+                      {d.raised_by === user?.id && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => withdrawMutation.mutate(d.id)}
+                          disabled={withdrawMutation.isPending}
+                        >
+                          <AlertTriangle className="w-3 h-3 mr-1" /> Withdraw
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

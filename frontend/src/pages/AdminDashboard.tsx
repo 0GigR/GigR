@@ -11,12 +11,38 @@ import { useAuthStore } from '@/store/authStore'
 import { Shield, UserPlus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { MessageCircle } from 'lucide-react'
 
 export default function AdminDashboard() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const isSuperadmin = user?.role === 'superadmin'
+  const [selectedDispute, setSelectedDispute] = useState<any>(null)
+  const [courtroomOpen, setCourtroomOpen] = useState(false)
+
+  // Fetch messages for the selected dispute's job
+  const { data: courtroomMessages } = useQuery({
+    queryKey: ['messages', selectedDispute?.job_id],
+    queryFn: async () => {
+      if (!selectedDispute?.job_id) return []
+      const { data } = await api.get(`/messages/job/${selectedDispute.job_id}`)
+      return data
+    },
+    enabled: !!selectedDispute?.job_id && courtroomOpen,
+  })
+
+  // Fetch job details
+  const { data: selectedJob } = useQuery({
+    queryKey: ['job', selectedDispute?.job_id],
+    queryFn: async () => {
+      if (!selectedDispute?.job_id) return null
+      const { data } = await api.get(`/jobs/${selectedDispute.job_id}`)
+      return data
+    },
+    enabled: !!selectedDispute?.job_id && courtroomOpen,
+  })
 
   // Fetch all disputes
   const { data: disputes, isLoading } = useQuery({
@@ -91,14 +117,31 @@ export default function AdminDashboard() {
         </TabsList>
 
         <TabsContent value="disputes" className="mt-6">
-          {isLoading ? <Skeleton className="h-24 w-full" /> : disputes?.map((d: any) => (
+          {isLoading ? <Skeleton className="h-24 w-full" /> : 
+          disputes?.map((d: any) => (
             <Card key={d.id} className="bg-white border border-gray-100 mb-2">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">{d.job_id || 'Untitled'} — {d.status}</CardTitle>
+                {/* <CardTitle className="text-base flex justify-between">
+                  <span>{d.job_id?.slice(0, 8)}... — {d.status}</span>
+                  <Badge>{d.status}</Badge>
+                </CardTitle> */}
+                <CardTitle className="text-base flex justify-between">
+                  <span>{d.job_title || 'Untitled'} — {d.status}</span>
+                  <Badge>{d.status}</Badge>
+                </CardTitle>
+                <p className="text-xs text-gray-500">
+                  Client: {d.client_name} | Provider: {d.provider_name}
+                </p>
               </CardHeader>
               <CardContent className="text-sm space-y-2">
                 <p>{d.reason}</p>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setSelectedDispute(d)
+                    setCourtroomOpen(true)
+                  }}>
+                    <MessageCircle className="w-3 h-3 mr-1" /> View Courtroom
+                  </Button>
                   <Button size="sm" onClick={() => resolveMutation.mutate({ disputeId: d.id, resolution: 'refund' })}>
                     Refund
                   </Button>
@@ -137,6 +180,35 @@ export default function AdminDashboard() {
           </TabsContent>
         )}
       </Tabs>
+      {selectedDispute && (
+        <Dialog open={courtroomOpen} onOpenChange={setCourtroomOpen}>
+          <DialogContent className="sm:max-w-2xl bg-white text-black max-h-[85vh] flex flex-col">
+            <DialogHeader>
+              <DialogTitle>Courtroom – Dispute {selectedDispute.id.slice(0,8)}</DialogTitle>
+            </DialogHeader>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm space-y-2">
+              <p><strong>Reason:</strong> {selectedDispute.reason}</p>
+              {selectedJob && (
+                <>
+                  <p><strong>Job:</strong> {selectedJob.title} – ₦{parseFloat(selectedJob.price).toLocaleString()}</p>
+                  <p><strong>Client:</strong> {selectedJob.client_id}</p>
+                  <p><strong>Provider:</strong> {selectedJob.provider_id}</p>
+                </>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2 py-2">
+              {courtroomMessages?.map((msg: any) => (
+                <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
+                    <p className="text-sm">{msg.content}</p>
+                    <span className="text-xs opacity-70">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
