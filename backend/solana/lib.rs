@@ -15,7 +15,6 @@ pub mod gigr_escrow {
         escrow.amount = amount;
         escrow.bump = ctx.bumps.escrow;
 
-        // Transfer USDC from client's token account to the vault's token account
         let cpi_accounts = Transfer {
             from: ctx.accounts.client_ata.to_account_info(),
             to: ctx.accounts.vault_ata.to_account_info(),
@@ -40,7 +39,7 @@ pub mod gigr_escrow {
         ];
         let signer = &[&seeds[..]];
 
-        // 1. Transfer USDC from vault to provider
+        // Transfer USDC from vault to provider
         let cpi_accounts = Transfer {
             from: ctx.accounts.vault_ata.to_account_info(),
             to: ctx.accounts.provider_ata.to_account_info(),
@@ -50,7 +49,7 @@ pub mod gigr_escrow {
         let cpi_ctx = CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts, signer);
         token::transfer(cpi_ctx, escrow.amount)?;
 
-        // 2. Close the temporary vault token account to prevent rent leaks
+        // Close vault token account → refund rent to client
         let close_accounts = CloseAccount {
             account: ctx.accounts.vault_ata.to_account_info(),
             destination: ctx.accounts.client.to_account_info(),
@@ -74,7 +73,7 @@ pub mod gigr_escrow {
         ];
         let signer = &[&seeds[..]];
 
-        // 1. Return USDC from vault back to client
+        // Return USDC to client
         let cpi_accounts = Transfer {
             from: ctx.accounts.vault_ata.to_account_info(),
             to: ctx.accounts.client_ata.to_account_info(),
@@ -84,7 +83,7 @@ pub mod gigr_escrow {
         let cpi_ctx = CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts, signer);
         token::transfer(cpi_ctx, escrow.amount)?;
 
-        // 2. Close the temporary vault token account
+        // Close vault token account → refund rent to client
         let close_accounts = CloseAccount {
             account: ctx.accounts.vault_ata.to_account_info(),
             destination: ctx.accounts.client.to_account_info(),
@@ -101,18 +100,17 @@ pub mod gigr_escrow {
 #[instruction(job_id: u64)]
 pub struct InitEscrow<'info> {
     #[account(mut)]
-    pub client: Signer<'info>, // Client signs to authorize USDC transfer
-    /// CHECK: Platform wallet paying account creation rent
+    pub client: Signer<'info>,
     #[account(mut)]
-    pub platform: Signer<'info>, // Platform pays rent for vault_ata and escrow
+    pub platform: Signer<'info>,          // pays rent for vault_ata + escrow
     /// CHECK: Safe
     pub provider: AccountInfo<'info>,
     pub mint: Account<'info, Mint>,
-    #[account(mut)]
+    #[account(mut)] 
     pub client_ata: Account<'info, TokenAccount>,
     #[account(
         init,
-        payer = platform,               // Platform pays rent for vault_ata
+        payer = platform,
         seeds = [b"vault", escrow.key().as_ref()],
         bump,
         token::mint = mint,
@@ -121,7 +119,7 @@ pub struct InitEscrow<'info> {
     pub vault_ata: Account<'info, TokenAccount>,
     #[account(
         init,
-        payer = platform,               // Platform pays rent for escrow account
+        payer = platform,
         space = 8 + 32 + 32 + 8 + 8 + 1,
         seeds = [b"escrow", client.key().as_ref(), &job_id.to_le_bytes()],
         bump
@@ -134,6 +132,7 @@ pub struct InitEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct ReleaseEscrow<'info> {
+    #[account(mut)]                 // ← writable so it can receive vault rent refund
     pub client: Signer<'info>,
     #[account(mut)]
     pub provider_ata: Account<'info, TokenAccount>,
@@ -150,6 +149,7 @@ pub struct ReleaseEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct CancelEscrow<'info> {
+    #[account(mut)]                 // ← writable so it can receive vault rent refund
     pub client: Signer<'info>,
     #[account(mut)]
     pub client_ata: Account<'info, TokenAccount>,
