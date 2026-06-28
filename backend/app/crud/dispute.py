@@ -24,13 +24,14 @@ async def get_disputes_by_user(db: AsyncSession, user_id: UUID, limit: int = 20,
     )
     return result.scalars().all()
 
-async def create_dispute(db: AsyncSession, client_id: UUID, provider_id: UUID, dispute_in: DisputeCreate) -> Dispute:
+async def create_dispute(db: AsyncSession, client_id: UUID, provider_id: UUID, dispute_in: DisputeCreate, raised_by: UUID) -> Dispute:
     dispute = Dispute(
         job_id=dispute_in.job_id,
         client_id=client_id,
         provider_id=provider_id,
         reason=dispute_in.reason,
         status=DisputeStatus.OPEN,
+        raised_by=raised_by,
     )
     db.add(dispute)
     await db.commit()

@@ -90,7 +90,8 @@ async def ensure_ata_exists(payer_kp: Keypair, owner: Pubkey, mint: Pubkey) -> P
         await rpc_client.close()
 
 
-def _get_payer() -> Keypair:
+# def _get_payer() -> Keypair:
+def get_platform_payer() -> Keypair:
     global _payer
     if _payer is None:
         raw = settings.PLATFORM_KEYPAIR
@@ -105,9 +106,10 @@ def _get_payer() -> Keypair:
 async def _get_program() -> Program:
     global _program, _client
     if _program is None:
-        # timeout=60 so Helius cold-starts don't time out mid-request
+        # timeout=60 so Helius cold-starts don't time out mid-request 
         _client = AsyncClient(settings.SOLANA_RPC_URL, timeout=60)
-        idl_dict = json.loads(r"""{"version":"0.1.0","name":"baros_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
+        # idl_dict = json.loads(r"""{"version":"0.1.0","name":"baros_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
+        idl_dict = json.loads(r"""{"version":"0.1.0","name":"gigr_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"platform","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
         # idl_path = os.path.join(os.path.dirname(__file__), "baros_program.json")
         # idl_path = r"app/services/gigr_program.json"
         # with open(idl_path, "r") as f:
@@ -115,7 +117,7 @@ async def _get_program() -> Program:
         # if "metadata" not in raw:
         #     raw["metadata"] = {"address": settings.GIGR_PROGRAM_ID}
         # idl = Idl.from_json(json.dumps(raw))
-        # provider = Provider(
+        # provider = Provider( 
         #     _client,
         #     Wallet(_get_payer()),
         #     TxOpts(skip_preflight=False, preflight_commitment=Confirmed),
@@ -128,7 +130,7 @@ async def _get_program() -> Program:
         idl = Idl.from_json(json.dumps(idl_dict))
         provider = Provider(
             _client,
-            Wallet(_get_payer()),
+            Wallet(get_platform_payer()),
             TxOpts(skip_preflight=False, preflight_commitment=Confirmed),
         )
         _program = Program(idl, Pubkey.from_string(settings.GIGR_PROGRAM_ID), provider)
@@ -176,6 +178,7 @@ async def init_escrow(
             ctx=Context(
                 accounts={
                     "client":         client_kp.pubkey(),
+                    "platform":       get_platform_payer().pubkey(),   
                     "provider":       Pubkey.from_string(provider_pubkey),
                     "mint":           Pubkey.from_string(mint),
                     "client_ata":     Pubkey.from_string(client_ata),
@@ -185,7 +188,7 @@ async def init_escrow(
                     "system_program": SYSTEM_PROGRAM_ID,
                     "rent":           RENT,
                 },
-                signers=[client_kp],
+                signers=[client_kp, get_platform_payer()],
             ),
         )
         return str(tx_sig)
@@ -202,64 +205,62 @@ async def init_escrow(
 async def release_escrow(
     *,
     client_kp: Keypair,
+    platform_kp: Keypair,           # NEW
     provider_ata: str,
     vault_ata: str,
     escrow_address: str,
 ) -> str:
     program = await _get_program()
-
     async def _call():
         tx_sig = await program.rpc["release_escrow"](
             ctx=Context(
                 accounts={
                     "client":        client_kp.pubkey(),
+                    "platform":      platform_kp.pubkey(),   # NEW
                     "provider_ata":  Pubkey.from_string(provider_ata),
                     "vault_ata":     Pubkey.from_string(vault_ata),
                     "escrow":        Pubkey.from_string(escrow_address),
                     "token_program": TOKEN_PROGRAM,
                 },
-                signers=[client_kp],
+                signers=[client_kp, platform_kp],           # platform signs
             ),
         )
         return str(tx_sig)
-
     try:
         result = await _retry(_call, "release_escrow")
-        logger.info(f"[solana_client] release_escrow OK: {result}")
         return result
     except Exception as e:
-        logger.error(f"[solana_client] release_escrow FAILED: {e}")
+        logger.error(f"release_escrow FAILED: {e}")
         raise
 
 
 async def cancel_escrow(
     *,
     client_kp: Keypair,
+    platform_kp: Keypair,           # NEW
     client_ata: str,
     vault_ata: str,
     escrow_address: str,
 ) -> str:
     program = await _get_program()
-
     async def _call():
         tx_sig = await program.rpc["cancel_escrow"](
             ctx=Context(
                 accounts={
                     "client":        client_kp.pubkey(),
+                    "platform":      platform_kp.pubkey(),   # NEW
                     "client_ata":    Pubkey.from_string(client_ata),
                     "vault_ata":     Pubkey.from_string(vault_ata),
                     "escrow":        Pubkey.from_string(escrow_address),
                     "token_program": TOKEN_PROGRAM,
                 },
-                signers=[client_kp],
+                signers=[client_kp, platform_kp],
             ),
         )
         return str(tx_sig)
-
     try:
         result = await _retry(_call, "cancel_escrow")
-        logger.info(f"[solana_client] cancel_escrow OK: {result}")
         return result
     except Exception as e:
-        logger.error(f"[solana_client] cancel_escrow FAILED: {e}")
+        logger.error(f"cancel_escrow FAILED: {e}")
         raise

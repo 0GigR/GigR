@@ -20,6 +20,7 @@ class User(Base):
     phone_number = Column(String(20), nullable=True)
     profile_image_url = Column(String(500), nullable=True)
     is_verified = Column(Boolean, default=False)
+    role = Column(String(20), default="user", nullable=False)  # "user", "admin", "superadmin"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Solana wallet – public key is base58, private key is Fernet‑encrypted

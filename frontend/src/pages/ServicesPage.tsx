@@ -154,6 +154,7 @@ export default function ServicesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [formData, setFormData] = useState({
@@ -178,8 +179,15 @@ export default function ServicesPage() {
     queryKey: ['myClientJobs'],
     queryFn: async () => { const { data } = await api.get('/jobs/', { params: { my: 'client' } }); return data },
   })
+  // const requestedServiceIds = new Set(
+  //   (myClientJobs || []).map((j) => j.service_listing_id).filter(Boolean)
+  // )
+
   const requestedServiceIds = new Set(
-    (myClientJobs || []).map((j) => j.service_listing_id).filter(Boolean)
+    (myClientJobs || [])
+      .filter(j => !['completed', 'cancelled'].includes(j.status))
+      .map((j) => j.service_listing_id)
+      .filter(Boolean)
   )
 
   // Fetch nearby services (browse tab)
@@ -298,6 +306,7 @@ export default function ServicesPage() {
   }
 
   const handleCreateOrUpdate = async () => {
+    if (isCreating) return
     if (!formData.title || !formData.price || !formData.category_id) { toast.error('Title, price, and category required'); return }
     if (!latitude || !longitude) { toast.error('Location not available'); return }
 
@@ -310,29 +319,31 @@ export default function ServicesPage() {
       }
     }
 
-    let imageUrl: string | undefined
-    if (imageFile) {
-      try { imageUrl = await uploadFile(imageFile) } catch { return }
-    }
+    setIsCreating(true)
+    try {
+      let imageUrl: string | undefined
+      if (imageFile) {
+        try { imageUrl = await uploadFile(imageFile) } catch { setIsCreating(false); return }
+      }
 
-    const payload: ServiceCreate = {
-      title: formData.title,
-      description: formData.description,
-      price: formData.price,
-      category_id: formData.category_id,
-      latitude,
-      longitude,
-      radius_km: formData.radius_km || '5.0',
-      image_url: imageUrl,
-    }
+      const payload: ServiceCreate = {
+        title: formData.title,
+        description: formData.description,
+        price: formData.price,
+        category_id: formData.category_id,
+        latitude,
+        longitude,
+        radius_km: formData.radius_km || '5.0',
+        image_url: imageUrl,
+      }
 
-    // Guard against double-submits while a create/update is already in flight
-    if (createMutation.isPending || updateMutation.isPending) return
-
-    if (editService) {
-      updateMutation.mutate({ id: editService.id, data: payload })
-    } else {
-      createMutation.mutate(payload)
+      if (editService) {
+        updateMutation.mutate({ id: editService.id, data: payload })
+      } else {
+        createMutation.mutate(payload)
+      }
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -490,8 +501,8 @@ export default function ServicesPage() {
 
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
-                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || createMutation.isPending || updateMutation.isPending}>
-                    {createMutation.isPending || updateMutation.isPending
+                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
+                    {isCreating || createMutation.isPending || updateMutation.isPending
                       ? (editService ? 'Saving...' : 'Creating...')
                       : (editService ? 'Save Changes' : 'Create')}
                   </Button>

@@ -7,9 +7,11 @@ interface Props {
   title: string
   description: string
   onConfirm: () => void
+  confirmLabel?: string        // new
+  cancelLabel?: string         // new
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, onConfirm }: Props) {
+export function ConfirmDialog({ open, onOpenChange, title, description, onConfirm, confirmLabel, cancelLabel }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm bg-white text-black">
@@ -18,8 +20,12 @@ export function ConfirmDialog({ open, onOpenChange, title, description, onConfir
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="border-gray-200">Cancel</Button>
-          <Button onClick={() => { onConfirm(); onOpenChange(false) }} className="bg-red-600 hover:bg-red-700 text-white">Delete</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {cancelLabel || 'Cancel'}
+          </Button>
+          <Button onClick={() => { onConfirm(); onOpenChange(false) }}>
+            {confirmLabel || 'Proceed'}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -30,3 +30,4 @@ class Dispute(Base):
 
     votes = relationship("Vote", back_populates="dispute")
     jury_panels = relationship("JuryPanel", back_populates="dispute")
+    raised_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # who opened the dispute
