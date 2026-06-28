@@ -61,9 +61,13 @@ export default function DisputesPage() {
   // Fetch disputes where user is a party
   const { data: myDisputes, isLoading: myLoading } = useQuery({
     queryKey: ['my-disputes'],
+    // queryFn: async () => {
+    //   const { data } = await api.get('/disputes/my-disputes')
+    //   return data
+    // },
     queryFn: async () => {
       const { data } = await api.get('/disputes/my-disputes')
-      return data
+      return (data as any[]).filter(d => d.status === 'open')
     },
   })
 
