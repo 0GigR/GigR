@@ -178,8 +178,15 @@ export default function ServicesPage() {
     queryKey: ['myClientJobs'],
     queryFn: async () => { const { data } = await api.get('/jobs/', { params: { my: 'client' } }); return data },
   })
+  // const requestedServiceIds = new Set(
+  //   (myClientJobs || []).map((j) => j.service_listing_id).filter(Boolean)
+  // )
+
   const requestedServiceIds = new Set(
-    (myClientJobs || []).map((j) => j.service_listing_id).filter(Boolean)
+    (myClientJobs || [])
+      .filter(j => !['completed', 'cancelled'].includes(j.status))
+      .map((j) => j.service_listing_id)
+      .filter(Boolean)
   )
 
   // Fetch nearby services (browse tab)
