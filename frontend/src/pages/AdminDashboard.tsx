@@ -164,16 +164,16 @@ export default function AdminDashboard() {
         </h1>
         <p className="text-gray-500">Manage disputes and administrators.</p>
       </div>
-
       <Tabs defaultValue="disputes">
         <TabsList>
-          <TabsTrigger value="disputes">Disputes</TabsTrigger>
+          <TabsTrigger value="disputes">Active</TabsTrigger>
+          <TabsTrigger value="resolved">Resolved</TabsTrigger>
           {isSuperadmin && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="disputes" className="mt-6">
           {isLoading ? <Skeleton className="h-24 w-full" /> : 
-          disputes?.map((d: any) => (
+          (disputes as any[])?.filter(d => d.status === 'open').map((d: any) => (
             <Card key={d.id} className="bg-white border border-gray-100 mb-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex justify-between">
@@ -205,6 +205,26 @@ export default function AdminDashboard() {
           ))}
         </TabsContent>
 
+        <TabsContent value="resolved" className="mt-6">
+          {isLoading ? <Skeleton className="h-24 w-full" /> : 
+          (disputes as any[])?.filter(d => d.status !== 'open').map((d: any) => (
+            <Card key={d.id} className="bg-white border border-gray-100 mb-2 opacity-70">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex justify-between">
+                  <span>{d.job_title || 'Untitled'} — {d.status}</span>
+                  <Badge variant="secondary">{d.resolution || d.status}</Badge>
+                </CardTitle>
+                <p className="text-xs text-gray-500">
+                  Client: {d.client_name} | Provider: {d.provider_name}
+                </p>
+              </CardHeader>
+              <CardContent className="text-sm">
+                <p>{d.reason}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </TabsContent>
+        
         {isSuperadmin && (
           <TabsContent value="admins" className="mt-6">
             <div className="flex gap-2 mb-4">
