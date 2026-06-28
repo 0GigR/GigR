@@ -13,7 +13,7 @@ from ....crud.job import (
 from ....crud.user import get_user_by_id
 from ....schemas.job import JobCreate, JobOut, JobAssign
 from ....models.user import User
-from ....services.solana_client import init_escrow, release_escrow, cancel_escrow
+from ....services.solana_client import get_platform_payer, init_escrow, release_escrow, cancel_escrow
 from ....services.wallet import get_user_keypair as _get_user_keypair
 from ....services.exchange_rate import get_ngn_usd_rate
 from ....core.config import settings
@@ -436,6 +436,7 @@ async def release_job_route(
             provider_ata=str(provider_ata_pubkey),
             vault_ata=str(vault_ata),
             escrow_address=str(escrow_pubkey),
+            platform_kp = get_platform_payer()
         )
     except Exception as e:
         err_str = str(e)
@@ -565,6 +566,7 @@ async def cancel_job_route(
             client_ata=str(client_ata),
             vault_ata=str(vault_ata),
             escrow_address=str(escrow_pubkey),
+            platform_kp=get_platform_payer(),      #
         )
     except Exception as e:
         err_str = str(e)

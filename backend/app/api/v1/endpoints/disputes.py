@@ -22,7 +22,7 @@ from ....models.vote import VoteOption
 from ....models.dispute import Dispute, DisputeStatus
 from ....schemas.dispute import DisputeCreate, DisputeResolve, DisputeOut
 from ....schemas.vote import VoteCreate, VoteOut
-from ....services.solana_client import release_escrow, cancel_escrow, ensure_ata_exists
+from ....services.solana_client import get_platform_payer, release_escrow, cancel_escrow, ensure_ata_exists
 from ....services.wallet import get_user_keypair
 from ....services.brevo_client import send_email
 from solders.pubkey import Pubkey
@@ -52,6 +52,7 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
     client_kp = get_user_keypair(client_user)
     client_pubkey = Pubkey.from_string(client_user.wallet_public_key)
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
+    platform_kp = get_platform_payer()
 
     job_id_int = int(job.contract_job_id, 16)
     escrow_pubkey = Pubkey.find_program_address(
@@ -72,6 +73,7 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
                 client_ata=str(client_ata),
                 vault_ata=str(vault_ata),
                 escrow_address=str(escrow_pubkey),
+                platform_kp = platform_kp
             )
             await update_job_status(db, job, "cancelled")
         else:  # release
@@ -81,6 +83,7 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
                 provider_ata=str(provider_ata),
                 vault_ata=str(vault_ata),
                 escrow_address=str(escrow_pubkey),
+                platform_kp = platform_kp
             )
             await update_job_status(db, job, "completed")
     except HTTPException:
