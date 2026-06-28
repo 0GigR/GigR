@@ -39,7 +39,7 @@ pub mod gigr_escrow {
         ];
         let signer = &[&seeds[..]];
 
-        // Transfer USDC from vault to provider
+        // 1. Transfer USDC from vault to provider
         let cpi_accounts = Transfer {
             from: ctx.accounts.vault_ata.to_account_info(),
             to: ctx.accounts.provider_ata.to_account_info(),
@@ -49,14 +49,27 @@ pub mod gigr_escrow {
         let cpi_ctx = CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts, signer);
         token::transfer(cpi_ctx, escrow.amount)?;
 
-        // Close vault token account → refund rent to client
+        // 2. Close vault token account → refund rent to PLATFORM
         let close_accounts = CloseAccount {
             account: ctx.accounts.vault_ata.to_account_info(),
-            destination: ctx.accounts.client.to_account_info(),
+            destination: ctx.accounts.platform.to_account_info(), // platform gets rent back
             authority: ctx.accounts.escrow.to_account_info(),
         };
-        let close_ctx = CpiContext::new_with_signer(cpi_program, close_accounts, signer);
+        let close_ctx = CpiContext::new_with_signer(cpi_program.clone(), close_accounts, signer);
         token::close_account(close_ctx)?;
+
+        // 3. Close the escrow PDA and send its lamports to the platform
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        **ctx
+            .accounts
+            .escrow
+            .to_account_info()
+            .try_borrow_mut_lamports()? -= escrow_lamports;
+        **ctx
+            .accounts
+            .platform
+            .to_account_info()
+            .try_borrow_mut_lamports()? += escrow_lamports;
 
         Ok(())
     }
@@ -73,7 +86,7 @@ pub mod gigr_escrow {
         ];
         let signer = &[&seeds[..]];
 
-        // Return USDC to client
+        // 1. Return USDC to client
         let cpi_accounts = Transfer {
             from: ctx.accounts.vault_ata.to_account_info(),
             to: ctx.accounts.client_ata.to_account_info(),
@@ -83,14 +96,27 @@ pub mod gigr_escrow {
         let cpi_ctx = CpiContext::new_with_signer(cpi_program.clone(), cpi_accounts, signer);
         token::transfer(cpi_ctx, escrow.amount)?;
 
-        // Close vault token account → refund rent to client
+        // 2. Close vault token account → refund rent to PLATFORM
         let close_accounts = CloseAccount {
             account: ctx.accounts.vault_ata.to_account_info(),
-            destination: ctx.accounts.client.to_account_info(),
+            destination: ctx.accounts.platform.to_account_info(),
             authority: ctx.accounts.escrow.to_account_info(),
         };
-        let close_ctx = CpiContext::new_with_signer(cpi_program, close_accounts, signer);
+        let close_ctx = CpiContext::new_with_signer(cpi_program.clone(), close_accounts, signer);
         token::close_account(close_ctx)?;
+
+        // 3. Close the escrow PDA and send its lamports to the platform
+        let escrow_lamports = ctx.accounts.escrow.to_account_info().lamports();
+        **ctx
+            .accounts
+            .escrow
+            .to_account_info()
+            .try_borrow_mut_lamports()? -= escrow_lamports;
+        **ctx
+            .accounts
+            .platform
+            .to_account_info()
+            .try_borrow_mut_lamports()? += escrow_lamports;
 
         Ok(())
     }
@@ -102,11 +128,11 @@ pub struct InitEscrow<'info> {
     #[account(mut)]
     pub client: Signer<'info>,
     #[account(mut)]
-    pub platform: Signer<'info>,          // pays rent for vault_ata + escrow
+    pub platform: Signer<'info>, // pays rent for vault_ata + escrow
     /// CHECK: Safe
     pub provider: AccountInfo<'info>,
     pub mint: Account<'info, Mint>,
-    #[account(mut)] 
+    #[account(mut)]
     pub client_ata: Account<'info, TokenAccount>,
     #[account(
         init,
@@ -132,8 +158,10 @@ pub struct InitEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct ReleaseEscrow<'info> {
-    #[account(mut)]                 // ← writable so it can receive vault rent refund
     pub client: Signer<'info>,
+    /// CHECK: Platform receives rent refunds, must be writable
+    #[account(mut)]
+    pub platform: AccountInfo<'info>,
     #[account(mut)]
     pub provider_ata: Account<'info, TokenAccount>,
     #[account(mut)]
@@ -141,7 +169,7 @@ pub struct ReleaseEscrow<'info> {
     #[account(
         mut,
         has_one = client @ CustomError::UnauthorizedClient,
-        close = client
+        close = platform   // Anchor will send the escrow's rent to the platform
     )]
     pub escrow: Account<'info, Escrow>,
     pub token_program: Program<'info, Token>,
@@ -149,8 +177,10 @@ pub struct ReleaseEscrow<'info> {
 
 #[derive(Accounts)]
 pub struct CancelEscrow<'info> {
-    #[account(mut)]                 // ← writable so it can receive vault rent refund
     pub client: Signer<'info>,
+    /// CHECK: Platform receives rent refunds, must be writable
+    #[account(mut)]
+    pub platform: AccountInfo<'info>,
     #[account(mut)]
     pub client_ata: Account<'info, TokenAccount>,
     #[account(mut)]
@@ -158,7 +188,7 @@ pub struct CancelEscrow<'info> {
     #[account(
         mut,
         has_one = client @ CustomError::UnauthorizedClient,
-        close = client
+        close = platform   // Anchor will send the escrow's rent to the platform
     )]
     pub escrow: Account<'info, Escrow>,
     pub token_program: Program<'info, Token>,
