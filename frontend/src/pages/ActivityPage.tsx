@@ -94,6 +94,8 @@ export default function ActivityPage() {
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeJobId, setDisputeJobId] = useState<string | null>(null)
 
   // Fetch all my jobs
   const { data: allJobs, isLoading } = useQuery<Job[]>({
@@ -657,6 +659,19 @@ export default function ActivityPage() {
             ? `Raise a dispute for "${confirmAction?.title}"? A reason will be requested next.`
             : ''
         }
+        // onConfirm={() => {
+        //   if (!confirmAction) return
+        //   const { type, jobId } = confirmAction
+        //   if (type === 'fund') fundMutation.mutate(jobId)
+        //   else if (type === 'release') releaseMutation.mutate(jobId)
+        //   else if (type === 'submit') submitWorkMutation.mutate(jobId)
+        //   else if (type === 'dispute') {
+        //     const reason = window.prompt('Briefly describe the problem you want the jury to review:')
+        //     if (!reason) return
+        //     raiseDisputeMutation.mutate({ jobId, reason })
+        //   }
+        //   setConfirmAction(null)
+        // }}
         onConfirm={() => {
           if (!confirmAction) return
           const { type, jobId } = confirmAction
@@ -664,15 +679,51 @@ export default function ActivityPage() {
           else if (type === 'release') releaseMutation.mutate(jobId)
           else if (type === 'submit') submitWorkMutation.mutate(jobId)
           else if (type === 'dispute') {
-            const reason = window.prompt('Briefly describe the problem you want the jury to review:')
-            if (!reason) return
-            raiseDisputeMutation.mutate({ jobId, reason })
+            setDisputeJobId(jobId)
+            setDisputeReason('')
+            setConfirmAction(null)
+            setTimeout(() => document.getElementById('dispute-reason-dialog')?.focus(), 100)
           }
-          setConfirmAction(null)
+          if (type !== 'dispute') setConfirmAction(null)
         }}
         confirmLabel="Proceed"
         cancelLabel="Cancel"
       />
+
+        {/* Dispute Reason Dialog */}
+      <Dialog open={disputeJobId !== null} onOpenChange={() => setDisputeJobId(null)}>
+        <DialogContent className="sm:max-w-md bg-white text-black">
+          <DialogHeader>
+            <DialogTitle>Describe the problem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Textarea
+              id="dispute-reason-dialog"
+              placeholder="Briefly describe the problem you want the jury to review..."
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              rows={4}
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setDisputeJobId(null)} className="border-gray-200">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!disputeReason.trim() || !disputeJobId) return
+                  raiseDisputeMutation.mutate({ jobId: disputeJobId, reason: disputeReason })
+                  setDisputeJobId(null)
+                  setDisputeReason('')
+                }}
+                disabled={!disputeReason.trim() || raiseDisputeMutation.isPending}
+                className="bg-black text-white"
+              >
+                Submit Dispute
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
