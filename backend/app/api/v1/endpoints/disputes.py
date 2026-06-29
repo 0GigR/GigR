@@ -99,7 +99,8 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
 #         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 #     return True
 from .admin import verify_admin
-@router.get("/", response_model=list[DisputeOut])
+# @router.get("/", response_model=list[DisputeOut])
+@router.get("/")
 async def list_all_disputes(
     _: bool = Depends(verify_admin),
     db: AsyncSession = Depends(get_db),
