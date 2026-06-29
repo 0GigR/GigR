@@ -11,6 +11,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 // Cloudinary image upload
@@ -211,15 +212,24 @@ export default function AdminDashboard() {
             <Card key={d.id} className="bg-white border border-gray-100 mb-2 opacity-70">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex justify-between">
-                  <span>{d.job_title || 'Untitled'} — {d.status}</span>
+                  <span>{d.job_title || 'Untitled job'}</span>
                   <Badge variant="secondary">{d.resolution || d.status}</Badge>
                 </CardTitle>
                 <p className="text-xs text-gray-500">
-                  Client: {d.client_name} | Provider: {d.provider_name}
+                  Client:{' '}
+                  <Link to={`/profile/${d.client_id}`} className="text-blue-600 hover:underline">
+                    {d.client_name || 'Unknown'}
+                  </Link>
+                  {' | '}
+                  Provider:{' '}
+                  <Link to={`/profile/${d.provider_id}`} className="text-blue-600 hover:underline">
+                  {/* <Link to={`/dashboard/profile/${d.provider_id}`} className="text-blue-600 hover:underline"> */}
+                    {d.provider_name || 'Unknown'}
+                  </Link>
                 </p>
               </CardHeader>
               <CardContent className="text-sm">
-                <p>{d.reason}</p>
+                <p className="text-gray-600"><strong>Reason:</strong> {d.reason}</p>
               </CardContent>
             </Card>
           ))}
