@@ -56,7 +56,7 @@ function App() {
             <Route path="messages" element={<MessagesPage />} />
             <Route path="disputes" element={<DisputesPage />} />
             <Route path="profile" element={<ProfilePage />} />
-            <Route path="/profile/:userId" element={<PublicProfilePage />} />
+            {/* <Route path="/profile/:userId" element={<PublicProfilePage />} /> */}
             <Route path="admin" element={<AdminDashboard />} />
           </Route>
         </Routes>
