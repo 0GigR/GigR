@@ -44,7 +44,8 @@ async def _get_or_create_project() -> int:
                 "name": "Gigr Vouches",
                 "symbol": "VOUCH",
                 "description": "On-chain reputation vouches for Gigr marketplace providers",
-                "image": "https://res.cloudinary.com/demo/image/upload/v1/samples/cloudinary-icon.png",
+                # "image": "https://res.cloudinary.com/demo/image/upload/v1/samples/cloudinary-icon.png",
+                "image": "https://img.icons8.com/ios-filled/50/000000/trust.png",
                 "compression": True,
             },
         )
@@ -94,11 +95,10 @@ async def mint_vouch_cnft(
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(url, headers=headers, json=payload)
-        if response.status_code == 400:
-            body = response.json()
-            if "not been confirmed" in body.get("message", ""):
-                # Project still pending – surface a friendly message
-                raise Exception("Underdog project is still confirming on-chain. Please try again in 30 seconds.")
+        logger.info(f"[underdog] Response status: {response.status_code}")
+        logger.info(f"[underdog] Response body: {response.text}")
         response.raise_for_status()
-        logger.info(f"[underdog] Minted vouch cNFT for job {job_id}: {response.json()}")
-        return response.json()
+        data = response.json()
+        logger.info(f"[underdog] Minted vouch cNFT for job {job_id}: {data}")
+        logger.info(f"[underdog] Parsed response: {data}")
+        return data
