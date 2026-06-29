@@ -1,4 +1,4 @@
-### 6. Updated Comprehensive Task List
+# Updated Comprehensive Task List
 
 | # | Area | Priority | Task | Files Involved |
 |---|------|----------|------|----------------|
