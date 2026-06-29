@@ -16,12 +16,3 @@
 | 12 | **Solana Integration** | 🟢 Medium | Soulbound NFT for identity (Civic Pass) | `users.py`, `civic_client.py` |
 | 13 | **Polish** | 🟢 Medium | Timestamps, empty states, dark mode | Multiple |
 
----
-
-### What to do now
-
-1. Apply the `database.py` and `vouches.py` fixes above and restart the backend.
-2. Vouch again and check the terminal for the `[vouches] Underdog result:` print. Send that output to me.
-3. Send the requested frontend files so I can give you the exact UI fixes.
-
-After the backend is stable, we’ll knock out all the UI issues in one sweep.
