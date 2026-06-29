@@ -38,6 +38,9 @@ async def create_service_route(
     await db.refresh(service)
     return service
 
+@router.get("/provider/{provider_id}", response_model=list[ServiceOut])
+async def get_provider_services(provider_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    return await get_services_by_provider(db, provider_id)
 
 @router.get("/{service_id}", response_model=ServiceOut)
 async def get_service_route(
