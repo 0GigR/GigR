@@ -12,7 +12,21 @@ elif database_url.startswith("postgresql+asyncpg://"):
 else:
     raise ValueError("Invalid DATABASE_URL scheme. Expected postgresql:// or postgresql+asyncpg://")
 
-engine = create_async_engine(database_url, echo=False, future=True)
+# engine = create_async_engine(database_url, echo=False, future=True)
+engine = create_async_engine(
+    database_url,
+    echo=False,
+    future=True,
+    pool_size=15,          # must be ≤ Supabase pooler limit heh
+    max_overflow=5,
+    pool_pre_ping=True,
+    pool_recycle=1800,     # 30 minutes, prevents stale connections
+    connect_args={
+        "server_settings": {
+            "application_name": "gigr_backend",
+        },
+    },
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
