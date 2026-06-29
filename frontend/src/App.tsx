@@ -14,6 +14,7 @@ import DisputesPage from '@/pages/DisputesPage'
 import ProfilePage from '@/pages/ProfilePage'
 import { CookieConsentBanner } from '@/components/CookieConsent'
 import AdminDashboard from '@/pages/AdminDashboard'
+import PublicProfilePage from '@/pages/PublicProfilePage'
 
 const queryClient = new QueryClient()
 
@@ -57,6 +58,7 @@ function App() {
             <Route path="profile" element={<ProfilePage />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>
+          <Route path="/profile/:userId" element={<PublicProfilePage />} />
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
