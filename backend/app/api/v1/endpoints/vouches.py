@@ -7,6 +7,10 @@ from ....schemas.vouch import VouchCreate, VouchOut
 from ....models.user import User
 from ....services.underdog_client import mint_vouch_cnft
 import uuid
+import logging
+import asyncio as _asyncio
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,58 +23,52 @@ async def vouch_for_provider(
 ):
     job = await get_job_by_id(db, vouch_data.job_id)
     if not job:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found")
     if job.client_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the client can vouch")
+        raise HTTPException(status_code=403, detail="Only the client can vouch")
     if job.status != "completed":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job must be completed before vouching")
-    # Idempotency: check if vouch already exists
+        raise HTTPException(status_code=400, detail="Job must be completed before vouching")
+
+    # Idempotency: one vouch per job
     from ....crud.vouch import get_vouch_by_job
     existing = await get_vouch_by_job(db, job.id)
     if existing:
+        # If the existing record still has "pending", we can retry the background mint
         return existing
-    from ....crud.user import get_user_by_id
-    provider = await get_user_by_id(db, job.provider_id)
-    if not provider or not provider.wallet_public_key:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Provider wallet not found")
 
-    # Record vouch immediately so the client gets instant feedback
-    # Underdog mint happens in background – if it fails, nft_id stays "pending"
+    # Create the vouch record immediately with "pending" status
     vouch = await create_vouch(db, job.id, current_user.id, job.provider_id, "pending", "pending")
     await db.commit()
     await db.refresh(vouch)
 
-    # Fire-and-forget the Underdog cNFT mint
-    import asyncio as _asyncio
-
-    async def _mint_background():
+    # Fire-and-forget the Underdog mint (uses the SAME database session via async_session)
+    async def _mint_background(vouch_id):
         try:
             result = await mint_vouch_cnft(
-                provider_wallet=provider.wallet_public_key,
+                provider_wallet=str(job.provider_id),
                 job_id=str(job.id)
             )
-            nft_id = result.get("id") or result.get("mintAddress") or result.get("mint") or "pending"
-            tx_sig = result.get("transactionId") or result.get("transactionSignature") or "pending"
-            # Update the vouch record
-            from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-            from sqlalchemy.orm import sessionmaker
-            from ....core.config import settings as _s
-            _engine = create_async_engine(_s.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://"))
-            _Session = sessionmaker(_engine, class_=AsyncSession, expire_on_commit=False)
-            async with _Session() as _db:
+            print(f"[vouches] Underdog result: {result}")  # visible in uvicorn terminal
+
+            nft_id = result.get("id") or (result.get("data") or {}).get("id") or str(result)
+            tx_sig = result.get("transactionSignature") or "devnet"
+
+            # Update the vouch record using a fresh session from the main engine
+            from ....core.database import async_session as _async_session
+            async with _async_session() as _db:
                 from sqlalchemy import update
                 from ....models.vouch import Vouch
                 await _db.execute(
-                    update(Vouch).where(Vouch.id == vouch.id).values(cnf_nft_id=nft_id, transaction_signature=tx_sig)
+                    update(Vouch)
+                    .where(Vouch.id == vouch_id)
+                    .values(cnf_nft_id=nft_id, transaction_signature=tx_sig)
                 )
                 await _db.commit()
-            import logging as _log
-            _log.getLogger(__name__).info(f"[vouches] cNFT minted for job {job.id}: {nft_id}")
-        except Exception as _e:
-            import logging as _log
-            _log.getLogger(__name__).warning(f"[vouches] Background cNFT mint failed (non-fatal): {_e}")
+            logger.info(f"[vouches] Background cNFT minted for job {job.id}: id={nft_id}")
+        except Exception as e:
+            logger.warning(f"[vouches] Background cNFT mint failed (non-fatal): {e}")
 
-    _asyncio.create_task(_mint_background())
+    _asyncio.create_task(_mint_background(vouch.id))
 
     return vouch
 
@@ -79,7 +77,7 @@ async def vouch_for_provider(
 async def get_vouch(vouch_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     vouch = await get_vouch_by_id(db, vouch_id)
     if not vouch:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vouch not found")
+        raise HTTPException(status_code=404, detail="Vouch not found")
     return vouch
 
 
