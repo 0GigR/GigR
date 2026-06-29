@@ -43,4 +43,4 @@ Extra Solana integrations you can add quickly:
 3. **Programmable Reputation** — your contract could read the provider's vouch count from the cNFT metadata and adjust the escrow fee. A small contract change.
 
 For AI, the quickest win:
-- **Dispute summariser** — when a dispute is opened, pass the entire chat log to a free LLM (like Groq or Together AI) and generate a 2‑sentence summary for the jury. Costs $0 (free tiers). This is genuinely useful and shows "AI + Crypto" in a practical way
+- **Dispute summariser** — when a dispute is opened, pass the entire chat log to a free LLM (like Groq or Together AI) and generate a 2‑sentence summary for the jury. Costs $0 (free tiers). This is genuinely useful and shows "AI + Crypto" in a practical way.
