@@ -1,6 +1,7 @@
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import { useEffect } from 'react'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -60,10 +61,17 @@ export default function HomePage() {
   const { data: nearbyServices } = useQuery<Service[]>({
     queryKey: ['nearbyServicesHome'],
     queryFn: async () => {
-      const { data } = await api.get('/services/search/nearby', {
-        params: { lat: 6.5244, lon: 3.3792, radius: 15 },
-      })
-      return data
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+        })
+        const { data } = await api.get('/services/search/nearby', {
+          params: { lat: pos.coords.latitude, lon: pos.coords.longitude, radius: 20 },
+        })
+        return data
+      } catch {
+        return []
+      }
     },
   })
 
@@ -74,6 +82,20 @@ export default function HomePage() {
       return data
     },
   })
+
+  // ────────── Send location on mount ──────────
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        api.post('/users/me/location', {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        }).catch(() => {})
+      },
+      () => {},
+      { timeout: 5000 }
+    )
+  }, [])
 
   // ────────── Calculations ──────────
   const activeJobs = myJobs?.filter(j => !['completed', 'cancelled'].includes(j.status)) || []
