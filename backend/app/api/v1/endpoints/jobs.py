@@ -429,13 +429,14 @@ async def release_job_route(
 
         # Derive provider ATA the canonical way, then create it if missing
         provider_ata_pubkey = get_associated_token_address(provider_pubkey, USDC_MINT)
-        await ensure_ata_exists(client_kp, provider_pubkey, USDC_MINT)
+        # await ensure_ata_exists(client_kp, provider_pubkey, USDC_MINT)
+        await ensure_ata_exists(get_platform_payer(), provider_pubkey, USDC_MINT)
 
         tx_sig = await release_escrow(
             client_kp=client_kp,
             provider_ata=str(provider_ata_pubkey),
             vault_ata=str(vault_ata),
-            escrow_address=str(escrow_pubkey),
+            escrow_address=str(escrow_pubkey), 
             platform_kp = get_platform_payer()
         )
     except Exception as e:
