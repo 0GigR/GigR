@@ -52,7 +52,7 @@ htmlcov/
 gigr_platform.json
 
 prd/
-
+gigr_tree.txt
 seed.py
 
 # solana/
