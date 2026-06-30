@@ -217,6 +217,7 @@ export default function ActivityPage() {
         imageUrl = await uploadFile(amendImage)
       }
       await api.post(`/amendments/${contractRoomJob.id}`, {
+        job_id: contractRoomJob.id,
         proposed_by: 'provider',
         reason: amendReason,
         new_total_price: amendNewPrice,
