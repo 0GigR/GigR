@@ -67,17 +67,21 @@ async def search_nearby_services(
     lon: float = Query(..., description="Longitude"),
     radius: float = Query(5.0, description="Radius in km"),
     category_id: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    return await get_services_nearby(db, lat, lon, radius, category_id=uuid.UUID(category_id) if category_id else None)
+    return await get_services_nearby(db, lat, lon, radius, category_id=uuid.UUID(category_id) if category_id else None, limit=limit, offset=offset)
 
 
 @router.get("/search/text", response_model=list[ServiceOut])
 async def search_services_text(
     q: str = Query(..., min_length=1),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ):
-    return await search_services_by_text(db, q)
+    return await search_services_by_text(db, q, limit=limit, offset=offset)
 
 
 @router.patch("/{service_id}", response_model=ServiceOut)
