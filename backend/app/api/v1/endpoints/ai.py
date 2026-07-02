@@ -314,7 +314,6 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
     from ....crud.message import create_message
 
     try:
-        # 1. Create the job
         price = task.params.get("max_price") or float(service.price)
         job_in = JobCreate(
             title=f"Request for: {service.title}",
@@ -327,15 +326,13 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
         job.status = "assigned"
         await db.flush()
 
-        # 2. Send an automatic message in the job chat
-        msg_content = f"Hi! My AI assistant matched me with your service '{service.title}'. I would like to proceed with this job."
+        msg_content = f"Hi! My AI assistant matched me with your service '{service.title}'. I would like to proceed."
         if task.params.get("max_price"):
             msg_content += f" My budget is ₦{task.params['max_price']:,.0f}."
-            
+
         msg = await create_message(db, job.id, task.user_id, msg_content)
         await db.flush()
 
-        # Broadcast via WebSockets for real-time frontend notifications
         from ....api.v1.endpoints.messages import manager
         await manager.broadcast_new_message(msg)
 
@@ -362,50 +359,50 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         filtered = services
 
     if filtered:
-        best_match = filtered[0]
-        names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in filtered[:5]]
-        await _log(db, task.id, "success", f"Found {len(filtered)} matching service(s):\n" + "\n".join(names),
-                   data={"service_ids": [str(s.id) for s in filtered[:10]]})
-        
-        await _log(db, task.id, "action", f"Auto-requesting the best match: {best_match.title}...")
-        request_msg = await _request_service(db, task, best_match)
-        await _log(db, task.id, "success", request_msg)
+        service_cards = [
+            {"id": str(s.id), "title": s.title, "price": float(s.price), "description": s.description or ""}
+            for s in filtered[:5]
+        ]
+        dialog_options = [
+            {"label": f"{s['title']} — ₦{s['price']:,.0f}", "action": f"select_service:{s['id']}"}
+            for s in service_cards
+        ]
+        dialog_options.append({"label": "Post a job instead", "action": "post_job"})
+        dialog_options.append({"label": "Cancel", "action": "cancel"})
 
-        return {
-            "found": True,
-            "count": len(filtered),
-            "services": [{"id": str(s.id), "title": s.title, "price": float(s.price)} for s in filtered[:10]],
-            "message": f"Found {len(filtered)} service(s) for '{query}'",
-        }
+        await _log(db, task.id, "success",
+                   f"Found {len(filtered)} matching service(s). Which would you like me to request?",
+                   data={
+                       "render_type": "service_cards",
+                       "services": service_cards,
+                       "action_payload": {
+                           "type": "select_service",
+                           "query": query,
+                           "max_price": max_price,
+                           "options": dialog_options,
+                       }
+                   })
+        return {"found": True, "count": len(filtered), "services": service_cards}
     else:
         closest = sorted(services, key=lambda s: float(s.price))[:3]
         if closest:
             names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
-            await _log(db, task.id, "warning", f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
-            
-            # Interactive Dialog Payload
-            dialog_payload = {
-                "type": "create_job_fallback",
-                "title": query,
-                "price": max_price or float(closest[0].price),
-            }
-            await _log(db, task.id, "info", f"Would you like me to post a job looking for '{query}' instead?", data={"action_payload": dialog_payload})
-        else:
-            await _log(db, task.id, "warning", f"No services found matching '{query}'")
-            
-            dialog_payload = {
-                "type": "create_job_fallback",
-                "title": query,
-                "price": max_price,
-            }
-            await _log(db, task.id, "info", f"Would you like me to post a job looking for '{query}'?", data={"action_payload": dialog_payload})
+            await _log(db, task.id, "warning",
+                       f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
 
-        return {
-            "found": False,
-            "count": 0,
-            "closest": [{"id": str(s.id), "title": s.title, "price": float(s.price)} for s in closest],
-            "message": f"No services found under ₦{max_price:,.0f}" if max_price else f"No services found for '{query}'",
+        dialog_payload = {
+            "type": "create_job_fallback",
+            "title": query,
+            "price": max_price or (float(closest[0].price) if closest else None),
+            "options": [
+                {"label": f"Yes, post a job for '{query}'", "action": "confirm"},
+                {"label": "Cancel", "action": "cancel"},
+            ]
         }
+        await _log(db, task.id, "info",
+                   f"No services found matching '{query}'. Would you like me to post a job instead?",
+                   data={"action_payload": dialog_payload})
+        return {"found": False, "count": 0}
 
 async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Search for open jobs (Provider looking for work)."""
@@ -425,21 +422,18 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         filtered = jobs
 
     if filtered:
-        names = [f"{j.title} — ₦{float(j.price):,.0f}" for j in filtered[:5]]
-        await _log(db, task.id, "success", f"Found {len(filtered)} open job(s):\n" + "\n".join(names),
-                   data={"job_ids": [str(j.id) for j in filtered[:10]]})
-        
-        # We don't auto-apply yet, just show them
-        first_job = filtered[0]
-        await _log(db, task.id, "info", f"Check out the top match: [View Job](?jobId={first_job.id})")
-        
-        return {
-            "found": True,
-            "count": len(filtered),
-            "jobs": [{"id": str(j.id), "title": j.title, "price": float(j.price)} for j in filtered[:10]]
-        }
+        job_cards = [
+            {"id": str(j.id), "title": j.title, "price": float(j.price), "description": getattr(j, 'description', '') or ""}
+            for j in filtered[:5]
+        ]
+        await _log(db, task.id, "success", f"Found {len(filtered)} open job(s) matching '{query}':",
+                   data={
+                       "render_type": "job_cards",
+                       "jobs": job_cards,
+                   })
+        return {"found": True, "count": len(filtered), "jobs": job_cards}
     else:
-        await _log(db, task.id, "warning", f"No open jobs found matching '{query}'")
+        await _log(db, task.id, "warning", f"No open jobs found matching '{query}'.")
         return {"found": False, "count": 0}
 
 
@@ -463,22 +457,34 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
         within_budget = services
 
     if within_budget:
-        best_match = within_budget[0]
-        names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in within_budget[:5]]
-        await _log(db, task.id, "success", f"Found {len(within_budget)} service(s) within your budget:\n" + "\n".join(names))
-        
-        # Auto request the best match
-        await _log(db, task.id, "action", f"Auto-requesting the best match: {best_match.title}...")
-        request_msg = await _request_service(db, task, best_match)
-        await _log(db, task.id, "success", request_msg)
+        service_cards = [
+            {"id": str(s.id), "title": s.title, "price": float(s.price), "description": s.description or ""}
+            for s in within_budget[:5]
+        ]
+        dialog_options = [
+            {"label": f"{s['title']} — ₦{s['price']:,.0f}", "action": f"select_service:{s['id']}"}
+            for s in service_cards
+        ]
+        dialog_options.append({"label": "Post a job instead", "action": "post_job"})
+        dialog_options.append({"label": "Cancel", "action": "cancel"})
+
+        await _log(db, task.id, "success", f"Found {len(within_budget)} service(s) within your budget. Which would you like to request?",
+                   data={
+                       "render_type": "service_cards",
+                       "services": service_cards,
+                       "action_payload": {
+                           "type": "select_service",
+                           "query": query,
+                           "max_price": max_price,
+                           "options": dialog_options,
+                       }
+                   })
 
         return {
             "negotiated": False,
             "found_within_budget": True,
-            "services": [
-                {"id": str(s.id), "title": s.title, "price": float(s.price)} for s in within_budget[:10]
-            ],
-            "message": f"Found {len(within_budget)} services within your budget — no negotiation needed!",
+            "services": service_cards,
+            "message": f"Found {len(within_budget)} services within your budget — awaiting selection.",
         }
 
     # Step 2: negotiate — check if user has negotiation enabled
@@ -723,11 +729,41 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_reply_message(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
-                    await _log(db, task.id, "info", f"Navigation command: go to {page}")
-                    task.result = {"page": page, "message": f"Navigate to {page}"}
-                else:
-                    await _log(db, task.id, "info", "Generic command processed")
-                    task.result = {"message": "Command acknowledged"}
+                    page_routes = {
+                        "home": "/dashboard", "jobs": "/dashboard/jobs",
+                        "services": "/dashboard/services", "messages": "/dashboard/messages",
+                        "activity": "/dashboard/activity", "disputes": "/dashboard/disputes",
+                        "profile": "/dashboard/profile",
+                    }
+                    route = page_routes.get(page, f"/dashboard/{page}")
+                    await _log(db, task.id, "success", f"Navigating to {page}...",
+                               data={"navigate_to": route})
+                    task.result = {"page": page, "navigate_to": route}
+                else:  # generic
+                    # Try to get a real conversational response from Groq
+                    groq_reply = None
+                    if settings.GROQ_API_KEY:
+                        try:
+                            async with httpx.AsyncClient(timeout=10.0) as client:
+                                resp = await client.post(
+                                    "https://api.groq.com/openai/v1/chat/completions",
+                                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                                    json={
+                                        "model": settings.GROQ_MODEL,
+                                        "messages": [
+                                            {"role": "system", "content": "You are a friendly AI assistant built into Gigr, a local freelance marketplace app. Answer the user's question helpfully and concisely in 1-3 sentences. If the question is about using Gigr, help them. Otherwise, stay on topic."},
+                                            {"role": "user", "content": task.command_text},
+                                        ],
+                                        "temperature": 0.7, "max_tokens": 200,
+                                    }
+                                )
+                                resp.raise_for_status()
+                                groq_reply = resp.json()["choices"][0]["message"]["content"].strip()
+                        except Exception:
+                            pass
+                    reply = groq_reply or "I'm your Gigr AI assistant! I can help you find services, post jobs, or navigate the app. Try: 'find a plumber for 5k'."
+                    await _log(db, task.id, "info", reply)
+                    task.result = {"message": reply}
 
                 task.status = "completed"
                 task.completed_at = datetime.now(timezone.utc)
@@ -941,7 +977,8 @@ async def cancel_task(
     await db.commit()
 
 class AgentDialogResponse(BaseModel):
-    action: str  # e.g., "confirm", "cancel"
+    action: str  # "confirm", "cancel", "select_service:<uuid>", "post_job"
+    extra: dict = {}
 
 @router.post("/ai/tasks/{task_id}/respond")
 async def respond_to_dialog(
@@ -957,48 +994,71 @@ async def respond_to_dialog(
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
-    # Check the last log to see what the dialog was
+
     log_result = await db.execute(
         select(AgentLog).where(AgentLog.task_id == task.id).order_by(AgentLog.created_at.desc()).limit(1)
     )
     last_log = log_result.scalar_one_or_none()
-    
+
     if not last_log or not last_log.data or "action_payload" not in last_log.data:
         raise HTTPException(status_code=400, detail="No pending dialog for this task")
-        
+
     payload = last_log.data["action_payload"]
-    
-    # We clear the action_payload so the dialog goes away
-    # Important: Reassign the dict so SQLAlchemy detects the JSON mutation
+
+    # Clear the action_payload so the dialog goes away on next poll
     new_data = dict(last_log.data)
     new_data.pop("action_payload", None)
     last_log.data = new_data
-    
-    if response.action == "cancel":
-        await _log(db, task.id, "info", "User cancelled the action.")
+
+    action = response.action
+
+    if action == "cancel":
+        await _log(db, task.id, "info", "Okay, action cancelled.")
         await db.commit()
         return {"status": "cancelled"}
-        
-    if payload["type"] == "create_job_fallback" and response.action == "confirm":
-        # Create a new task to post the job
+
+    # ── Select a specific service ────────────────────────────────────────────
+    if action.startswith("select_service:"):
+        service_id_str = action.split(":", 1)[1]
+        try:
+            service_id = uuid.UUID(service_id_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid service ID")
+
+        svc_result = await db.execute(select(ServiceListing).where(ServiceListing.id == service_id))
+        service = svc_result.scalar_one_or_none()
+        if not service:
+            await _log(db, task.id, "error", "Service no longer available.")
+            await db.commit()
+            return {"status": "error", "detail": "Service not found"}
+
+        await _log(db, task.id, "action", f"Requesting service: {service.title}...")
+        request_msg = await _request_service(db, task, service)
+        await _log(db, task.id, "success", request_msg)
+        await db.commit()
+        return {"status": "ok"}
+
+    # ── Post a job fallback ──────────────────────────────────────────────────
+    if action in ("confirm", "post_job") and payload.get("type") in ("create_job_fallback", "select_service"):
+        query = payload.get("query") or payload.get("title", "Service needed")
+        price = payload.get("price") or payload.get("max_price")
         new_task = AgentTask(
             user_id=current_user.id,
-            command_text=f"Post a job: {payload['title']}",
+            command_text=f"Post a job: {query}",
             task_type="post_job",
-            params={"title": payload["title"], "price": payload["price"]},
+            params={"title": query, "price": price},
             status="queued"
         )
         db.add(new_task)
-        await _log(db, task.id, "success", f"Okay, I will post a job looking for '{payload['title']}' for you.")
+        await _log(db, task.id, "success", f"Got it! Posting a job for '{query}'...")
         await db.commit()
         return {"status": "ok", "new_task_id": str(new_task.id)}
-        
-    if payload["type"] == "approve_payment" and response.action == "confirm":
-        await _log(db, task.id, "success", "Payment approved by user (Simulated).")
+
+    if payload.get("type") == "approve_payment" and action == "confirm":
+        await _log(db, task.id, "success", "Payment approved (simulated).")
         await db.commit()
         return {"status": "ok"}
-        
+
     await db.commit()
     return {"status": "ok"}
 
