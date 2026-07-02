@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -14,10 +14,11 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
 import {
-  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus
+  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { NeighborhoodMap } from '@/components/NeighborhoodMap'
+import { ImageViewer } from '@/components/ImageViewer'
 import type { components } from '@/types/api'
 
 // ---------- Types ----------
@@ -72,6 +73,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
   const { user } = useAuthStore()
   const isOwner = user?.id === service.provider_id
   const { data: provider } = useUserInfo(service.provider_id)
+  const [showFullDesc, setShowFullDesc] = useState(false)
 
   return (
     <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
@@ -90,9 +92,11 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
         )}
         {service.image_url && (
           <div className="mb-3">
-            <a href={service.image_url} target="_blank" rel="noopener noreferrer">
-              <img src={service.image_url} className="rounded-lg w-full h-40 object-cover hover:opacity-90 transition-opacity" />
-            </a>
+            <img
+              src={service.image_url}
+              className="rounded-lg w-full h-40 object-cover hover:opacity-90 transition-opacity cursor-pointer"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: service.image_url }))}
+            />
           </div>
         )}
         <div className="flex justify-between items-start">
@@ -103,8 +107,15 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
         </div>
       </CardHeader>
       <CardContent className="text-sm text-gray-600">
-        {service.description && <p className="line-clamp-2 mb-2">{service.description}</p>}
-        <div className="flex justify-between items-center">
+        <div>
+          <p className={`mb-1 ${!showFullDesc ? 'line-clamp-2' : ''}`}>{service.description}</p>
+          {service.description && service.description.length > 100 && (
+            <button className="text-xs text-blue-600 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
+              {showFullDesc ? 'See less' : 'See more'}
+            </button>
+          )}
+        </div>
+        <div className="flex justify-between items-center mt-2">
           <span className="font-semibold text-black">₦{parseFloat(service.price as string).toLocaleString()}</span>
           <span className="text-gray-400 text-xs">{service.radius_km} km radius</span>
         </div>
@@ -127,7 +138,8 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
               </span>
             )}
             <Button size="sm" variant="default" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
-              <Send className="w-4 h-4 mr-1" /> {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
+              {isRequesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+              {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
             </Button>
           </>
         )}
@@ -139,6 +151,17 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
 // ---------- Main Page ----------
 export default function ServicesPage() {
   const queryClient = useQueryClient()
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
+  useEffect(() => {
+    const handleOpenLightbox = (e: Event) => {
+      const url = (e as CustomEvent).detail
+      setLightboxSrc(url)
+    }
+    window.addEventListener('open-lightbox', handleOpenLightbox)
+    return () => window.removeEventListener('open-lightbox', handleOpenLightbox)
+  }, [])
+
   useAuthStore() // we need user for checks, but we don't destructure to avoid unused warning
   const { latitude, longitude, loading: locLoading, error: locError, refresh: refreshLoc } = useGeolocation()
   const [searchQuery, setSearchQuery] = useState('')
@@ -190,16 +213,28 @@ export default function ServicesPage() {
       .filter(Boolean)
   )
 
-  // Fetch nearby services (browse tab)
-  const { data: nearbyServices, isLoading: nearbyLoading } = useQuery<Service[]>({
+  const SVC_PAGE_SIZE = 20
+  const {
+    data: nearbyPages,
+    isLoading: nearbyLoading,
+    fetchNextPage: fetchMoreNearby,
+    hasNextPage: hasMoreNearby,
+    isFetchingNextPage: loadingMoreNearby,
+  } = useInfiniteQuery<Service[]>({
     queryKey: ['nearbyServices', latitude, longitude],
-    queryFn: async () => {
+    queryFn: async ({ pageParam = 0 }) => {
       if (!latitude || !longitude) return []
-      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 10 } })
+      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 10, limit: SVC_PAGE_SIZE, offset: pageParam } })
       return data
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < SVC_PAGE_SIZE) return undefined
+      return allPages.flat().length
     },
     enabled: !!latitude && !!longitude,
   })
+  const nearbyServices = nearbyPages?.pages.flat() ?? []
 
   // Reverse geocode
   useEffect(() => {
@@ -553,9 +588,24 @@ export default function ServicesPage() {
                 {[1,2,3,4].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
               </div>
             ) : nearbyServices?.length ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {nearbyServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
-              </div>
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {nearbyServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
+                </div>
+                {hasMoreNearby && (
+                  <div className="flex justify-center mt-6">
+                    <Button
+                      variant="outline"
+                      onClick={() => fetchMoreNearby()}
+                      disabled={loadingMoreNearby}
+                      className="px-8"
+                    >
+                      {loadingMoreNearby ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                      {loadingMoreNearby ? 'Loading...' : 'Load More Services'}
+                    </Button>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
                 <MapPin className="w-10 h-10 text-gray-400 mx-auto mb-3" />
@@ -592,6 +642,9 @@ export default function ServicesPage() {
         description={`Are you sure you want to delete "${deleteTarget?.title}"?`}
         onConfirm={() => { if (deleteTarget) { deleteMutation.mutate(deleteTarget.id); setDeleteTarget(null) } }}
       />
+      {lightboxSrc && (
+        <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />
+      )}
     </div>
   )
 }
