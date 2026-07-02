@@ -85,13 +85,15 @@ import os
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",   # Vite dev server
-    "http://localhost:5500",   # test HTML
+    "http://localhost:5174",   # Vite fallback port
+    "http://localhost:3000",
+    "http://localhost:5500",
+    "http://127.0.0.1:5173",
     "http://127.0.0.1:5500",
     "http://localhost",
-    "https://gigr-work.vercel.app/api/v1"
-    "https://gigr-work.vercel.app",
+    "https://gigr-work.vercel.app",  # NOTE: comma was missing before — was broken!
 ]
-# In production, set FRONTEND_URL env var to your Render URL, e.g. https://gigr.onrender.com
+# In production, set FRONTEND_URL env var to your deployed frontend URL
 if os.getenv("FRONTEND_URL"):
     ALLOWED_ORIGINS.append(os.getenv("FRONTEND_URL"))
 

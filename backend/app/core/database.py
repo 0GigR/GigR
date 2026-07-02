@@ -12,22 +12,44 @@ elif database_url.startswith("postgresql+asyncpg://"):
 else:
     raise ValueError("Invalid DATABASE_URL scheme. Expected postgresql:// or postgresql+asyncpg://")
 
-# engine = create_async_engine(database_url, echo=False, future=True)
-engine = create_async_engine(
-    database_url,
-    echo=False,
-    future=True,
-    pool_size=15,
-    max_overflow=5,
-    pool_pre_ping=True,
-    pool_recycle=1800,
-    connect_args={
-        "statement_cache_size": 0,          # ← DISABLES prepared statements for PgBouncer
-        "server_settings": {
-            "application_name": "gigr_backend",
+import os as _os
+
+# Vercel / serverless: use NullPool to avoid exhausting PgBouncer's session-mode
+# connection limit. Each request gets its own connection and closes it immediately.
+# On a dedicated server (local dev, Railway, Render) we keep the normal pool.
+_is_serverless = _os.getenv("VERCEL") or _os.getenv("AWS_LAMBDA_FUNCTION_NAME")
+
+if _is_serverless:
+    from sqlalchemy.pool import NullPool
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        future=True,
+        poolclass=NullPool,
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {
+                "application_name": "gigr_backend",
+            },
         },
-    },
-)
+    )
+else:
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        future=True,
+        pool_size=5,
+        max_overflow=2,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        connect_args={
+            "statement_cache_size": 0,
+            "server_settings": {
+                "application_name": "gigr_backend",
+            },
+        },
+    )
+
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
