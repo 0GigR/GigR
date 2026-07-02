@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -14,16 +14,18 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/store/authStore'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus,
-  ImagePlus, ExternalLink, X, MessageCircle, FileText
+  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ImageViewer } from '@/components/ImageViewer'
 
 type Job = components['schemas']['JobOut']
 type Application = components['schemas']['ApplicationOut']
 type UserProfile = components['schemas']['UserOut']
 type Message = components['schemas']['MessageOut']
 type ScopeAmendment = components['schemas']['ScopeAmendmentOut']
+type Vouch = components['schemas']['VouchOut']
 
 const statusBadge = (status: string) => {
   switch (status) {
@@ -110,19 +112,31 @@ export default function JobsPage() {
 
   // Confirmation dialogs
   const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
-  // Queries
-  const { data: openJobs, isLoading: openLoading } = useQuery<Job[]>({
+  // Paginated open jobs ("Load More" pattern)
+  const PAGE_SIZE = 20
+  const {
+    data: openJobsPages,
+    isLoading: openLoading,
+    fetchNextPage: fetchMoreOpenJobs,
+    hasNextPage: hasMoreOpenJobs,
+    isFetchingNextPage: loadingMoreOpenJobs,
+  } = useInfiniteQuery<Job[]>({
     queryKey: ['jobs', 'open'],
-    queryFn: async () => {
-      const res = await api.get('/jobs/', { params: { status: 'open,requested' } })
-      // Bug 6 fix: don't show a client's own "requested" jobs in the Open tab
-      // (those should only be visible to the provider who needs to accept)
+    queryFn: async ({ pageParam = 0 }) => {
+      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
       const all: Job[] = res.data
       return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      if (lastPage.length < PAGE_SIZE) return undefined
+      return allPages.flat().length
+    },
     refetchInterval: 10000,
   })
+  const openJobs = openJobsPages?.pages.flat() ?? []
 
   const { data: myJobs, isLoading: myLoading } = useQuery<Job[]>({
     queryKey: ['jobs', 'mine'],
@@ -156,6 +170,17 @@ export default function JobsPage() {
     },
   })
   const appliedJobIds = new Set(myApplied || [])
+
+  // User's existing vouch job IDs
+  const { data: myVouchJobIds } = useQuery<string[]>({
+    queryKey: ['myVouchJobIds'],
+    queryFn: async () => {
+      const { data } = await api.get('/vouches/user/' + user?.id)
+      return (data as Vouch[]).map(v => v.job_id)
+    },
+    enabled: !!user?.id,
+  })
+  const vouchedJobIds = new Set(myVouchJobIds || [])
 
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
@@ -255,7 +280,13 @@ export default function JobsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      toast.success('Vouch recorded – cNFT minted on Solana!')
+      queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
+      toast.success('Vouch recorded – cNFT minting...')
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['jobs'] })
+        queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
+        toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
+      }, 5000)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Vouch failed'),
   })
@@ -323,6 +354,17 @@ export default function JobsPage() {
       setContractRoomOpen(false)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Action failed'),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      await api.post(`/jobs/${jobId}/cancel`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Job cancelled.')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Cancel failed'),
   })
 
   // Handlers
@@ -410,25 +452,25 @@ export default function JobsPage() {
                   user={user}
                   onApply={handleApply}
                   onAssign={handleAssign}
-                  // onFund={fundMutation.mutate}
-                  // onRelease={releaseMutation.mutate}
-                  // onAccept={handleAccept}
                   onFund={(jobId: string) => {
-                    const job = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
-                    if (job) setConfirmAction({ type: 'fund', jobId, title: job.title })
+                    const j = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
+                    if (j) setConfirmAction({ type: 'fund', jobId, title: j.title })
                   }}
                   onRelease={(jobId: string) => {
-                    const job = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
-                    if (job) setConfirmAction({ type: 'release', jobId, title: job.title })
+                    const j = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
+                    if (j) setConfirmAction({ type: 'release', jobId, title: j.title })
                   }}
                   onAccept={(jobId: string) => {
-                    const job = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
-                    if (job) setConfirmAction({ type: 'accept', jobId, title: job.title })
+                    const j = openJobs?.find(j => j.id === jobId) || myJobs?.find(j => j.id === jobId)
+                    if (j) setConfirmAction({ type: 'accept', jobId, title: j.title })
                   }}
+                  onCancel={(jobId: string, title: string) => setConfirmAction({ type: 'cancel', jobId, title })}
                   onVouch={vouchMutation.mutate}
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
                   hasApplied={appliedJobIds.has(job.id)}
+                  hasVouched={vouchedJobIds.has(job.id)}
+                  onImageClick={setLightboxSrc}
                   applyPending={applyMutation.isPending}
                   assignPending={assignMutation.isPending}
                   fundPending={fundMutation.isPending}
@@ -441,6 +483,19 @@ export default function JobsPage() {
               <div className="col-span-2 text-center py-12 text-gray-500">No open jobs nearby.</div>
             )}
           </div>
+          {hasMoreOpenJobs && (
+            <div className="flex justify-center mt-6">
+              <Button
+                variant="outline"
+                onClick={() => fetchMoreOpenJobs()}
+                disabled={loadingMoreOpenJobs}
+                className="px-8"
+              >
+                {loadingMoreOpenJobs ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {loadingMoreOpenJobs ? 'Loading...' : 'Load More Jobs'}
+              </Button>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="mine" className="mt-6">
@@ -461,7 +516,10 @@ export default function JobsPage() {
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
                   onAccept={handleAccept}
+                  onCancel={(jobId, title) => setConfirmAction({ type: 'cancel', jobId, title })}
                   hasApplied={appliedJobIds.has(job.id)}
+                  hasVouched={vouchedJobIds.has(job.id)}
+                  onImageClick={setLightboxSrc}
                   applyPending={applyMutation.isPending}
                   assignPending={assignMutation.isPending}
                   fundPending={fundMutation.isPending}
@@ -519,6 +577,7 @@ export default function JobsPage() {
               )}
             </div>
             <Button onClick={handlePostJob} disabled={createMutation.isPending} className="w-full bg-black text-white">
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {createMutation.isPending ? 'Posting...' : 'Post Job'}
             </Button>
           </div>
@@ -535,6 +594,7 @@ export default function JobsPage() {
             <Input placeholder="Proposed price (optional)" type="number" value={applyData.proposed_price} onChange={e => setApplyData({...applyData, proposed_price: e.target.value})} />
             <Input placeholder="Portfolio URL (optional)" value={applyData.portfolio_url} onChange={e => setApplyData({...applyData, portfolio_url: e.target.value})} />
             <Button onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} className="w-full bg-black text-white">
+              {applyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {applyMutation.isPending ? 'Sending...' : 'Submit Application'}
             </Button>
           </div>
@@ -553,7 +613,7 @@ export default function JobsPage() {
               <p>Status: {statusBadge(contractRoomJob.status)}</p>
               <p>Price: ₦{parseFloat(contractRoomJob.price as string).toLocaleString()}</p>
               {contractRoomJob.escrow_address && <p className="text-xs text-green-600">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
-              {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2" />}
+              {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc(contractRoomJob.image_url!)} />}
             </div>
           )}
           {/* Pending Amendments */}
@@ -562,7 +622,7 @@ export default function JobsPage() {
               <p className="font-bold text-yellow-800">Scope Amendment Proposed</p>
               <p><strong>Reason:</strong> {amend.reason}</p>
               <p><strong>New Price:</strong> ₦{parseFloat(amend.new_total_price as string).toLocaleString()}</p>
-              {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2" />}
+              {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc((amend as any).image_url)} />}
               {contractRoomJob?.client_id === user?.id && (
                 <div className="flex gap-2 pt-2">
                   <Button
@@ -571,6 +631,7 @@ export default function JobsPage() {
                     onClick={() => acceptAmendMutation.mutate({ id: amend.id, accept: true })}
                     disabled={acceptAmendMutation.isPending}
                   >
+                    {acceptAmendMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                     Accept
                   </Button>
                   <Button
@@ -579,6 +640,7 @@ export default function JobsPage() {
                     onClick={() => acceptAmendMutation.mutate({ id: amend.id, accept: false })}
                     disabled={acceptAmendMutation.isPending}
                   >
+                    {acceptAmendMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                     Reject
                   </Button>
                 </div>
@@ -594,9 +656,7 @@ export default function JobsPage() {
               <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
                   {msg.image_url && (
-                    <a href={msg.image_url} target="_blank" rel="noopener noreferrer">
-                      <img src={msg.image_url} className="rounded-lg max-h-40 object-cover mb-2 hover:opacity-90 transition-opacity" />
-                    </a>
+                    <img src={msg.image_url} className="rounded-lg max-h-40 object-cover mb-2 cursor-pointer" onClick={() => setLightboxSrc(msg.image_url!)} />
                   )}
                   <p className="text-sm">{msg.content}</p>
                   <span className="text-xs opacity-70">{new Date(msg.created_at).toLocaleTimeString()}</span>
@@ -622,7 +682,9 @@ export default function JobsPage() {
                   if (file) { setMessageImageFile(file); setMessageImagePreview(URL.createObjectURL(file)) }
                 }} />
                 <Input placeholder="Type a message..." value={messageText} onChange={e => setMessageText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} />
-                <Button size="sm" onClick={handleSendMessage} disabled={(!messageText.trim() && !messageImageFile) || sendMessageMutation.isPending} className="bg-black text-white">Send</Button>
+                <Button size="sm" onClick={handleSendMessage} disabled={(!messageText.trim() && !messageImageFile) || sendMessageMutation.isPending} className="bg-black text-white">
+                  {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3 h-3" />}
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => setShowScopeAmend(true)}><FileText className="w-4 h-4 mr-1" /> Amend</Button>
               </div>
             </div>
@@ -655,7 +717,7 @@ export default function JobsPage() {
           <DialogContent className="sm:max-w-2xl bg-white text-black">
             <DialogHeader><DialogTitle>{detailJob.title}</DialogTitle></DialogHeader>
             <div className="space-y-4">
-              {detailJob.image_url && <img src={detailJob.image_url} className="rounded-lg max-h-64 object-cover" />}
+              {detailJob.image_url && <img src={detailJob.image_url} className="rounded-lg max-h-64 object-cover cursor-pointer" onClick={() => setLightboxSrc(detailJob.image_url!)} />}
               <p>{detailJob.description}</p>
               <div className="flex gap-4 text-sm">
                 <span>Price: ₦{parseFloat(detailJob.price as string).toLocaleString()}</span>
@@ -674,7 +736,8 @@ export default function JobsPage() {
         title={
           confirmAction?.type === 'fund' ? 'Fund Escrow' :
           confirmAction?.type === 'release' ? 'Release Payment' :
-          confirmAction?.type === 'accept' ? 'Accept Request' : ''
+          confirmAction?.type === 'accept' ? 'Accept Request' :
+          confirmAction?.type === 'cancel' ? 'Cancel Job' : ''
         }
         description={
           confirmAction?.type === 'fund'
@@ -683,6 +746,8 @@ export default function JobsPage() {
             ? `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`
             : confirmAction?.type === 'accept'
             ? `Accept "${confirmAction?.title}"? The client can then fund the escrow.`
+            : confirmAction?.type === 'cancel'
+            ? `Are you sure you want to cancel "${confirmAction?.title}"? This action cannot be undone.`
             : ''
         }
         onConfirm={() => {
@@ -691,11 +756,22 @@ export default function JobsPage() {
           if (type === 'fund') fundMutation.mutate(jobId)
           else if (type === 'release') releaseMutation.mutate(jobId)
           else if (type === 'accept') acceptMutation.mutate(jobId)
+          else if (type === 'cancel') cancelMutation.mutate(jobId)
           setConfirmAction(null)
         }}
         confirmLabel="Proceed"
         cancelLabel="Cancel"
+        loading={
+          confirmAction?.type === 'fund' ? fundMutation.isPending :
+          confirmAction?.type === 'release' ? releaseMutation.isPending :
+          confirmAction?.type === 'accept' ? acceptMutation.isPending :
+          confirmAction?.type === 'cancel' ? cancelMutation.isPending :
+          false
+        }
       />
+      {lightboxSrc && (
+        <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />
+      )}
     </div>
   )
 }
@@ -703,8 +779,8 @@ export default function JobsPage() {
 // ─── JobCard ─────────────────────────────────────────
 function JobCard({
   job, user,
-  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onAccept,
-  hasApplied,
+  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onAccept, onCancel,
+  hasApplied, hasVouched, onImageClick,
   applyPending, assignPending, fundPending, releasePending, vouchPending, acceptPending,
 }: {
   job: Job
@@ -717,7 +793,10 @@ function JobCard({
   onDetail: (job: Job) => void
   onContractRoom: (job: Job) => void
   onAccept: (jobId: string) => void
+  onCancel: (jobId: string, title: string) => void
   hasApplied?: boolean
+  hasVouched?: boolean
+  onImageClick?: (url: string) => void
   applyPending?: boolean
   assignPending?: boolean
   fundPending?: boolean
@@ -728,6 +807,7 @@ function JobCard({
   const isClient = user?.id === job.client_id
   const isProvider = user?.id === job.provider_id
   const [showAssign, setShowAssign] = useState(false)
+  const [showFullDesc, setShowFullDesc] = useState(false)
 
   const { data: poster } = useUserInfo(job.client_id)
   const { data: appCount } = useQuery<number>({
@@ -766,12 +846,21 @@ function JobCard({
         </div>
       </CardHeader>
       <CardContent className="text-sm text-gray-600">
-        <p className="line-clamp-2 mb-2">{job.description}</p>
+        <div>
+          <p className={`mb-1 ${!showFullDesc ? 'line-clamp-2' : ''}`}>{job.description}</p>
+          {job.description && job.description.length > 100 && (
+            <button className="text-xs text-blue-600 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
+              {showFullDesc ? 'See less' : 'See more'}
+            </button>
+          )}
+        </div>
         {job.image_url && (
           <div className="mb-3">
-            <a href={job.image_url} target="_blank" rel="noopener noreferrer">
-              <img src={job.image_url} className="rounded-lg w-full h-40 object-cover hover:opacity-90 transition-opacity" />
-            </a>
+            <img
+              src={job.image_url}
+              className="rounded-lg w-full h-40 object-cover hover:opacity-90 transition-opacity cursor-pointer"
+              onClick={() => onImageClick?.(job.image_url!)}
+            />
           </div>
         )}
         <div className="flex justify-between items-center">
@@ -801,11 +890,15 @@ function JobCard({
         )}
         {job.status === 'open' && !isClient && (
           <Button size="sm" onClick={() => onApply(job)} disabled={hasApplied || applyPending} className="bg-black text-white disabled:opacity-60">
-            <Send className="w-3 h-3 mr-1" /> {hasApplied ? 'Applied' : applyPending ? 'Sending...' : 'Apply'}
+            {applyPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
+            {hasApplied ? 'Applied' : applyPending ? 'Sending...' : 'Apply'}
           </Button>
         )}
         {job.status === 'open' && isClient && (
           <>
+            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+              Cancel
+            </Button>
             <Button size="sm" variant="outline" onClick={() => setShowAssign(!showAssign)}>
               <UserPlus className="w-3 h-3 mr-1" /> {showAssign ? 'Hide' : 'View Applicants'}
             </Button>
@@ -846,18 +939,36 @@ function JobCard({
           </>
         )}
         {job.status === 'assigned' && isClient && (
-          <Button size="sm" onClick={() => onFund(job.id)} disabled={fundPending} className="bg-green-600 text-white">
-            {fundPending ? 'Funding...' : <><Shield className="w-3 h-3 mr-1" /> Fund Escrow</>}
-          </Button>
+          <>
+            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={() => onFund(job.id)} disabled={fundPending} className="bg-green-600 text-white">
+              {fundPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
+              {fundPending ? 'Funding...' : 'Fund Escrow'}
+            </Button>
+          </>
         )}
         {job.status === 'funded' && isClient && (
           <Button size="sm" onClick={() => onRelease(job.id)} disabled={releasePending} className="bg-blue-600 text-white">
-            {releasePending ? 'Releasing...' : <><CheckCircle className="w-3 h-3 mr-1" /> Release Pay</>}
+            {releasePending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+            {releasePending ? 'Releasing...' : 'Release Pay'}
           </Button>
         )}
         {job.status === 'completed' && isClient && (
-          <Button size="sm" onClick={() => onVouch(job.id)} disabled={vouchPending} className="bg-yellow-600 text-white">
-            {vouchPending ? 'Vouching...' : <><Star className="w-3 h-3 mr-1" /> Vouch</>}
+          <Button
+            size="sm"
+            onClick={() => onVouch(job.id)}
+            disabled={vouchPending || hasVouched}
+            className="bg-yellow-600 text-white disabled:opacity-60"
+          >
+            {hasVouched ? (
+              <><CheckCircle className="w-3 h-3 mr-1" /> Already Vouched</>
+            ) : vouchPending ? (
+              <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Vouching...</>
+            ) : (
+              <><Star className="w-3 h-3 mr-1" /> Vouch</>
+            )}
           </Button>
         )}
         {job.status === 'assigned' && isProvider && (
@@ -866,9 +977,15 @@ function JobCard({
           </Button>
         )}
         {job.status === 'requested' && isProvider && (
-          <Button size="sm" onClick={() => onAccept(job.id)} disabled={acceptPending} className="bg-green-600 text-white">
-            {acceptPending ? 'Accepting...' : <><CheckCircle className="w-3 h-3 mr-1" /> Accept</>}
-          </Button>
+          <>
+            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+              Decline
+            </Button>
+            <Button size="sm" onClick={() => onAccept(job.id)} disabled={acceptPending} className="bg-green-600 text-white">
+              {acceptPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+              {acceptPending ? 'Accepting...' : 'Accept'}
+            </Button>
+          </>
         )}
       </CardFooter>
     </Card>
