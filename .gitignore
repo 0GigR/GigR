@@ -81,6 +81,4 @@ DEPLOYMENT.md
 private_key.pem
 public_key.pem
 vapid_keys.pem
-private_key.pem
-public_key.pem
-vapid_keys.pem
+
