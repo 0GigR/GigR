@@ -98,6 +98,12 @@ interface AgentState {
   /** Clear all task history for the user */
   clearHistory: () => Promise<void>
 
+  /** Respond to an interactive agent dialog */
+  respondToDialog: (taskId: string, action: string) => Promise<void>
+
+  /** Tasks that have an unresolved action_payload in their last log */
+  pendingDialogTaskIds: Set<string>
+
   /** Start the polling loop */
   startPolling: () => void
 
@@ -214,11 +220,31 @@ export const useAgentStore = create<AgentState>()(
       },
 
       clearHistory: async () => {
-        // Cancel all queued/running tasks, then clear local state
         const { tasks } = get()
         const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running')
         await Promise.allSettled(active.map((t) => api.delete(`/ai/tasks/${t.id}`)))
         set({ tasks: [], unreadCount: 0 })
+      },
+
+      respondToDialog: async (taskId: string, action: string) => {
+        try {
+          await api.post(`/ai/tasks/${taskId}/respond`, { action })
+          // Immediately refresh tasks so the dialog disappears
+          await get().fetchTasks()
+        } catch (err) {
+          console.error('[agentStore] respondToDialog error:', err)
+        }
+      },
+
+      get pendingDialogTaskIds() {
+        return new Set(
+          get().tasks
+            .filter((task) => {
+              const lastLog = task.logs?.[task.logs.length - 1]
+              return !!lastLog?.data?.action_payload
+            })
+            .map((t) => t.id)
+        )
       },
 
       startPolling: () => {
