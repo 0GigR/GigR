@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/store/authStore'
 import {
@@ -113,6 +114,10 @@ export default function JobsPage() {
   // Confirmation dialogs
   const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+
+  // Filters & Sorting
+  const [sortOrder, setSortOrder] = useState('newest') // newest, oldest, price_high, price_low
+  const [statusFilter, setStatusFilter] = useState('all') // all, open, assigned, in_progress, completed, cancelled
 
   // Paginated open jobs ("Load More" pattern)
   const PAGE_SIZE = 20
@@ -421,17 +426,64 @@ export default function JobsPage() {
   
   const handleAccept = (jobId: string) => acceptMutation.mutate(jobId)
 
+  // Derived filtered/sorted arrays
+  const applyFiltersAndSort = (jobs: Job[]) => {
+    let result = [...jobs]
+    if (statusFilter !== 'all') {
+      result = result.filter(j => j.status === statusFilter)
+    }
+    result.sort((a, b) => {
+      if (sortOrder === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      if (sortOrder === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      if (sortOrder === 'price_high') return parseFloat(b.price as string) - parseFloat(a.price as string)
+      if (sortOrder === 'price_low') return parseFloat(a.price as string) - parseFloat(b.price as string)
+      return 0
+    })
+    return result
+  }
+
+  const processedOpenJobs = applyFiltersAndSort(openJobs)
+  const processedMyJobs = applyFiltersAndSort(myJobs || [])
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
           <p className="text-gray-500">Find work or get things done</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="bg-black text-white hover:bg-gray-800">
-          <Plus className="w-4 h-4 mr-2" /> Post Job
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] bg-white border-gray-200">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="requested">Requested</SelectItem>
+              <SelectItem value="assigned">Assigned</SelectItem>
+              <SelectItem value="funded">Funded</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortOrder} onValueChange={setSortOrder}>
+            <SelectTrigger className="w-[160px] bg-white border-gray-200">
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="price_high">Price: High to Low</SelectItem>
+              <SelectItem value="price_low">Price: Low to High</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setCreateOpen(true)} className="bg-black text-white hover:bg-gray-800">
+            <Plus className="w-4 h-4 mr-2" /> Post Job
+          </Button>
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'mine')}>
@@ -444,8 +496,8 @@ export default function JobsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {openLoading ? (
               [1,2].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)
-            ) : openJobs?.length ? (
-              openJobs.map(job => (
+            ) : processedOpenJobs.length ? (
+              processedOpenJobs.map(job => (
                 <JobCard
                   key={job.id}
                   job={job}
@@ -502,8 +554,8 @@ export default function JobsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             {myLoading ? (
               [1].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)
-            ) : myJobs?.length ? (
-              myJobs.map(job => (
+            ) : processedMyJobs.length ? (
+              processedMyJobs.map(job => (
                 <JobCard
                   key={job.id}
                   job={job}
@@ -841,7 +893,14 @@ function JobCard({
           </div>
         </div>
         <div className="flex justify-between items-start">
-          <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
+          <div className="flex flex-col items-start gap-1">
+            <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
+            {isClient ? (
+              <Badge variant="outline" className="text-blue-600 bg-blue-50 border-blue-200 font-normal">You are the Client</Badge>
+            ) : isProvider ? (
+              <Badge variant="outline" className="text-purple-600 bg-purple-50 border-purple-200 font-normal">You are the Provider</Badge>
+            ) : null}
+          </div>
           {statusBadge(job.status)}
         </div>
       </CardHeader>

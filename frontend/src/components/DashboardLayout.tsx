@@ -35,6 +35,25 @@ export default function DashboardLayout() {
   const { theme, toggle } = useThemeStore()
   const messageUnread = useUnreadStore((s) => s.messageUnread)
   const [showMore, setShowMore] = useState(false)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault()
+      setDeferredPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null)
+    }
+  }
 
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
 
@@ -85,7 +104,25 @@ export default function DashboardLayout() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Optional Install PWA Banner */}
+      {deferredPrompt && (
+        <div className="bg-indigo-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Install Gigr App</span>
+            <span className="hidden sm:inline opacity-80">for a better, faster experience.</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={handleInstallClick} className="bg-white text-indigo-600 px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+              Install
+            </button>
+            <button onClick={() => setDeferredPrompt(null)} className="opacity-70 hover:opacity-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
       <main className="max-w-7xl mx-auto px-4 py-6 md:pl-72">
         <Outlet />
       </main>

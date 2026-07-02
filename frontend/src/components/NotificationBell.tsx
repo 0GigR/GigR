@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
+import { subscribeToPushNotifications } from '@/lib/push'
 
 export interface Notification {
   id: string
@@ -40,6 +41,15 @@ export default function NotificationBell() {
       setOpen(false)
     },
   })
+
+  const handleSubscribe = async () => {
+    const success = await subscribeToPushNotifications()
+    if (success) {
+      alert('Successfully enabled push notifications!')
+    } else {
+      alert('Failed or denied. Check browser settings.')
+    }
+  }
 
   const unreadCount = notifications.filter(n => !n.is_read).length
 
@@ -110,6 +120,12 @@ export default function NotificationBell() {
                   ))}
                 </div>
               )}
+            </div>
+            {/* Push notification banner */}
+            <div className="p-2 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-center">
+              <button onClick={handleSubscribe} className="text-xs text-blue-600 hover:underline font-medium">
+                Enable Push Notifications
+              </button>
             </div>
           </div>
         </>

@@ -9,6 +9,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useGeolocation } from '@/hooks/useGeolocation'
@@ -174,6 +175,8 @@ export default function ServicesPage() {
   const [catSearch, setCatSearch] = useState('')
   const [catSearchResults, setCatSearchResults] = useState<Category[]>([])
   const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
+  const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
+  const [radius, setRadius] = useState(10) // default 10km radius
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
@@ -221,11 +224,11 @@ export default function ServicesPage() {
     hasNextPage: hasMoreNearby,
     isFetchingNextPage: loadingMoreNearby,
   } = useInfiniteQuery<Service[]>({
-    queryKey: ['nearbyServices', latitude, longitude],
+    queryKey: ['nearbyServices', latitude, longitude, radius],
     queryFn: async ({ pageParam = 0 }) => {
       if (!latitude || !longitude) return []
-      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 10, limit: SVC_PAGE_SIZE, offset: pageParam } })
-      return data
+      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius, limit: SVC_PAGE_SIZE, offset: pageParam } })
+      return Array.isArray(data) ? data : []
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -234,7 +237,7 @@ export default function ServicesPage() {
     },
     enabled: !!latitude && !!longitude,
   })
-  const nearbyServices = nearbyPages?.pages.flat() ?? []
+  const nearbyServices = Array.isArray(nearbyPages?.pages) ? nearbyPages.pages.flat() : []
 
   // Reverse geocode
   useEffect(() => {
@@ -413,6 +416,21 @@ export default function ServicesPage() {
       setRequestingId(null)
     }
   }
+
+  // Sorting helper
+  const sortServices = (services: Service[]) => {
+    if (!Array.isArray(services)) return []
+    const arr = [...services]
+    if (sortOrder === 'price_high') arr.sort((a, b) => parseFloat(b.price as string) - parseFloat(a.price as string))
+    if (sortOrder === 'price_low') arr.sort((a, b) => parseFloat(a.price as string) - parseFloat(b.price as string))
+    // we don't have created_at readily on service model right now, so nearest/newest defaults to backend order if not price
+    return arr
+  }
+
+  const processedNearby = sortServices(nearbyServices)
+  const processedSearch = searchResults ? sortServices(searchResults) : null
+  const processedMine = sortServices(myServices || [])
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
@@ -421,7 +439,32 @@ export default function ServicesPage() {
           <h1 className="text-3xl font-bold tracking-tight">Services & Neighborhood</h1>
           <p className="text-gray-500">{activeTab === 'browse' ? 'Discover services in your neighborhood' : activeTab === 'map' ? 'See activity around you' : 'Manage your offerings'}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
+          {activeTab === 'browse' && (
+            <div className="flex items-center gap-2 mr-2 bg-white px-3 py-1 rounded-md border border-gray-200">
+              <span className="text-sm text-gray-500 whitespace-nowrap">Radius: {radius}km</span>
+              <input 
+                type="range" 
+                min="1" 
+                max="50" 
+                value={radius} 
+                onChange={(e) => setRadius(parseInt(e.target.value))}
+                className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+          )}
+          {activeTab !== 'map' && (
+            <Select value={sortOrder} onValueChange={setSortOrder}>
+              <SelectTrigger className="w-[140px] bg-white border-gray-200">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nearest">Recommended</SelectItem>
+                <SelectItem value="price_high">Price: High to Low</SelectItem>
+                <SelectItem value="price_low">Price: Low to High</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Button variant={activeTab === 'browse' ? 'default' : 'outline'} onClick={() => setActiveTab('browse')} className={activeTab === 'browse' ? 'bg-black text-white' : 'border-gray-200'}>
             <Search className="w-4 h-4 mr-2" /> Browse
           </Button>
@@ -575,9 +618,9 @@ export default function ServicesPage() {
           </motion.div>
         ) : searchResults ? (
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <h2 className="text-lg font-semibold mb-4">Search Results ({searchResults.length})</h2>
+            <h2 className="text-lg font-semibold mb-4">Search Results ({processedSearch.length})</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              {searchResults.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
+              {processedSearch.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
             </div>
           </motion.div>
         ) : activeTab === 'browse' ? (
@@ -587,10 +630,10 @@ export default function ServicesPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 {[1,2,3,4].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
               </div>
-            ) : nearbyServices?.length ? (
+            ) : processedNearby.length ? (
               <>
                 <div className="grid gap-4 md:grid-cols-2">
-                  {nearbyServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
+                  {processedNearby.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
                 </div>
                 {hasMoreNearby && (
                   <div className="flex justify-center mt-6">
@@ -620,9 +663,9 @@ export default function ServicesPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 {[1,2].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
               </div>
-            ) : myServices?.length ? (
+            ) : processedMine.length ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {myServices.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
+                {processedMine.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
               </div>
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">

@@ -5,7 +5,7 @@
  * Shows an animated red badge when there are unread agent notifications.
  */
 
-import { Bell } from 'lucide-react'
+import { Zap } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 
@@ -28,7 +28,7 @@ export default function AgentBell() {
       title="AI Agent Activity"
       id="agent-bell-btn"
     >
-      <Bell
+      <Zap
         className={`h-5 w-5 transition-all duration-200 ${
           isPanelOpen ? 'text-violet-500' : ''
         }`}
