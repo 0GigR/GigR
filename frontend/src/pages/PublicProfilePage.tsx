@@ -1,10 +1,11 @@
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Mail, Phone, Star, Briefcase, Calendar } from 'lucide-react'
+import { Mail, Phone, Star, Briefcase, Calendar, ArrowLeft } from 'lucide-react'
 import type { components } from '@/types/api'
 
 type UserProfile = components['schemas']['UserOut']
@@ -13,6 +14,7 @@ type Service = components['schemas']['ServiceOut']
 
 export default function PublicProfilePage() {
   const { userId } = useParams<{ userId: string }>()
+  const navigate = useNavigate()
 
   const { data: profile, isLoading } = useQuery<UserProfile>({
     queryKey: ['user', userId],
@@ -37,6 +39,9 @@ export default function PublicProfilePage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
+      <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4">
+        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+      </Button>
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
