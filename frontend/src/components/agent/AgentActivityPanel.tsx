@@ -4,7 +4,7 @@
 import { formatDistanceToNow } from 'date-fns';
 import { X, CheckCircle2, XCircle, AlertCircle, Info, Zap, Loader2, Trash2, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore';
+import { useAgentStore, AgentTask } from '@/store/agentStore';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 
