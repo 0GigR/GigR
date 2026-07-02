@@ -13,10 +13,10 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
 
 // ── Axios instance ───────────────────────────────────────────────────────────
+// When VITE_API_URL is set (production), use it as-is.
+// When blank (local dev), default to /api/v1 so Vite's proxy picks it up.
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL 
-    ? `${import.meta.env.VITE_API_URL}` 
-    : '',
+  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,  // still send cookies when they work
   timeout: 15000,
