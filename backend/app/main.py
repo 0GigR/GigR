@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location, ai, notifications
+from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location, ai, notifications, push
 from .core.database import init_db, engine, Base
 
 
@@ -117,6 +117,7 @@ app.include_router(messages.router, prefix="/api/v1/messages", tags=["messages"]
 app.include_router(categories.router, prefix="/api/v1/categories", tags=["categories"])
 app.include_router(location.router, prefix="/api/v1/location", tags=["location"])
 app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(push.router, prefix="/api/v1/push", tags=["push"])
 
 from .api.v1.endpoints import admin
 

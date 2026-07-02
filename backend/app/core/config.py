@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # Whether the agent is allowed to make payments autonomously
     AI_AUTONOMOUS_PAYMENT_ENABLED: bool = Field(default=False, env="AI_AUTONOMOUS_PAYMENT_ENABLED")
 
+    # ── Web Push Notifications ────────────────────────────────────────────────
+    VAPID_PUBLIC_KEY: str = Field(default="", env="VAPID_PUBLIC_KEY")
+    VAPID_PRIVATE_KEY: str = Field(default="", env="VAPID_PRIVATE_KEY")
+    VAPID_CLAIM_EMAIL: str = Field(default="", env="VAPID_CLAIM_EMAIL")
+
     # ── Groq (free LLM + Whisper) ─────────────────────────────────────────────
     # Get a free key at https://console.groq.com (no credit card required)
     # Leave blank to use the built-in rule-based NLP fallback instead.
