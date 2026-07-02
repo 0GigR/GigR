@@ -35,10 +35,14 @@ export default defineConfig({
     },
   },
   server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     proxy: {
-      '/api': 'https://gigr-work.vercel.app/',
+      '/api':   'https://gigr-work.vercel.app/api/v1',
       '/ws': {
-        target: 'ws://gigr-work.vercel.app/',
+        target: 'ws://gigr-work.vercel.app',
         ws: true,
       },
     },

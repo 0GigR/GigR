@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location
+from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location, ai
 from .core.database import init_db, engine, Base
 
 
@@ -58,6 +58,7 @@ async def _dedup_duplicate_jobs():
 async def on_startup():
     import asyncio
     from .services.auto_release import auto_release_loop
+    from .api.v1.endpoints.ai import agent_loop
 
     await init_db()
     try:
@@ -67,6 +68,9 @@ async def on_startup():
 
     # Background scanner that auto-releases escrow after the client review window.
     asyncio.create_task(auto_release_loop())
+
+    # AI agent background loop — picks up queued tasks and executes them
+    asyncio.create_task(agent_loop())
 
 # CORS
 # app.add_middleware(
@@ -84,6 +88,7 @@ ALLOWED_ORIGINS = [
     "http://localhost:5500",   # test HTML
     "http://127.0.0.1:5500",
     "http://localhost",
+    "https://gigr-work.vercel.app/api/v1"
     "https://gigr-work.vercel.app",
 ]
 # In production, set FRONTEND_URL env var to your Render URL, e.g. https://gigr.onrender.com
@@ -122,6 +127,9 @@ app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])
 
 from .api.v1.endpoints import ws_messages
 app.include_router(ws_messages.router)
+
+from .api.v1.endpoints import ai
+app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
 
 
 @app.get("/health")

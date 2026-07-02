@@ -4,9 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import { GoogleLogin } from '@react-oauth/google'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -74,12 +72,10 @@ export default function LoginPage() {
             {error && <p className="text-sm text-red-500">{error}</p>}
           </form>
           <div className="mt-4">
-            <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setError('Google sign-in failed')}
-              />
-            </GoogleOAuthProvider>
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => setError('Google sign-in failed')}
+            />
           </div>
           <p className="mt-4 text-center text-sm">
             Don't have an account? <Link to="/register" className="text-blue-600">Register</Link>

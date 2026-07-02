@@ -15,6 +15,7 @@ import ProfilePage from '@/pages/ProfilePage'
 import { CookieConsentBanner } from '@/components/CookieConsent'
 import AdminDashboard from '@/pages/AdminDashboard'
 import PublicProfilePage from '@/pages/PublicProfilePage'
+import AISettingsPage from '@/pages/AISettingsPage'
 
 const queryClient = new QueryClient()
 
@@ -56,6 +57,7 @@ function App() {
             <Route path="messages" element={<MessagesPage />} />
             <Route path="disputes" element={<DisputesPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="ai-settings" element={<AISettingsPage />} />
             <Route path="admin" element={<AdminDashboard />} />
           </Route>
           <Route path="/profile/:userId" element={<PublicProfilePage />} />
