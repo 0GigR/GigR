@@ -77,3 +77,10 @@ program-keypair (1).json
 meh/
 
 DEPLOYMENT.md
+
+private_key.pem
+public_key.pem
+vapid_keys.pem
+private_key.pem
+public_key.pem
+vapid_keys.pem
