@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
+import { ImageViewer } from '@/components/ImageViewer'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -84,6 +85,7 @@ export default function MessagesPage() {
   const [amendNewPrice, setAmendNewPrice] = useState('')
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   // ── Fetch all my jobs ──────────────────────────────────────
   const { data: myJobs, isLoading: jobsLoading } = useQuery<Job[]>({
@@ -432,13 +434,12 @@ export default function MessagesPage() {
                         {/* If message is an image URL, only the sender sees the image; the receiver sees a placeholder */}
                         {msg.content.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ? (
                           msg.sender_id === user?.id ? (
-                            <a href={msg.content} target="_blank" rel="noopener noreferrer">
-                              <img
-                                src={msg.content}
-                                alt="sent image"
-                                className="rounded-lg max-w-full max-h-60 object-cover cursor-pointer"
-                              />
-                            </a>
+                            <img
+                              src={msg.content}
+                              alt="sent image"
+                              className="rounded-lg max-w-full max-h-60 object-cover cursor-pointer"
+                              onClick={() => setLightboxSrc(msg.content)}
+                            />
                           ) : (
                             <p className="text-sm italic flex items-center gap-1.5">
                               <ImagePlus className="w-4 h-4" /> Image sent
@@ -468,7 +469,7 @@ export default function MessagesPage() {
                         New price: ₦{parseFloat(am.new_total_price as string).toLocaleString()}
                       </p>
                       {am.image_url && (
-                        <img src={am.image_url} className="rounded-lg w-20 h-20 object-cover mt-1" />
+                        <img src={am.image_url} className="rounded-lg w-20 h-20 object-cover mt-1 cursor-pointer" onClick={() => setLightboxSrc(am.image_url!)} />
                       )}
                       <p className="text-xs text-gray-500 mt-1">
                         {am.is_accepted === null ? 'Pending' : am.is_accepted ? 'Accepted' : 'Rejected'}
@@ -589,6 +590,9 @@ export default function MessagesPage() {
           )}
         </div>
       </div>
+      {lightboxSrc && (
+        <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />
+      )}
     </div>
   )
 }
