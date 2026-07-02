@@ -1,8 +1,11 @@
 from uuid import UUID
 from typing import List
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.message import Message
+from ..models.job import Job
+from ..models.user import User
+from ..models.agent_task import AgentTask
 
 async def get_message_by_id(db: AsyncSession, message_id: UUID) -> Message | None:
     result = await db.execute(select(Message).where(Message.id == message_id))
@@ -53,6 +56,31 @@ async def create_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
+    
+    # Check if the receiver has AI auto-reply enabled
+    # Find the job to determine the receiver
+    job_result = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_result.scalar_one_or_none()
+    
+    if job:
+        receiver_id = job.provider_id if job.client_id == sender_id else job.client_id
+        if receiver_id:
+            receiver_result = await db.execute(select(User).where(User.id == receiver_id))
+            receiver = receiver_result.scalar_one_or_none()
+            
+            # Assuming AI setting key is "aiAutoReplyEnabled"
+            if receiver and receiver.ai_settings and receiver.ai_settings.get("aiAutoReplyEnabled") is True:
+                # Spawn an AgentTask for the receiver to auto-reply to this message
+                reply_command = f"Reply to this message: '{content}' (From {job.title})"
+                auto_reply_task = AgentTask(
+                    user_id=receiver.id,
+                    command_text=reply_command,
+                    task_type="pending",
+                    status="queued"
+                )
+                db.add(auto_reply_task)
+                await db.commit()
+
     return message
 
 async def delete_message(db: AsyncSession, message: Message) -> None:

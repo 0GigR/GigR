@@ -68,13 +68,30 @@ async def init_db() -> None:
                         # Build the ALTER TABLE statement
                         col_type = col.type.compile(sync_conn.dialect)
                         nullable = "" if col.nullable else " NOT NULL"
-                        default = f" DEFAULT {col.default.arg}" if col.default and col.default.arg is not None else ""
+
+                        # Build a SQL-safe DEFAULT clause
+                        default = ""
+                        if col.default and col.default.arg is not None:
+                            raw = col.default.arg
+                            type_str = col_type.upper()
+                            if "JSONB" in type_str or "JSON" in type_str:
+                                # JSONB defaults must be quoted: '{}'::jsonb
+                                default = f" DEFAULT '{raw}'::jsonb"
+                            elif isinstance(raw, bool):
+                                default = f" DEFAULT {'TRUE' if raw else 'FALSE'}"
+                            elif isinstance(raw, (int, float)):
+                                default = f" DEFAULT {raw}"
+                            else:
+                                # String/text: wrap in single quotes, escape any inner quotes
+                                escaped = str(raw).replace("'", "''")
+                                default = f" DEFAULT '{escaped}'"
+
                         sync_conn.execute(
                             text(
                                 f'ALTER TABLE {table_name} ADD COLUMN "{col.name}" {col_type}{nullable}{default}'
                             )
                         )
-                        print(f"Added column {col.name} to {table_name}")
+                        print(f"[init_db] Added column '{col.name}' to '{table_name}'")
 
         await conn.run_sync(add_missing_columns)
 

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
+from typing import Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 
@@ -26,6 +26,7 @@ class UserOut(BaseModel):
     is_verified: bool
     role: Optional[str] = None
     created_at: datetime
+    ai_settings: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -34,6 +35,7 @@ class UserUpdate(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
+    ai_settings: Optional[Dict[str, Any]] = None
 
 class UserLocationUpdate(BaseModel):
     latitude: float

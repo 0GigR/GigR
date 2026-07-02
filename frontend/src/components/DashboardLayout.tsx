@@ -7,6 +7,12 @@ import OnboardingOverlay from '@/components/OnboardingOverlay'
 import { useThemeStore } from '@/store/themeStore'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
+import VoiceAssistant from '@/components/VoiceAssistant'
+import AgentBell from '@/components/agent/AgentBell'
+import AgentActivityPanel from '@/components/agent/AgentActivityPanel'
+import GlobalItemModal from '@/components/GlobalItemModal'
+import { useAgentStore } from '@/store/agentStore'
+import { useEffect } from 'react'
 import {
   LayoutDashboard,
   Briefcase,
@@ -45,9 +51,19 @@ export default function DashboardLayout() {
   // Global live message notifications (light + toast on any page)
   useMessageNotifications()
 
+  // Start agent polling
+  const { startPolling, stopPolling } = useAgentStore()
+  useEffect(() => {
+    startPolling()
+    return () => stopPolling()
+  }, [startPolling, stopPolling])
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
+      <VoiceAssistant />
+      <AgentActivityPanel />
       <OnboardingOverlay />
+      <GlobalItemModal />
       {/* Top Bar */}
       <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
@@ -55,7 +71,8 @@ export default function DashboardLayout() {
             <Logo className="w-6 h-6" />
             <span className="font-bold text-lg">Gigr</span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <AgentBell />
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>

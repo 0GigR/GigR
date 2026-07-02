@@ -35,6 +35,10 @@ export default defineConfig({
     },
   },
   server: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     proxy: {
       '/api': 'http://localhost:8000',
       '/ws': {

@@ -1,0 +1,255 @@
+/**
+ * agentStore.ts — The single consolidated frontend AI file.
+ *
+ * Everything AI-agent related on the frontend lives here:
+ *   - Zustand store state (tasks, logs, unreadCount, panel visibility)
+ *   - API calls (submit command, fetch tasks, fetch logs, cancel task)
+ *   - Polling management (startPolling / stopPolling)
+ *   - AI settings persistence (stored in localStorage until a user-settings API is added)
+ *
+ * The AgentBell and AgentActivityPanel components consume this store.
+ */
+
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+import api from '@/lib/api'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface AgentLog {
+  id: string
+  task_id: string
+  level: 'info' | 'action' | 'success' | 'error' | 'warning'
+  message: string
+  data?: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface AgentTask {
+  id: string
+  user_id: string
+  command_text: string
+  task_type: 'search' | 'negotiate' | 'post_job' | 'navigate' | 'generic' | 'pending'
+  params: Record<string, unknown> | null
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  result: Record<string, unknown> | null
+  created_at: string
+  updated_at: string | null
+  completed_at: string | null
+  logs: AgentLog[]
+}
+
+export interface AISettings {
+  /** Allow the agent to send negotiation messages to providers on the user's behalf */
+  aiNegotiateEnabled: boolean
+  /** Allow the agent to automatically reply to incoming messages */
+  aiAutoReplyEnabled: boolean
+  /** Whether the mic button is shown on all dashboard pages */
+  voiceEnabled: boolean
+  /** Speech recognition language code */
+  voiceLanguage: string
+}
+
+interface AgentState {
+  // Task data
+  tasks: AgentTask[]
+  unreadCount: number
+  isPanelOpen: boolean
+
+  // AI engine info (fetched from backend)
+  engineInfo: {
+    groq_enabled: boolean
+    groq_model: string | null
+    agent_enabled: boolean
+    nlp_engine: 'groq' | 'rule-based'
+  } | null
+
+  // User AI settings (persisted in localStorage)
+  aiSettings: AISettings
+
+  // Polling control
+  _pollTimer: ReturnType<typeof setInterval> | null
+
+  // ── Actions ────────────────────────────────────────────────────────────────
+
+  /** Submit a voice or text command to the agent */
+  submitCommand: (text: string) => Promise<AgentTask | null>
+
+  /** Fetch all tasks for the current user */
+  fetchTasks: () => Promise<void>
+
+  /** Cancel a queued or running task */
+  cancelTask: (taskId: string) => Promise<void>
+
+  /** Open / close the activity panel */
+  openPanel: () => void
+  closePanel: () => void
+  togglePanel: () => void
+
+  /** Mark all tasks as read (clears badge) */
+  markAllRead: () => void
+
+  /** Fetch AI engine info from backend */
+  fetchEngineInfo: () => Promise<void>
+
+  /** Update a single AI setting */
+  updateAISetting: <K extends keyof AISettings>(key: K, value: AISettings[K]) => void
+
+  /** Clear all task history for the user */
+  clearHistory: () => Promise<void>
+
+  /** Start the polling loop */
+  startPolling: () => void
+
+  /** Stop the polling loop */
+  stopPolling: () => void
+}
+
+// ─── Default settings ─────────────────────────────────────────────────────────
+
+const DEFAULT_AI_SETTINGS: AISettings = {
+  aiNegotiateEnabled: false,  // must be explicitly turned on by user
+  aiAutoReplyEnabled: false,  // must be explicitly turned on by user
+  voiceEnabled: true,
+  voiceLanguage: 'en-US',
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
+
+export const useAgentStore = create<AgentState>()(
+  persist(
+    (set, get) => ({
+      tasks: [],
+      unreadCount: 0,
+      isPanelOpen: false,
+      engineInfo: null,
+      aiSettings: DEFAULT_AI_SETTINGS,
+      _pollTimer: null,
+
+      submitCommand: async (text: string) => {
+        try {
+          const { data } = await api.post<AgentTask>('/ai/command', { text })
+          set((s) => ({
+            tasks: [data, ...s.tasks],
+            unreadCount: s.unreadCount + 1,
+          }))
+          return data
+        } catch (err: any) {
+          console.error('[agentStore] submitCommand error:', err)
+          return null
+        }
+      },
+
+      fetchTasks: async () => {
+        try {
+          const { data } = await api.get<AgentTask[]>('/ai/tasks', { params: { limit: 50 } })
+          const prev = get().tasks
+
+          // Count newly completed/failed tasks as unread
+          const newUnread = data.filter((t) => {
+            const existing = prev.find((p) => p.id === t.id)
+            const justFinished = existing &&
+              existing.status !== t.status &&
+              (t.status === 'completed' || t.status === 'failed')
+            return justFinished
+          }).length
+
+          set((s) => ({
+            tasks: data,
+            unreadCount: s.isPanelOpen ? 0 : s.unreadCount + newUnread,
+          }))
+        } catch (err) {
+          // Silently fail — user might not be logged in
+        }
+      },
+
+      cancelTask: async (taskId: string) => {
+        try {
+          await api.delete(`/ai/tasks/${taskId}`)
+          // Optimistic update
+          set((s) => ({
+            tasks: s.tasks.map((t) =>
+              t.id === taskId ? { ...t, status: 'cancelled' as const } : t
+            ),
+          }))
+        } catch (err: any) {
+          console.error('[agentStore] cancelTask error:', err)
+        }
+      },
+
+      openPanel: () => {
+        set({ isPanelOpen: true, unreadCount: 0 })
+        // Refresh tasks when opening panel
+        get().fetchTasks()
+      },
+
+      closePanel: () => set({ isPanelOpen: false }),
+
+      togglePanel: () => {
+        const { isPanelOpen, openPanel, closePanel } = get()
+        if (isPanelOpen) closePanel()
+        else openPanel()
+      },
+
+      markAllRead: () => set({ unreadCount: 0 }),
+
+      fetchEngineInfo: async () => {
+        try {
+          const { data } = await api.get('/ai/settings')
+          set({ engineInfo: data })
+        } catch {
+          // Backend might not have AI settings endpoint yet
+        }
+      },
+
+      updateAISetting: (key, value) => {
+        set((s) => {
+          const newSettings = { ...s.aiSettings, [key]: value };
+          // Sync with backend async
+          api.patch('/users/me', { ai_settings: newSettings }).catch(err => {
+            console.error('[agentStore] Failed to sync AI settings with backend:', err)
+          })
+          return { aiSettings: newSettings }
+        })
+      },
+
+      clearHistory: async () => {
+        // Cancel all queued/running tasks, then clear local state
+        const { tasks } = get()
+        const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running')
+        await Promise.allSettled(active.map((t) => api.delete(`/ai/tasks/${t.id}`)))
+        set({ tasks: [], unreadCount: 0 })
+      },
+
+      startPolling: () => {
+        const { _pollTimer, fetchTasks } = get()
+        if (_pollTimer) return // already polling
+
+        fetchTasks() // immediate first fetch
+
+        const pollMs = parseInt(import.meta.env.VITE_AI_AGENT_POLL_MS || '10000', 10)
+        const timer = setInterval(() => {
+          fetchTasks()
+        }, pollMs)
+
+        set({ _pollTimer: timer })
+      },
+
+      stopPolling: () => {
+        const { _pollTimer } = get()
+        if (_pollTimer) {
+          clearInterval(_pollTimer)
+          set({ _pollTimer: null })
+        }
+      },
+    }),
+    {
+      name: 'gigr-agent-settings',
+      // Only persist user settings and unread count — not tasks (fetched from server)
+      partialize: (s) => ({
+        aiSettings: s.aiSettings,
+        unreadCount: s.unreadCount,
+      }),
+    }
+  )
+)

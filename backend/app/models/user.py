@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, DateTime, Boolean, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 from cryptography.fernet import Fernet
@@ -44,6 +44,9 @@ class User(Base):
 
     civic_gateway_token = Column(String(255), nullable=True)
     is_identity_verified = Column(Boolean, default=False)
+    
+    # AI Settings (e.g. auto_reply_enabled, negotiate_enabled)
+    ai_settings = Column(JSONB, nullable=True, default={})
 
     @property
     def wallet_private_key(self) -> bytes | None:
