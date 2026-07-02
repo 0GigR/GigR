@@ -618,9 +618,9 @@ export default function ServicesPage() {
           </motion.div>
         ) : searchResults ? (
           <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <h2 className="text-lg font-semibold mb-4">Search Results ({processedSearch.length})</h2>
+            <h2 className="text-lg font-semibold mb-4">Search Results ({processedSearch!.length})</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              {processedSearch.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
+              {processedSearch!.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
             </div>
           </motion.div>
         ) : activeTab === 'browse' ? (
