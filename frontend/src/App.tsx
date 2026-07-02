@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from '@/components/ToastProvider'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import LandingPage from '@/pages/LandingPage'
 import DashboardLayout from '@/components/DashboardLayout'
 import HomePage from '@/pages/HomePage'
@@ -36,34 +37,39 @@ function App() {
   if (isLoading) return <div className="flex h-screen items-center justify-center">Loading…</div>
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <ToastProvider />
-        <CookieConsentBanner />
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<HomePage />} />
-            <Route path="jobs" element={<JobsPage />} />
-            <Route path="services" element={<ServicesPage />} />
-            <Route path="activity" element={<ActivityPage />} />
-            <Route path="messages" element={<MessagesPage />} />
-            <Route path="disputes" element={<DisputesPage />} />
-            <Route path="profile" element={<ProfilePage />} />
-            <Route path="ai-settings" element={<AISettingsPage />} />
-            <Route path="admin" element={<AdminDashboard />} />
-          </Route>
-          <Route path="/profile/:userId" element={<PublicProfilePage />} />
-        </Routes>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <ToastProvider />
+          <CookieConsentBanner />
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<HomePage />} />
+              <Route path="jobs" element={<JobsPage />} />
+              <Route path="services" element={<ServicesPage />} />
+              <Route path="activity" element={<ActivityPage />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="disputes" element={<DisputesPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="ai-settings" element={<AISettingsPage />} />
+              <Route path="admin" element={<AdminDashboard />} />
+              {/* Public profile inside dashboard for consistent nav */}
+              <Route path="user/:userId" element={<PublicProfilePage />} />
+            </Route>
+            {/* Legacy public route still works */}
+            <Route path="/profile/:userId" element={<PublicProfilePage />} />
+          </Routes>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 
