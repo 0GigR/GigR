@@ -11,3 +11,4 @@ from .vote import Vote
 from .scope_amendment import ScopeAmendment
 from .agent_task import AgentTask
 from .agent_log import AgentLog
+from .notification import Notification
