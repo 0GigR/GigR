@@ -17,6 +17,7 @@ kosi.md
 .env.copy
 .env*
 backend/.env*
+Implementing Gigr Frontend Fixes.md
 
 # Node / React
 node_modules/
