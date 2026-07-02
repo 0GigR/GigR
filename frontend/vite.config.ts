@@ -36,9 +36,9 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/api': 'https://gigr-work.vercel.app/',
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://gigr-work.vercel.app/',
         ws: true,
       },
     },
