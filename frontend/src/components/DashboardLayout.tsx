@@ -9,6 +9,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import VoiceAssistant from '@/components/VoiceAssistant'
 import AgentBell from '@/components/agent/AgentBell'
+import NotificationBell from '@/components/NotificationBell'
 import AgentActivityPanel from '@/components/agent/AgentActivityPanel'
 import GlobalItemModal from '@/components/GlobalItemModal'
 import { useAgentStore } from '@/store/agentStore'
@@ -72,6 +73,7 @@ export default function DashboardLayout() {
             <span className="font-bold text-lg">Gigr</span>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             <AgentBell />
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
