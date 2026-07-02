@@ -40,9 +40,9 @@ export default defineConfig({
       'Cross-Origin-Embedder-Policy': 'credentialless',
     },
     proxy: {
-      '/api':   'https://gigr-work.vercel.app/api/v1',
+      '/api': 'http://127.0.0.1:8000',
       '/ws': {
-        target: 'ws://gigr-work.vercel.app',
+        target: 'ws://127.0.0.1:8000',
         ws: true,
       },
     },
