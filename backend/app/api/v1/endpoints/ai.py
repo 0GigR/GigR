@@ -265,6 +265,14 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Generic fallback ─────────────────────────────────────────────
+    # If the text is very short or clearly irrelevant, classify as generic
+    if len(text_lower.split()) < 3 and not re.search(r"find|job|service|hire|work", text_lower):
+        return {
+            "task_type": "generic",
+            "params": {"query": text},
+            "response": "I am a freelance assistant. I can help you find jobs, offer services, or navigate the app.",
+        }
+
     query = _extract_search_query(text_lower) or text
     return {
         "task_type": "find_service",
@@ -723,7 +731,9 @@ async def _execute_task(task_id: str):
 
                 task.status = "completed"
                 task.completed_at = datetime.now(timezone.utc)
-                await _log(db, task.id, "success", "Task completed")
+                # Avoid redundant "Task completed" log if the specific handler already logged its outcome or a dialog
+                if task.task_type not in ["find_service", "find_job", "post_job", "post_service"]:
+                    await _log(db, task.id, "success", "Task completed")
             except Exception as exc:
                 print(f"[agent] Task {task_id} failed: {exc}")
                 task.status = "failed"
@@ -960,7 +970,10 @@ async def respond_to_dialog(
     payload = last_log.data["action_payload"]
     
     # We clear the action_payload so the dialog goes away
-    last_log.data.pop("action_payload")
+    # Important: Reassign the dict so SQLAlchemy detects the JSON mutation
+    new_data = dict(last_log.data)
+    new_data.pop("action_payload", None)
+    last_log.data = new_data
     
     if response.action == "cancel":
         await _log(db, task.id, "info", "User cancelled the action.")

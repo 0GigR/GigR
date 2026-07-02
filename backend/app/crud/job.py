@@ -183,3 +183,12 @@ async def get_jobs_filtered(
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     return result.scalars().all()
+async def search_jobs_by_text(db: AsyncSession, query: str, limit: int = 20, offset: int = 0) -> List[Job]:
+    """Search for jobs matching the text in title or description."""
+    result = await db.execute(
+        select(Job)
+        .where(or_(Job.title.ilike(f"%{query}%"), Job.description.ilike(f"%{query}%")))
+        .limit(limit)
+        .offset(offset)
+    )
+    return result.scalars().all()
