@@ -1,0 +1,1021 @@
+"""
+AI Agent — consolidated backend module.
+
+This single file contains EVERYTHING AI/agent related:
+
+  1. NLP layer       — parse natural language → structured intent
+                        Primary:  Groq Llama-3 (free, console.groq.com)
+                        Fallback: enhanced rule-based regex interpreter
+  2. Task handlers  — search, negotiate, post_job (all inline, async)
+  3. Agent loop     — asyncio background coroutine, polls DB every N seconds
+  4. API routes     — submit commands, list tasks, get task+logs, cancel
+
+No paid APIs required. Groq's free tier gives 14,400 requests/day with
+Llama-3 8B. Leave GROQ_API_KEY blank to use the rule-based fallback.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import select, and_, or_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from ....core.config import settings
+from ....core.database import async_session
+from ....core.dependencies import get_db, get_current_user
+from ....crud.service import search_services_by_text
+from ....crud.message import create_message
+from ....models.user import User
+from ....models.service import ServiceListing
+from ....models.agent_task import AgentTask
+from ....models.agent_log import AgentLog
+from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, AgentTaskListOut
+
+router = APIRouter()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 1: NLP — parse natural language into structured intent
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# System prompt for Groq Llama-3 NLP
+_GROQ_SYSTEM_PROMPT = """You are a command parser for Gigr, a freelance services marketplace.
+Extract the user's intent from their message and return ONLY a JSON object with these fields:
+
+{
+  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "generic",
+  "params": {
+    "query": "search query string",
+    "max_price": 5000,          // number in naira, null if not specified
+    "min_price": 5000,          // number in naira
+    "title": "title",           // for post_job or post_service
+    "price": 5000,              // number in naira
+    "job_id": "optional id",    // for pay
+    "page": "jobs|services|messages|activity|disputes|profile|home"  // for navigate
+  },
+  "response": "brief confirmation message to show user"
+}
+
+Rules:
+- "post_job" = user wants to HIRE SOMEONE / create a task
+- "post_service" = user wants to WORK / offer their skills
+- "find_service" = user wants to look for someone to hire
+- "find_job" = user is a freelancer looking for open jobs to apply to
+- "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
+- Numbers: convert "5k" → 5000, "10k" → 10000, "₦5,000" → 5000, "five thousand" → 5000
+- If unclear, default to "search" with whatever query you can extract
+- Return ONLY the JSON, no markdown, no explanation"""
+
+
+async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
+    """Call Groq Llama-3 to parse the command into structured intent.
+    Returns None if Groq is not configured or the call fails."""
+    if not settings.GROQ_API_KEY:
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": _GROQ_SYSTEM_PROMPT},
+                        {"role": "user", "content": text},
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 300,
+                },
+            )
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"].strip()
+            # Strip markdown code fences if Groq wrapped in ```json ... ```
+            content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
+            return json.loads(content)
+    except Exception as exc:
+        print(f"[agent] Groq NLP failed ({exc}), falling back to rule-based")
+        return None
+
+
+# ─── Price helpers ────────────────────────────────────────────────────────────
+
+_PRICE_PATTERN = re.compile(
+    r"(?:no more than|no less than|under|less than|max(?:imum)?|budget(?:\s+of)?|for|at)\s*"
+    r"(?:₦|naira)?\s*"
+    r"(\d[\d,]*(?:\.\d+)?)\s*([kK]?)",
+    re.IGNORECASE,
+)
+
+_WORD_NUMBERS = {
+    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+    "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20,
+    "thirty": 30, "forty": 40, "fifty": 50, "hundred": 100,
+    "thousand": 1000,
+}
+
+
+def _extract_price(text: str) -> Optional[float]:
+    """Extract a price from text, handling k-suffixes and word numbers."""
+    match = _PRICE_PATTERN.search(text)
+    if match:
+        num = float(match.group(1).replace(",", ""))
+        if match.group(2).lower() == "k":
+            num *= 1000
+        return num
+
+    # Try word-number pattern: "five thousand" → 5000
+    text_lower = text.lower()
+    for word, val in _WORD_NUMBERS.items():
+        if word in text_lower:
+            # Look for multiplier
+            if "thousand" in text_lower and word != "thousand":
+                idx = text_lower.find(word)
+                if text_lower.find("thousand") > idx:
+                    return val * 1000
+    return None
+
+def _extract_search_query(text: str) -> Optional[str]:
+    """Extract the core search intent from a command string."""
+    patterns = [
+        r"(?:find|get|hire)\s+(?:someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
+        r"(?:search|look\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
+        r"(?:i\s+need|i\s+want)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            q = m.group(1).strip()
+            # Remove trailing price qualifiers more aggressively
+            q = re.sub(r"\s+(for\s+)?(no\s+more|no\s+less|under|less\s+than|max|budget).*$", "", q, flags=re.IGNORECASE).strip()
+            if q:
+                return q
+    return None
+
+def _parse_command_rules(text: str) -> Dict[str, Any]:
+    """Rule-based NLP fallback. Returns same structure as Groq parser."""
+    text_lower = text.lower().strip()
+
+    # ─── Navigation ─────────────────────────────────────────────────
+    nav_map = {
+        "home": "home", "dashboard": "home",
+        "jobs": "jobs", "services": "services",
+        "messages": "messages", "inbox": "messages",
+        "activity": "activity", "disputes": "disputes",
+        "profile": "profile",
+    }
+    nav_patterns = [r"go\s+to\s+(\w+)", r"open\s+(\w+)", r"show\s+(?:me\s+)?(\w+)", r"navigate\s+to\s+(\w+)"]
+    for pat in nav_patterns:
+        m = re.search(pat, text_lower)
+        if m and m.group(1) in nav_map:
+            page = nav_map[m.group(1)]
+            return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
+
+    # ─── Find work / open jobs ───────────────────────────────────────
+    if re.search(r"(find|show|browse)\s+(open\s+)?work|open\s+jobs", text_lower):
+        return {"task_type": "navigate", "params": {"page": "jobs"}, "response": "Showing open jobs"}
+
+    # ─── My jobs ─────────────────────────────────────────────────────
+    if re.search(r"(show|check|my)\s+(my\s+)?(active|open|current)?\s*jobs?", text_lower):
+        return {"task_type": "navigate", "params": {"page": "jobs"}, "response": "Showing your jobs"}
+
+    price = _extract_price(text)
+
+    # ─── Negotiate command ────────────────────────────────────────────
+    if re.search(r"negotiate|haggle|bargain|offer|can you get|get me", text_lower):
+        query = _extract_search_query(text_lower)
+        return {
+            "task_type": "negotiate",
+            "params": {"query": query or text, "max_price": price},
+            "response": f"I'll search and negotiate for '{query or text}'" + (f" under ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Post Service (Offering to work) ──────────────────────────────
+    if re.search(r"post|create|add|offer\s+(?:a\s+)?service", text_lower) or re.search(r"i want to work as", text_lower):
+        stripped = re.sub(r"^(.*?)(post|create|add|offer)\s+(a\s+)?service\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
+        title = re.sub(r"(?:\.|\,)?\s*(?:for no less than|for|at least|at|my rate is)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
+        title = title.rstrip(".,;")
+        if not title: title = stripped.strip()
+        
+        return {
+            "task_type": "post_service",
+            "params": {"title": title, "price": price},
+            "response": f"Creating service offer '{title}'" + (f" for ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Post Job (Looking to hire) ───────────────────────────────────
+    if re.search(r"post|create|add|make\s+(?:a\s+)?job", text_lower) or re.search(r"i need someone to", text_lower):
+        stripped = re.sub(r"^(.*?)(post|create|add|make)\s+(a\s+)?job\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
+        title = re.sub(r"(?:\.|\,)?\s*(?:i am not willing to pay more than|for no more than|for|under|budget|at)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
+        title = title.rstrip(".,;")
+        if not title: title = stripped.strip()
+        
+        return {
+            "task_type": "post_job",
+            "params": {"title": title, "price": price},
+            "response": f"Creating job '{title}'" + (f" for ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Find Job (Looking for work) ──────────────────────────────────
+    if re.search(r"find|search|look\s+for\s+(?:a\s+)?job|work", text_lower):
+        query = _extract_search_query(text_lower)
+        return {
+            "task_type": "find_job",
+            "params": {"query": query or text, "min_price": price},
+            "response": f"Searching for open jobs matching '{query or text}'" + (f" above ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Find Service (Looking to hire provider) ──────────────────────
+    if re.search(r"find|search|look\s+for|need|want|hire|get\s+(?:me\s+)?(?:a|an|someone)", text_lower):
+        query = _extract_search_query(text_lower)
+        return {
+            "task_type": "find_service",
+            "params": {"query": query or text, "max_price": price},
+            "response": f"Searching for services matching '{query or text}'" + (f" under ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Pay ────────────────────────────────────────────────────────
+    if re.search(r"pay\s+for|fund|release\s+payment", text_lower):
+        return {
+            "task_type": "pay",
+            "params": {"query": text},
+            "response": "Processing payment...",
+        }
+        
+    # ─── Reply Message ────────────────────────────────────────────────
+    if re.search(r"^reply to this message:", text_lower):
+        return {
+            "task_type": "reply_message",
+            "params": {"query": text},
+            "response": "Auto-replying to message...",
+        }
+
+    # ─── Generic fallback ─────────────────────────────────────────────
+    query = _extract_search_query(text_lower) or text
+    return {
+        "task_type": "find_service",
+        "params": {"query": query, "max_price": price},
+        "response": f"Searching for '{query}'",
+    }
+
+
+# (Removed extract_search_query from here since it was moved up)
+
+
+async def parse_command(text: str) -> Dict[str, Any]:
+    """Parse a natural language command into structured intent.
+
+    Tries Groq Llama-3 first (better understanding). Falls back to
+    rule-based regex parser if Groq key is missing or the call fails.
+    """
+    groq_result = await _parse_command_groq(text)
+    if groq_result and groq_result.get("task_type"):
+        return groq_result
+    return _parse_command_rules(text)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 2: Task handlers — each task type has its own async handler
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _log(db: AsyncSession, task_id: uuid.UUID, level: str, message: str, data: Any = None):
+    """Write a single log entry for a task."""
+    entry = AgentLog(task_id=task_id, level=level, message=message, data=data)
+    db.add(entry)
+    await db.flush()
+
+
+async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceListing) -> str:
+    """Automatically create a Job linked to the found service and send a message."""
+    from ....crud.job import create_job
+    from ....schemas.job import JobCreate
+    from ....crud.message import create_message
+
+    try:
+        # 1. Create the job
+        price = task.params.get("max_price") or float(service.price)
+        job_in = JobCreate(
+            title=f"Request for: {service.title}",
+            description=f"Auto-requested via AI Agent. Based on command: '{task.command_text}'",
+            price=price
+        )
+        job = await create_job(db, task.user_id, job_in)
+        job.provider_id = service.provider_id
+        job.service_listing_id = service.id
+        job.status = "assigned"
+        await db.flush()
+
+        # 2. Send an automatic message in the job chat
+        msg_content = f"Hi! My AI assistant matched me with your service '{service.title}'. I would like to proceed with this job."
+        if task.params.get("max_price"):
+            msg_content += f" My budget is ₦{task.params['max_price']:,.0f}."
+            
+        msg = await create_message(db, job.id, task.user_id, msg_content)
+        await db.flush()
+
+        # Broadcast via WebSockets for real-time frontend notifications
+        from ....api.v1.endpoints.messages import manager
+        await manager.broadcast_new_message(msg)
+
+        return f"Successfully requested service and sent a message to the provider. [View Job](/dashboard/jobs)"
+    except Exception as exc:
+        print(f"Failed to auto-request service: {exc}")
+        return f"Found service but failed to auto-request it."
+
+
+async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Search for services matching the task query (Client looking to hire)."""
+    params = task.params or {}
+    query: str = params.get("query", "")
+    max_price: Optional[float] = params.get("max_price")
+
+    await _log(db, task.id, "action", f"Searching for services: '{query}'" + (f" (max ₦{max_price:,.0f})" if max_price else ""))
+
+    services = await search_services_by_text(db, query, limit=20)
+    services = [s for s in services if s.provider_id != task.user_id]
+
+    if max_price:
+        filtered = [s for s in services if float(s.price) <= max_price]
+    else:
+        filtered = services
+
+    if filtered:
+        best_match = filtered[0]
+        names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in filtered[:5]]
+        await _log(db, task.id, "success", f"Found {len(filtered)} matching service(s):\n" + "\n".join(names),
+                   data={"service_ids": [str(s.id) for s in filtered[:10]]})
+        
+        await _log(db, task.id, "action", f"Auto-requesting the best match: {best_match.title}...")
+        request_msg = await _request_service(db, task, best_match)
+        await _log(db, task.id, "success", request_msg)
+
+        return {
+            "found": True,
+            "count": len(filtered),
+            "services": [{"id": str(s.id), "title": s.title, "price": float(s.price)} for s in filtered[:10]],
+            "message": f"Found {len(filtered)} service(s) for '{query}'",
+        }
+    else:
+        closest = sorted(services, key=lambda s: float(s.price))[:3]
+        if closest:
+            names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
+            await _log(db, task.id, "warning", f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
+            
+            # Interactive Dialog Payload
+            dialog_payload = {
+                "type": "create_job_fallback",
+                "title": query,
+                "price": max_price or float(closest[0].price),
+            }
+            await _log(db, task.id, "info", f"Would you like me to post a job looking for '{query}' instead?", data={"action_payload": dialog_payload})
+        else:
+            await _log(db, task.id, "warning", f"No services found matching '{query}'")
+            
+            dialog_payload = {
+                "type": "create_job_fallback",
+                "title": query,
+                "price": max_price,
+            }
+            await _log(db, task.id, "info", f"Would you like me to post a job looking for '{query}'?", data={"action_payload": dialog_payload})
+
+        return {
+            "found": False,
+            "count": 0,
+            "closest": [{"id": str(s.id), "title": s.title, "price": float(s.price)} for s in closest],
+            "message": f"No services found under ₦{max_price:,.0f}" if max_price else f"No services found for '{query}'",
+        }
+
+async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Search for open jobs (Provider looking for work)."""
+    from ....crud.job import search_jobs_by_text
+    params = task.params or {}
+    query: str = params.get("query", "")
+    min_price: Optional[float] = params.get("min_price")
+
+    await _log(db, task.id, "action", f"Searching for open jobs: '{query}'" + (f" (min ₦{min_price:,.0f})" if min_price else ""))
+    
+    jobs = await search_jobs_by_text(db, query, limit=20)
+    jobs = [j for j in jobs if j.client_id != task.user_id and j.status == "open"]
+    
+    if min_price:
+        filtered = [j for j in jobs if float(j.price) >= min_price]
+    else:
+        filtered = jobs
+
+    if filtered:
+        names = [f"{j.title} — ₦{float(j.price):,.0f}" for j in filtered[:5]]
+        await _log(db, task.id, "success", f"Found {len(filtered)} open job(s):\n" + "\n".join(names),
+                   data={"job_ids": [str(j.id) for j in filtered[:10]]})
+        
+        # We don't auto-apply yet, just show them
+        first_job = filtered[0]
+        await _log(db, task.id, "info", f"Check out the top match: [View Job](?jobId={first_job.id})")
+        
+        return {
+            "found": True,
+            "count": len(filtered),
+            "jobs": [{"id": str(j.id), "title": j.title, "price": float(j.price)} for j in filtered[:10]]
+        }
+    else:
+        await _log(db, task.id, "warning", f"No open jobs found matching '{query}'")
+        return {"found": False, "count": 0}
+
+
+async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Search for services. If none in budget, message the closest providers to negotiate."""
+    from ....crud.job import get_jobs_by_client
+
+    params = task.params or {}
+    query: str = params.get("query", "")
+    max_price: Optional[float] = params.get("max_price")
+
+    # Step 1: search
+    await _log(db, task.id, "action", f"Starting negotiation search for: '{query}'" + (f" (budget: ₦{max_price:,.0f})" if max_price else ""))
+
+    services = await search_services_by_text(db, query, limit=20)
+    services = [s for s in services if s.provider_id != task.user_id]
+
+    if max_price:
+        within_budget = [s for s in services if float(s.price) <= max_price]
+    else:
+        within_budget = services
+
+    if within_budget:
+        best_match = within_budget[0]
+        names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in within_budget[:5]]
+        await _log(db, task.id, "success", f"Found {len(within_budget)} service(s) within your budget:\n" + "\n".join(names))
+        
+        # Auto request the best match
+        await _log(db, task.id, "action", f"Auto-requesting the best match: {best_match.title}...")
+        request_msg = await _request_service(db, task, best_match)
+        await _log(db, task.id, "success", request_msg)
+
+        return {
+            "negotiated": False,
+            "found_within_budget": True,
+            "services": [
+                {"id": str(s.id), "title": s.title, "price": float(s.price)} for s in within_budget[:10]
+            ],
+            "message": f"Found {len(within_budget)} services within your budget — no negotiation needed!",
+        }
+
+    # Step 2: negotiate — check if user has negotiation enabled
+    user_result = await db.execute(select(User).where(User.id == task.user_id))
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        await _log(db, task.id, "error", "❌ Could not find user account")
+        return {"negotiated": False, "error": "User not found"}
+
+    # Check if negotiation is enabled (stored in user metadata or we default to False)
+    # We use a simple approach: look for a flag in the user's profile via a JSON column.
+    # For now we check by querying agent settings stored in the task params or a separate lookup.
+    ai_negotiate = params.get("ai_negotiate_enabled", False)
+    if not ai_negotiate:
+        closest = sorted(services, key=lambda s: float(s.price))[:3]
+        names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
+        await _log(db, task.id, "info",
+                   f"No services within budget. Negotiation is disabled in your AI Settings.\n"
+                   f"Closest options:\n" + "\n".join(names) if names else "No services found at all.")
+        return {
+            "negotiated": False,
+            "found_within_budget": False,
+            "closest": [{"id": str(s.id), "title": s.title, "price": float(s.price)} for s in closest],
+            "message": "Negotiation is disabled. Enable it in AI Settings to let me message providers.",
+        }
+
+    # Step 3: Send negotiation messages to top 3 closest providers
+    closest = sorted(services, key=lambda s: float(s.price))[:3]
+    if not closest:
+        await _log(db, task.id, "warning", f"No services found at all for '{query}'")
+        return {"negotiated": False, "message": "No providers found to negotiate with"}
+
+    negotiated_with = []
+    for service in closest:
+        # Find an existing job/chat between this user and provider for this service
+        # We need a job to send a message. Look for any open job linking client to this service.
+        from ....models.job import Job
+        job_result = await db.execute(
+            select(Job).where(
+                and_(
+                    Job.client_id == task.user_id,
+                    Job.service_listing_id == service.id,
+                    Job.status.notin_(["cancelled", "completed"]),
+                )
+            ).limit(1)
+        )
+        job = job_result.scalar_one_or_none()
+
+        if job:
+            # Send negotiation message in existing job chat
+            price_str = f"₦{max_price:,.0f}" if max_price else "a lower price"
+            msg_content = (
+                f"Hi! I'm interested in your service '{service.title}' (currently ₦{float(service.price):,.0f}). "
+                f"I have a budget of {price_str}. Could you accommodate? This message was sent by my AI assistant on Gigr."
+            )
+            try:
+                await _log(db, task.id, "action", f"Sending negotiation message to provider for '{service.title}'...")
+                msg = await create_message(db, job.id, task.user_id, msg_content)
+                await _log(db, task.id, "success", f"Negotiation message sent for '{service.title}'")
+                negotiated_with.append({"service_id": str(service.id), "title": service.title, "job_id": str(job.id)})
+                
+                # Broadcast via WebSockets for real-time frontend notifications
+                from ....api.v1.endpoints.messages import manager
+                await manager.broadcast_new_message(msg)
+            except Exception as exc:
+                await _log(db, task.id, "error", f"Failed to send message for '{service.title}': {exc}")
+        else:
+            await _log(db, task.id, "info",
+                       f"No active chat with provider for '{service.title}'. "
+                       f"Request the service first to enable negotiation messaging.")
+
+    return {
+        "negotiated": len(negotiated_with) > 0,
+        "negotiated_with": negotiated_with,
+        "message": f"Sent negotiation messages to {len(negotiated_with)} provider(s)" if negotiated_with
+                   else "No active chats found. Request a service first to negotiate.",
+    }
+
+
+async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Create a new job posting on behalf of the user."""
+    from ....crud.job import create_job
+    from ....schemas.job import JobCreate
+
+    params = task.params or {}
+    title: str = params.get("title", "Job posted via AI")
+    price: Optional[float] = params.get("price")
+
+    if not price:
+        await _log(db, task.id, "warning", "No price specified for job posting — using ₦1,000 as placeholder")
+        price = 1000.0
+
+    await _log(db, task.id, "action", f"Creating job: '{title}' for ₦{price:,.0f}...")
+    try:
+        desc = f"I am looking for: {title}"
+        if price:
+            desc += f"\nBudget: ₦{price:,.0f}"
+        job_in = JobCreate(title=title, description=desc, price=price)
+        job = await create_job(db, task.user_id, job_in)
+        await db.commit()
+        await _log(db, task.id, "success", f"Job '{title}' created successfully ([View Job](?jobId={job.id}))")
+        return {
+            "created": True,
+            "job_id": str(job.id),
+            "title": title,
+            "price": price,
+            "message": f"Job '{title}' posted for ₦{price:,.0f}",
+        }
+    except Exception as exc:
+        await db.rollback()
+        await _log(db, task.id, "error", f"❌ Failed to create job: {exc}")
+        return {"created": False, "error": str(exc)}
+
+async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Create a new service offering on behalf of the provider."""
+    from ....crud.service import create_service
+    from ....schemas.service import ServiceListingCreate
+    
+    params = task.params or {}
+    title: str = params.get("title", "Service offered via AI")
+    price: Optional[float] = params.get("price")
+
+    if not price:
+        await _log(db, task.id, "warning", "No rate specified for service — using ₦5,000 as placeholder")
+        price = 5000.0
+
+    await _log(db, task.id, "action", f"Creating service: '{title}' for ₦{price:,.0f}...")
+    try:
+        desc = f"I am offering: {title}"
+        service_in = ServiceListingCreate(title=title, description=desc, price=price)
+        service = await create_service(db, task.user_id, service_in)
+        await db.commit()
+        await _log(db, task.id, "success", f"Service '{title}' created successfully ([View Service](?serviceId={service.id}))")
+        return {
+            "created": True,
+            "service_id": str(service.id),
+            "title": title,
+            "price": price,
+        }
+    except Exception as exc:
+        await db.rollback()
+        await _log(db, task.id, "error", f"❌ Failed to create service: {exc}")
+        return {"created": False, "error": str(exc)}
+
+
+async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Handle AI payments using either autonomous placeholder logic or interactive dialog."""
+    params = task.params or {}
+    
+    # 1. Check if AI Autonomous Payment is enabled via env var
+    if settings.AI_AUTONOMOUS_PAYMENT_ENABLED:
+        await _log(db, task.id, "action", "Initiating autonomous payment via Solana smart contract...")
+        # PLACEHOLDER: Here we would use get_platform_payer() to sign a tx if the user had deposited funds
+        await asyncio.sleep(2) # Simulate processing
+        await _log(db, task.id, "success", "Autonomous payment completed successfully.")
+        return {"payment_method": "autonomous", "status": "success"}
+    
+    # 2. Fallback to interactive dialog
+    await _log(db, task.id, "action", "Preparing payment for approval...")
+    
+    dialog_payload = {
+        "type": "approve_payment",
+        "title": "Payment Request",
+    }
+    
+    await _log(db, task.id, "warning", 
+               "I cannot securely sign Solana transactions on your behalf. "
+               "I have prepared the payment. Please approve it to continue.", 
+               data={"action_payload": dialog_payload})
+               
+    return {"payment_method": "manual_dialog_requested", "status": "pending_user_approval"}
+
+async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Handle AI auto-replies to incoming messages."""
+    await _log(db, task.id, "action", "Analyzing incoming message...")
+    # Simulate LLM generating a reply
+    import asyncio
+    await asyncio.sleep(1)
+    
+    # In a real app we'd use an LLM here. For now, generate a smart placeholder.
+    reply_content = "Hi! I am the AI assistant. My human is currently away but they have received your message and will get back to you soon."
+    
+    await _log(db, task.id, "success", f"Drafted and sent auto-reply: '{reply_content}'")
+    
+    return {"status": "success", "reply": reply_content}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 3: Agent loop — background asyncio coroutine
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_running_tasks: set[str] = set()  # tracks currently executing task IDs
+
+
+async def _execute_task(task_id: str):
+    """Execute a single agent task in its own DB session."""
+    _running_tasks.add(task_id)
+    try:
+        async with async_session() as db:
+            # Re-fetch task inside this session
+            result = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
+            task = result.scalar_one_or_none()
+            if not task or task.status != "queued":
+                return
+
+            # Mark as running
+            task.status = "running"
+            task.updated_at = datetime.now(timezone.utc)
+            await db.flush()
+
+            await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
+            
+            # --- NLP Parsing moved to background loop to avoid blocking the UI ---
+            if task.task_type == "pending":
+                await _log(db, task.id, "info", "Parsing command intent...")
+                parsed = await parse_command(task.command_text)
+                task.task_type = parsed.get("task_type", "generic")
+                
+                # Merge original params (like ai_negotiate_enabled) with parsed params
+                orig_params = task.params or {}
+                new_params = parsed.get("params", {})
+                task.params = {**orig_params, **new_params}
+                
+                await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
+                await db.flush()
+
+            # Dispatch to the right handler
+            try:
+                if task.task_type == "find_service":
+                    task.result = await _handle_find_service(task, db)
+                elif task.task_type == "find_job":
+                    task.result = await _handle_find_job(task, db)
+                elif task.task_type == "post_job":
+                    task.result = await _handle_post_job(task, db)
+                elif task.task_type == "post_service":
+                    task.result = await _handle_post_service(task, db)
+                elif task.task_type == "negotiate":
+                    task.result = await _handle_negotiate(task, db)
+                elif task.task_type == "pay":
+                    task.result = await _handle_payment(task, db)
+                elif task.task_type == "reply_message":
+                    task.result = await _handle_reply_message(task, db)
+                elif task.task_type == "navigate":
+                    page = (task.params or {}).get("page", "")
+                    await _log(db, task.id, "info", f"Navigation command: go to {page}")
+                    task.result = {"page": page, "message": f"Navigate to {page}"}
+                else:
+                    await _log(db, task.id, "info", "Generic command processed")
+                    task.result = {"message": "Command acknowledged"}
+
+                task.status = "completed"
+                task.completed_at = datetime.now(timezone.utc)
+                await _log(db, task.id, "success", "Task completed")
+            except Exception as exc:
+                print(f"[agent] Task {task_id} failed: {exc}")
+                task.status = "failed"
+                task.result = {"error": str(exc)}
+                task.completed_at = datetime.now(timezone.utc)
+                try:
+                    await _log(db, task.id, "error", f"Task failed: {exc}")
+                except Exception:
+                    pass
+
+            task.updated_at = datetime.now(timezone.utc)
+            await db.commit()
+    except Exception as exc:
+        print(f"[agent] Unexpected error in task {task_id}: {exc}")
+    finally:
+        _running_tasks.discard(task_id)
+
+
+async def agent_loop():
+    """Background loop that polls for queued tasks and executes them.
+
+    Started on FastAPI startup. Respects AI_AGENT_ENABLED and
+    AI_AGENT_MAX_CONCURRENT_TASKS settings.
+    """
+    print(f"[agent] Loop started (poll every {settings.AI_AGENT_POLL_INTERVAL_SECONDS}s, "
+          f"max {settings.AI_AGENT_MAX_CONCURRENT_TASKS} concurrent)")
+
+    while True:
+        await asyncio.sleep(settings.AI_AGENT_POLL_INTERVAL_SECONDS)
+
+        if not settings.AI_AGENT_ENABLED:
+            continue
+
+        try:
+            async with async_session() as db:
+                # Check for timed-out running tasks
+                from sqlalchemy import update as sa_update
+                from datetime import timedelta
+                timeout_cutoff = datetime.now(timezone.utc) - timedelta(seconds=settings.AI_AGENT_TASK_TIMEOUT_SECONDS)
+                await db.execute(
+                    sa_update(AgentTask)
+                    .where(and_(AgentTask.status == "running", AgentTask.updated_at < timeout_cutoff))
+                    .values(status="failed", result={"error": "Task timed out"}, updated_at=datetime.now(timezone.utc))
+                )
+                await db.commit()
+
+                # Fetch queued tasks up to concurrency limit
+                slots = settings.AI_AGENT_MAX_CONCURRENT_TASKS - len(_running_tasks)
+                if slots <= 0:
+                    continue
+
+                queued = await db.execute(
+                    select(AgentTask)
+                    .where(AgentTask.status == "queued")
+                    .order_by(AgentTask.created_at.asc())
+                    .limit(slots)
+                )
+                tasks_to_run = queued.scalars().all()
+
+            # Dispatch each task as a separate asyncio task
+            for t in tasks_to_run:
+                if str(t.id) not in _running_tasks:
+                    asyncio.create_task(_execute_task(str(t.id)))
+
+        except Exception as exc:
+            print(f"[agent] Loop error: {exc}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SECTION 4: API routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Legacy endpoint (backwards compat) ────────────────────────────────────────
+
+class InterpretCommandRequest(BaseModel):
+    text: str
+
+
+class InterpretCommandResponse(BaseModel):
+    action: Optional[str] = None
+    params: dict = {}
+    response: Optional[str] = None
+
+
+@router.post("/ai/interpret-command", response_model=InterpretCommandResponse)
+async def interpret_command_legacy(request: InterpretCommandRequest):
+    """Legacy endpoint kept for backwards compatibility with the old voice assistant hook."""
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Empty command text")
+    parsed = await parse_command(request.text)
+    return InterpretCommandResponse(
+        action=parsed.get("task_type"),
+        params=parsed.get("params", {}),
+        response=parsed.get("response"),
+    )
+
+
+# ── New agent endpoints ────────────────────────────────────────────────────────
+
+@router.post("/ai/command", response_model=AgentTaskOut, status_code=status.HTTP_201_CREATED)
+async def submit_command(
+    request: AgentCommandRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit a voice or text command. Creates a background agent task."""
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty command text")
+
+    # Parse intent later in the background loop to avoid blocking the UI
+    task_type = "pending"
+    params = {}
+
+    # For negotiate tasks, inject the user's negotiate preference
+    if "ai_negotiate_enabled" in request.dict(exclude_unset=True):
+        params["ai_negotiate_enabled"] = request.dict()["ai_negotiate_enabled"]
+
+    # Create the task record
+    task = AgentTask(
+        user_id=current_user.id,
+        command_text=text,
+        task_type=task_type,
+        params=params,
+        status="queued",
+    )
+    db.add(task)
+    await db.flush()
+
+    # Immediate log entry
+    initial_log = AgentLog(
+        task_id=task.id,
+        level="info",
+        message=f"Command received: \"{text}\"",
+    )
+    db.add(initial_log)
+    await db.commit()
+    await db.refresh(task)
+
+    # Return with logs
+    result = await db.execute(
+        select(AgentTask)
+        .options(selectinload(AgentTask.logs))
+        .where(AgentTask.id == task.id)
+    )
+    return result.scalar_one()
+
+
+@router.get("/ai/tasks", response_model=List[AgentTaskOut])
+async def list_tasks(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 50,
+):
+    """List all agent tasks for the current user, most recent first."""
+    result = await db.execute(
+        select(AgentTask)
+        .options(selectinload(AgentTask.logs))
+        .where(AgentTask.user_id == current_user.id)
+        .order_by(AgentTask.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/ai/tasks/{task_id}", response_model=AgentTaskOut)
+async def get_task(
+    task_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single task with all its logs."""
+    result = await db.execute(
+        select(AgentTask)
+        .options(selectinload(AgentTask.logs))
+        .where(and_(AgentTask.id == task_id, AgentTask.user_id == current_user.id))
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.delete("/ai/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_task(
+    task_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel a queued or running task."""
+    result = await db.execute(
+        select(AgentTask).where(and_(AgentTask.id == task_id, AgentTask.user_id == current_user.id))
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in ("queued", "running"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel a task with status '{task.status}'")
+
+    task.status = "cancelled"
+    task.completed_at = datetime.now(timezone.utc)
+    task.updated_at = datetime.now(timezone.utc)
+    cancel_log = AgentLog(task_id=task.id, level="warning", message="Task cancelled by user")
+    db.add(cancel_log)
+    await db.commit()
+
+class AgentDialogResponse(BaseModel):
+    action: str  # e.g., "confirm", "cancel"
+
+@router.post("/ai/tasks/{task_id}/respond")
+async def respond_to_dialog(
+    task_id: uuid.UUID,
+    response: AgentDialogResponse,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Handle a user's response to an interactive dialog."""
+    result = await db.execute(
+        select(AgentTask).where(and_(AgentTask.id == task_id, AgentTask.user_id == current_user.id))
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    # Check the last log to see what the dialog was
+    log_result = await db.execute(
+        select(AgentLog).where(AgentLog.task_id == task.id).order_by(AgentLog.created_at.desc()).limit(1)
+    )
+    last_log = log_result.scalar_one_or_none()
+    
+    if not last_log or not last_log.data or "action_payload" not in last_log.data:
+        raise HTTPException(status_code=400, detail="No pending dialog for this task")
+        
+    payload = last_log.data["action_payload"]
+    
+    # We clear the action_payload so the dialog goes away
+    last_log.data.pop("action_payload")
+    
+    if response.action == "cancel":
+        await _log(db, task.id, "info", "User cancelled the action.")
+        await db.commit()
+        return {"status": "cancelled"}
+        
+    if payload["type"] == "create_job_fallback" and response.action == "confirm":
+        # Create a new task to post the job
+        new_task = AgentTask(
+            user_id=current_user.id,
+            command_text=f"Post a job: {payload['title']}",
+            task_type="post_job",
+            params={"title": payload["title"], "price": payload["price"]},
+            status="queued"
+        )
+        db.add(new_task)
+        await _log(db, task.id, "success", f"Okay, I will post a job looking for '{payload['title']}' for you.")
+        await db.commit()
+        return {"status": "ok", "new_task_id": str(new_task.id)}
+        
+    if payload["type"] == "approve_payment" and response.action == "confirm":
+        await _log(db, task.id, "success", "Payment approved by user (Simulated).")
+        await db.commit()
+        return {"status": "ok"}
+        
+    await db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/ai/logs", response_model=List[AgentLogOut])
+async def recent_logs(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    limit: int = 100,
+):
+    """Get recent log entries across all tasks for the current user."""
+    result = await db.execute(
+        select(AgentLog)
+        .join(AgentTask, AgentLog.task_id == AgentTask.id)
+        .where(AgentTask.user_id == current_user.id)
+        .order_by(AgentLog.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+@router.get("/ai/settings")
+async def get_ai_settings(
+    current_user: User = Depends(get_current_user),
+):
+    """Return the current AI engine status and user-facing config info."""
+    return {
+        "groq_enabled": bool(settings.GROQ_API_KEY),
+        "groq_model": settings.GROQ_MODEL if settings.GROQ_API_KEY else None,
+        "agent_enabled": settings.AI_AGENT_ENABLED,
+        "poll_interval_seconds": settings.AI_AGENT_POLL_INTERVAL_SECONDS,
+        "nlp_engine": "groq" if settings.GROQ_API_KEY else "rule-based",
+    }

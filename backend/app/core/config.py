@@ -42,7 +42,7 @@ class Settings(BaseSettings):
 
     # App secrets
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200 # 30 days
     ALGORITHM: str = "HS256"
     ADMIN_SECRET: str = Field(..., env="ADMIN_SECRET")
 
@@ -52,6 +52,25 @@ class Settings(BaseSettings):
     # automatically released to them (if the client hasn't released or disputed).
     # Defaults to 1 hour. Lower it (e.g. 120) to demo the scanner on devnet.
     AUTO_RELEASE_SECONDS: int = Field(default=3600, env="AUTO_RELEASE_SECONDS")
+
+    # ── AI Agent ──────────────────────────────────────────────────────────────
+    # Master switch — set to false to disable background agent task runner
+    AI_AGENT_ENABLED: bool = Field(default=True, env="AI_AGENT_ENABLED")
+    # How often (seconds) the background worker polls for queued tasks
+    AI_AGENT_POLL_INTERVAL_SECONDS: int = Field(default=30, env="AI_AGENT_POLL_INTERVAL_SECONDS")
+    # Max simultaneous running tasks
+    AI_AGENT_MAX_CONCURRENT_TASKS: int = Field(default=5, env="AI_AGENT_MAX_CONCURRENT_TASKS")
+    # Seconds before a running task is declared timed-out / failed
+    AI_AGENT_TASK_TIMEOUT_SECONDS: int = Field(default=300, env="AI_AGENT_TASK_TIMEOUT_SECONDS")
+    # Whether the agent is allowed to make payments autonomously
+    AI_AUTONOMOUS_PAYMENT_ENABLED: bool = Field(default=False, env="AI_AUTONOMOUS_PAYMENT_ENABLED")
+
+    # ── Groq (free LLM + Whisper) ─────────────────────────────────────────────
+    # Get a free key at https://console.groq.com (no credit card required)
+    # Leave blank to use the built-in rule-based NLP fallback instead.
+    GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
+    GROQ_MODEL: str = Field(default="llama3-8b-8192", env="GROQ_MODEL")
+    GROQ_WHISPER_MODEL: str = Field(default="whisper-large-v3-turbo", env="GROQ_WHISPER_MODEL")
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
