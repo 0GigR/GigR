@@ -10,6 +10,7 @@ from ....crud.job import (
     cancel_job_offchain,
     get_jobs_filtered,
 )
+from ....crud.notification import create_notification
 from ....crud.user import get_user_by_id
 from ....schemas.job import JobCreate, JobOut, JobAssign
 from ....models.user import User
@@ -139,7 +140,7 @@ async def accept_request(
     await db.commit()
     await db.refresh(job)
 
-    # In‑app notification
+    # In‑app notification via chat
     from ....crud.message import create_message
     from ....services.ws_manager import manager
     auto = await create_message(
@@ -147,6 +148,15 @@ async def accept_request(
         f">> {current_user.display_name or 'The provider'} accepted your request for \"{job.title}\". You can now fund the escrow."   
         )
     await manager.broadcast_new_message(auto)
+
+    # Bell Notification to the client
+    await create_notification(
+        db,
+        user_id=job.client_id,
+        title="Request Accepted",
+        message=f"{current_user.display_name or 'A provider'} accepted your request for \"{job.title}\". You can now fund the escrow.",
+        link=f"/dashboard/activity"
+    )
 
     # Background email
     client = await get_user_by_id(db, job.client_id)
@@ -210,6 +220,8 @@ async def list_jobs(
     max_price: Optional[float] = Query(None),
     q: Optional[str] = Query(None, alias="search"),
     sort: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -233,6 +245,8 @@ async def list_jobs(
         radius_km=radius,
         search_text=q,
         sort_by=sort,
+        limit=limit,
+        offset=offset,
     )
     return result
 
@@ -266,6 +280,15 @@ async def assign_job_route(
         f">> {current_user.display_name or 'The client'} hired you for \"{job.title}\"! Once they fund the escrow you can begin work."    
         )
     await manager.broadcast_new_message(auto)
+
+    # Bell Notification to provider
+    await create_notification(
+        db,
+        user_id=assign_data.provider_id,
+        title="You're Hired!",
+        message=f"{current_user.display_name or 'The client'} assigned you to \"{job.title}\".",
+        link=f"/dashboard/activity"
+    )
 
     # Background emails to rejected applicants
     try:
@@ -372,6 +395,16 @@ async def fund_job_route(
         raise HTTPException(status_code=400, detail=detail)
 
     job = await update_job_status(db, job, "funded", escrow_address=str(escrow_pubkey))
+
+    # Notification to provider
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Escrow Funded",
+        message=f"The client has funded the escrow for \"{job.title}\". You can begin working!",
+        link=f"/dashboard/activity"
+    )
+
     await db.commit()
     await db.refresh(job)
     return job
@@ -454,6 +487,16 @@ async def release_job_route(
     # job = await update_job_status(db, job, "completed")
     # … after Solana release_escrow succeeds …
     job = await update_job_status(db, job, "completed")
+
+    # Notification to provider
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Payment Released",
+        message=f"The payment for \"{job.title}\" has been released to your wallet.",
+        link=f"/dashboard/activity"
+    )
+
     await db.commit()
     await db.refresh(job)
     return job
@@ -489,9 +532,17 @@ async def submit_work_route(
     auto = await create_message(
         db, job.id, current_user.id,
         f">> {current_user.display_name or 'The provider'} marked \"{job.title}\" as complete. Please review and release the escrow -- it will auto-release if no action is taken."
-        f"Please review and release the escrow — it will auto-release if no action is taken."
     )
     await manager.broadcast_new_message(auto)
+
+    # Notification to client
+    await create_notification(
+        db,
+        user_id=job.client_id,
+        title="Work Submitted",
+        message=f"{current_user.display_name or 'The provider'} submitted work for \"{job.title}\". Please review it.",
+        link=f"/dashboard/activity"
+    )
 
     # from ....services.brevo_client import send_email
     # Background email
@@ -522,6 +573,18 @@ async def cancel_job_route(
     # Pre‑funding cancellation (either party)
     if job.status not in ("funded", "in_progress"):
         job = await cancel_job_offchain(db, job)
+
+        # Notify the other party
+        other_party_id = job.provider_id if current_user.id == job.client_id else job.client_id
+        if other_party_id:
+            await create_notification(
+                db,
+                user_id=other_party_id,
+                title="Job Cancelled",
+                message=f"\"{job.title}\" was cancelled by {current_user.display_name or 'the other party'}.",
+                link=f"/dashboard/activity"
+            )
+
         await db.commit()
         await db.refresh(job)
         return job
