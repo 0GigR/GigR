@@ -10,7 +10,7 @@ interface UseWebSocketMessagesOptions {
   enabled?: boolean
 }
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000'
+const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://gigr-work.vercel.app'
 
 export function useWebSocketMessages({
   jobIds,
