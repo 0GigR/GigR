@@ -89,6 +89,7 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:5500",
     "http://localhost",
     "https://gigr-work.vercel.app/api/v1"
+    "https://gigr-work.vercel.app",
 ]
 # In production, set FRONTEND_URL env var to your Render URL, e.g. https://gigr.onrender.com
 if os.getenv("FRONTEND_URL"):
