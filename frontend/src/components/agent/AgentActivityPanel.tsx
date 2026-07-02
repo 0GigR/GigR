@@ -137,42 +137,46 @@ function TaskCard({ task, onCancel }: { task: AgentTask; onCancel: () => void })
         )}
       </div>
 
-      {/* Task Logs */}
-      {task.logs.length > 0 && (
-        <div className="p-3 space-y-3">
-          {task.logs.map((log) => (
-            <div key={log.id} className="flex items-start gap-2.5 text-sm">
-              <div className="mt-0.5 shrink-0 bg-white dark:bg-gray-950 rounded-full">
-                {LEVEL_ICONS[log.level] || LEVEL_ICONS.info}
-              </div>
-              <div className="flex-1">
-                <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line leading-snug">
-                  <LogMessage text={log.message} />
-                </p>
-                {/* Interactive Action Payload */}
-                {log.data?.action_payload && (
-                  <div className="mt-2 flex gap-2">
-                    <Button 
-                      size="sm" 
-                      className="bg-black text-white hover:bg-gray-800"
-                      onClick={() => handleDialogResponse(task.id, 'confirm')}
-                    >
-                      {log.data.action_payload.type === 'create_job_fallback' ? 'Yes, Create Job' : 'Approve & Pay'}
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleDialogResponse(task.id, 'cancel')}
-                    >
-                      No
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
+      {/* Task Logs */}{/* Task Logs */}
+{/* Task Logs */}
+{task.logs.length > 0 && (
+  <div className="p-3 space-y-3">
+    {task.logs.map((log) => (
+      <div key={log.id} className="flex items-start gap-2.5 text-sm">
+        <div className="mt-0.5 shrink-0 bg-white dark:bg-gray-950 rounded-full">
+          {LEVEL_ICONS[log.level] || LEVEL_ICONS.info}
         </div>
-      )}
+        <div className="flex-1">
+          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line leading-snug">
+            <LogMessage text={log.message} />
+          </p>
+          {/* Interactive Action Payload */}
+          {!!log.data?.action_payload && (
+            <div className="mt-2 flex gap-2">
+              <Button 
+                size="sm" 
+                className="bg-black text-white hover:bg-gray-800"
+                onClick={() => handleDialogResponse(task.id, 'confirm')}
+              >
+                {/* Wrapping it in parentheses and casting to 'any' forces TS to shut up about the {} type */}
+                {(log.data.action_payload as any).type === 'create_job_fallback' 
+                  ? 'Yes, Create Job' 
+                  : 'Approve & Pay'}
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handleDialogResponse(task.id, 'cancel')}
+              >
+                No
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    ))}
+  </div>
+)}
     </div>
   )
 }
