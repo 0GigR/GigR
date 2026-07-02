@@ -10,7 +10,27 @@ interface UseWebSocketMessagesOptions {
   enabled?: boolean
 }
 
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://gigr-work.vercel.app'
+// Derive the WebSocket base URL automatically:
+// 1. Prefer VITE_WS_URL if explicitly set
+// 2. Otherwise, derive from VITE_API_URL (strip /api/v1, swap http->ws)
+// 3. Fall back to current window location (works for local dev via Vite proxy)
+function getWsBase(): string {
+  if (import.meta.env.VITE_WS_URL) {
+    return import.meta.env.VITE_WS_URL
+  }
+  if (import.meta.env.VITE_API_URL) {
+    // e.g. https://gigr-work.vercel.app/api/v1 -> wss://gigr-work.vercel.app
+    return import.meta.env.VITE_API_URL
+      .replace(/\/api\/v1\/?$/, '')
+      .replace(/^https:/, 'wss:')
+      .replace(/^http:/, 'ws:')
+  }
+  // Local dev: use current page host with correct protocol
+  const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${proto}//${window.location.host}`
+}
+
+const WS_BASE = getWsBase()
 
 export function useWebSocketMessages({
   jobIds,
