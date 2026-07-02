@@ -20,13 +20,17 @@ import {
   Star,
   FileText,
   ImagePlus,
+  Loader2,
+  Send,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ImageViewer } from '@/components/ImageViewer'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
 type ScopeAmendment = components['schemas']['ScopeAmendmentOut']
+type Vouch = components['schemas']['VouchOut']
 
 // Helper to fetch user info
 // function useUserInfo(userId: string | undefined) {
@@ -94,8 +98,19 @@ export default function ActivityPage() {
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
   const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeJobId, setDisputeJobId] = useState<string | null>(null)
+
+  const { data: myVouchJobIds } = useQuery<string[]>({
+    queryKey: ['myVouchJobIds'],
+    queryFn: async () => {
+      const { data } = await api.get('/vouches/user/' + user?.id)
+      return (data as Vouch[]).map(v => v.job_id)
+    },
+    enabled: !!user?.id,
+  })
+  const vouchedJobIds = new Set(myVouchJobIds || [])
 
   // Fetch all my jobs
   const { data: allJobs, isLoading } = useQuery<Job[]>({
@@ -187,7 +202,13 @@ export default function ActivityPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
-      toast.success('Vouch recorded – cNFT minted on Solana!')
+      queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
+      toast.success('Vouch recorded – cNFT minting...')
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+        queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
+        toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
+      }, 5000)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Vouch failed'),
   })
@@ -236,6 +257,17 @@ export default function ActivityPage() {
     },
     onError: (err: any) =>
       toast.error(err.response?.data?.detail || 'Amendment failed'),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      await api.post(`/jobs/${jobId}/cancel`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+      toast.success('Job cancelled.')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Cancel failed'),
   })
 
   const acceptAmendMutation = useMutation({
@@ -358,7 +390,8 @@ export default function ActivityPage() {
                         {job.image_url && (
                           <img
                             src={job.image_url}
-                            className="rounded-lg w-20 h-20 object-cover mb-2"
+                            className="rounded-lg w-20 h-20 object-cover mb-2 cursor-pointer"
+                            onClick={() => setLightboxSrc(job.image_url!)}
                           />
                         )}
                         <div className="flex gap-2 flex-wrap">
@@ -376,8 +409,9 @@ export default function ActivityPage() {
                                 size="sm"
                                 onClick={() => setConfirmAction({ type: 'fund', jobId: job.id, title: job.title })}
                                 className="bg-green-600 text-white"
+                                disabled={fundMutation.isPending}
                               >
-                                <Shield className="w-3 h-3 mr-1" />{' '}
+                                {fundMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
                                 Fund
                               </Button>
                           )}
@@ -387,8 +421,9 @@ export default function ActivityPage() {
                                 size="sm"
                                 onClick={() => setConfirmAction({ type: 'submit', jobId: job.id, title: job.title })}
                                 className="bg-purple-600 text-white"
+                                disabled={submitWorkMutation.isPending}
                               >
-                                <CheckCircle className="w-3 h-3 mr-1" />{' '}
+                                {submitWorkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                                 Submit Work
                               </Button>
                           )}
@@ -399,8 +434,9 @@ export default function ActivityPage() {
                                 size="sm"
                                 onClick={() => setConfirmAction({ type: 'release', jobId: job.id, title: job.title })}
                                 className="bg-blue-600 text-white"
+                                disabled={releaseMutation.isPending}
                               >
-                                <CheckCircle className="w-3 h-3 mr-1" />{' '}
+                                {releaseMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                                 Release
                               </Button>
                           )}
@@ -413,17 +449,34 @@ export default function ActivityPage() {
                                 ).toLocaleString()}
                               </span>
                             )}
+                          {/* Cancel button — pre-funding only */}
+                          {['open', 'assigned', 'requested'].includes(job.status) && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-red-300 text-red-600 hover:bg-red-50"
+                              onClick={() => setConfirmAction({ type: 'cancel', jobId: job.id, title: job.title })}
+                              disabled={cancelMutation.isPending}
+                            >
+                              {cancelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                              Cancel Job
+                            </Button>
+                          )}
                           {tab === 'completed' &&
                             job.client_id === user?.id && (
                               <Button
                                 size="sm"
-                                onClick={() =>
-                                  vouchMutation.mutate(job.id)
-                                }
-                                className="bg-yellow-600 text-white"
+                                onClick={() => vouchMutation.mutate(job.id)}
+                                disabled={vouchMutation.isPending || vouchedJobIds.has(job.id)}
+                                className="bg-yellow-600 text-white disabled:opacity-60"
                               >
-                                <Star className="w-3 h-3 mr-1" />{' '}
-                                Vouch
+                                {vouchedJobIds.has(job.id) ? (
+                                  <><CheckCircle className="w-3 h-3 mr-1" /> Already Vouched</>
+                                ) : vouchMutation.isPending ? (
+                                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Vouching...</>
+                                ) : (
+                                  <><Star className="w-3 h-3 mr-1" /> Vouch</>
+                                )}
                               </Button>
                             )}
                         </div>
@@ -467,7 +520,8 @@ export default function ActivityPage() {
               {contractRoomJob.image_url && (
                 <img
                   src={contractRoomJob.image_url}
-                  className="rounded-lg w-20 h-20 object-cover mt-2"
+                  className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer"
+                  onClick={() => setLightboxSrc(contractRoomJob.image_url!)}
                 />
               )}
             </div>
@@ -478,7 +532,7 @@ export default function ActivityPage() {
                 <p className="font-bold text-yellow-800">Scope Amendment Proposed</p>
                 <p><strong>Reason:</strong> {amend.reason}</p>
                 <p><strong>New Price:</strong> ₦{parseFloat(amend.new_total_price as string).toLocaleString()}</p>
-                {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2" />}
+                {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc((amend as any).image_url)} />}
                 {contractRoomJob?.client_id === user?.id && (
                   <div className="flex gap-2 pt-2">
                     <Button
@@ -487,6 +541,7 @@ export default function ActivityPage() {
                       onClick={() => acceptAmendMutation.mutate({ id: amend.id, accept: true })}
                       disabled={acceptAmendMutation.isPending}
                     >
+                      {acceptAmendMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
                       Accept
                     </Button>
                     <Button
@@ -495,6 +550,7 @@ export default function ActivityPage() {
                       onClick={() => acceptAmendMutation.mutate({ id: amend.id, accept: false })}
                       disabled={acceptAmendMutation.isPending}
                     >
+                      {acceptAmendMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
                       Reject
                     </Button>
                   </div>
@@ -523,7 +579,16 @@ export default function ActivityPage() {
                         : 'bg-gray-100 text-black'
                     }`}
                   >
-                    <p className="text-sm">{msg.content}</p>
+                    {msg.content.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ? (
+                      <img
+                        src={msg.content}
+                        alt="sent image"
+                        className="rounded-lg max-h-40 object-cover mb-1 cursor-pointer"
+                        onClick={() => setLightboxSrc(msg.content)}
+                      />
+                    ) : (
+                      <p className="text-sm">{msg.content}</p>
+                    )}
                     <span className="text-xs opacity-70">
                       {new Date(msg.created_at).toLocaleTimeString()}
                     </span>
@@ -534,41 +599,65 @@ export default function ActivityPage() {
 
             {/* Message input or amendment form */}
             {!showScopeAmend ? (
-              <div className="border-t pt-2 flex gap-2">
-                <Input
-                  placeholder="Type a message..."
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={(e) =>
-                    e.key === 'Enter' && handleSendMessage()
-                  }
-                />
-                <Button
-                  size="sm"
-                  onClick={handleSendMessage}
-                  disabled={!messageText.trim()}
-                  className="bg-black text-white"
-                >
-                  Send
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowScopeAmend(true)}
-                >
-                  <FileText className="w-4 h-4 mr-1" /> Amend
-                </Button>
-                {(contractRoomJob.status === 'funded' ||
-                  contractRoomJob.status === 'in_progress') && (
+              <div className="border-t pt-2 flex flex-col gap-2">
+                <div className="flex gap-2 items-center">
+                  <label className="cursor-pointer">
+                    <ImagePlus className="w-5 h-5 text-gray-500 hover:text-black" />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]
+                        if (file && contractRoomJob?.id) {
+                          try {
+                            const url = await uploadFile(file)
+                            await api.post('/messages/', {
+                              job_id: contractRoomJob.id,
+                              content: url,
+                            })
+                            refetchMessages()
+                            toast.success('Image sent')
+                          } catch {
+                            // upload failed
+                          }
+                        }
+                      }}
+                    />
+                  </label>
+                  <Input
+                    placeholder="Type a message..."
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  />
                   <Button
                     size="sm"
-                    variant="destructive"
-                    onClick={() => setConfirmAction({ type: 'dispute', jobId: contractRoomJob.id, title: contractRoomJob.title })}
-                    disabled={raiseDisputeMutation.isPending}
+                    onClick={handleSendMessage}
+                    disabled={!messageText.trim() || sendMessageMutation.isPending}
+                    className="bg-black text-white"
                   >
-                    <Shield className="w-4 h-4 mr-1" /> Dispute
+                    {sendMessageMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   </Button>
-                )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowScopeAmend(true)}
+                  >
+                    <FileText className="w-4 h-4 mr-1" /> Amend
+                  </Button>
+                  {(contractRoomJob.status === 'funded' ||
+                    contractRoomJob.status === 'in_progress') && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setConfirmAction({ type: 'dispute', jobId: contractRoomJob.id, title: contractRoomJob.title })}
+                      disabled={raiseDisputeMutation.isPending}
+                    >
+                      <Shield className="w-4 h-4 mr-1" /> Dispute
+                    </Button>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="border-t pt-2 space-y-2">
@@ -647,7 +736,8 @@ export default function ActivityPage() {
           confirmAction?.type === 'fund' ? 'Fund Escrow' :
           confirmAction?.type === 'release' ? 'Release Payment' :
           confirmAction?.type === 'submit' ? 'Submit Work' :
-          confirmAction?.type === 'dispute' ? 'Raise Dispute' : ''
+          confirmAction?.type === 'dispute' ? 'Raise Dispute' :
+          confirmAction?.type === 'cancel' ? 'Cancel Job' : ''
         }
         description={
           confirmAction?.type === 'fund'
@@ -658,6 +748,8 @@ export default function ActivityPage() {
             ? `Submit work for "${confirmAction?.title}"? The client will be notified and auto-release will start.`
             : confirmAction?.type === 'dispute'
             ? `Raise a dispute for "${confirmAction?.title}"? A reason will be requested next.`
+            : confirmAction?.type === 'cancel'
+            ? `Are you sure you want to cancel "${confirmAction?.title}"? This action cannot be undone.`
             : ''
         }
         // onConfirm={() => {
@@ -679,6 +771,7 @@ export default function ActivityPage() {
           if (type === 'fund') fundMutation.mutate(jobId)
           else if (type === 'release') releaseMutation.mutate(jobId)
           else if (type === 'submit') submitWorkMutation.mutate(jobId)
+          else if (type === 'cancel') cancelMutation.mutate(jobId)
           else if (type === 'dispute') {
             setDisputeJobId(jobId)
             setDisputeReason('')
@@ -689,7 +782,15 @@ export default function ActivityPage() {
         }}
         confirmLabel="Proceed"
         cancelLabel="Cancel"
+        loading={
+          confirmAction?.type === 'fund' ? fundMutation.isPending :
+          confirmAction?.type === 'release' ? releaseMutation.isPending :
+          confirmAction?.type === 'submit' ? submitWorkMutation.isPending :
+          confirmAction?.type === 'cancel' ? cancelMutation.isPending :
+          false
+        }
       />
+      {lightboxSrc && <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />}
 
         {/* Dispute Reason Dialog */}
       <Dialog open={disputeJobId !== null} onOpenChange={() => setDisputeJobId(null)}>
