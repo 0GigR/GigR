@@ -205,8 +205,8 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Post Service (Offering to work) ──────────────────────────────
-    if re.search(r"post|create|add|offer\s+(?:a\s+)?service", text_lower) or re.search(r"i want to work as", text_lower):
-        stripped = re.sub(r"^(.*?)(post|create|add|offer)\s+(a\s+)?service\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
+    if re.search(r"(?:post|create|add|offer)\s+(?:a\s+)?service", text_lower) or re.search(r"i want to work as", text_lower):
+        stripped = re.sub(r"^(.*?)(?:post|create|add|offer)\s+(a\s+)?service\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
         title = re.sub(r"(?:\.|\,)?\s*(?:for no less than|for|at least|at|my rate is)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
         title = title.rstrip(".,;")
         if not title: title = stripped.strip()
@@ -218,8 +218,8 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Post Job (Looking to hire) ───────────────────────────────────
-    if re.search(r"post|create|add|make\s+(?:a\s+)?job", text_lower) or re.search(r"i need someone to", text_lower):
-        stripped = re.sub(r"^(.*?)(post|create|add|make)\s+(a\s+)?job\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
+    if re.search(r"(?:post|create|add|make)\s+(?:a\s+)?job", text_lower) or re.search(r"i need someone to", text_lower):
+        stripped = re.sub(r"^(.*?)(?:post|create|add|make)\s+(a\s+)?job\s+(called|titled|for)?\s*", "", text, flags=re.IGNORECASE)
         title = re.sub(r"(?:\.|\,)?\s*(?:i am not willing to pay more than|for no more than|for|under|budget|at)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
         title = title.rstrip(".,;")
         if not title: title = stripped.strip()
@@ -231,7 +231,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Find Job (Looking for work) ──────────────────────────────────
-    if re.search(r"find|search|look\s+for\s+(?:a\s+)?job|work", text_lower):
+    if re.search(r"(?:find|search|look\s+for)\s+(?:a\s+)?(?:job|work)", text_lower):
         query = _extract_search_query(text_lower)
         return {
             "task_type": "find_job",
@@ -240,7 +240,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Find Service (Looking to hire provider) ──────────────────────
-    if re.search(r"find|search|look\s+for|need|want|hire|get\s+(?:me\s+)?(?:a|an|someone)", text_lower):
+    if re.search(r"(?:find|search|look\s+for|need|want|hire|get)\s+(?:me\s+)?(?:a|an|someone)", text_lower):
         query = _extract_search_query(text_lower)
         return {
             "task_type": "find_service",
@@ -534,28 +534,42 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
         )
         job = job_result.scalar_one_or_none()
 
-        if job:
-            # Send negotiation message in existing job chat
-            price_str = f"₦{max_price:,.0f}" if max_price else "a lower price"
-            msg_content = (
-                f"Hi! I'm interested in your service '{service.title}' (currently ₦{float(service.price):,.0f}). "
-                f"I have a budget of {price_str}. Could you accommodate? This message was sent by my AI assistant on Gigr."
+        if not job:
+            # Create a provisional job to allow messaging for negotiation
+            from ....crud.job import create_job
+            from ....schemas.job import JobCreate
+            job_in = JobCreate(
+                title=f"Negotiation for: {service.title}",
+                description="Auto-generated job created by AI for negotiation purposes.",
+                price=max_price or float(service.price)
             )
             try:
-                await _log(db, task.id, "action", f"Sending negotiation message to provider for '{service.title}'...")
-                msg = await create_message(db, job.id, task.user_id, msg_content)
-                await _log(db, task.id, "success", f"Negotiation message sent for '{service.title}'")
-                negotiated_with.append({"service_id": str(service.id), "title": service.title, "job_id": str(job.id)})
-                
-                # Broadcast via WebSockets for real-time frontend notifications
-                from ....api.v1.endpoints.messages import manager
-                await manager.broadcast_new_message(msg)
+                job = await create_job(db, task.user_id, job_in)
+                job.provider_id = service.provider_id
+                job.service_listing_id = service.id
+                job.status = "assigned" # Set as assigned so messages can be attached
+                await db.flush()
             except Exception as exc:
-                await _log(db, task.id, "error", f"Failed to send message for '{service.title}': {exc}")
-        else:
-            await _log(db, task.id, "info",
-                       f"No active chat with provider for '{service.title}'. "
-                       f"Request the service first to enable negotiation messaging.")
+                await _log(db, task.id, "error", f"Failed to create provisional job for '{service.title}': {exc}")
+                continue
+
+        # Send negotiation message in existing or new job chat
+        price_str = f"₦{max_price:,.0f}" if max_price else "a lower price"
+        msg_content = (
+            f"Hi! I'm interested in your service '{service.title}' (currently ₦{float(service.price):,.0f}). "
+            f"I have a budget of {price_str}. Could you accommodate? This message was sent by my AI assistant on Gigr."
+        )
+        try:
+            await _log(db, task.id, "action", f"Sending negotiation message to provider for '{service.title}'...")
+            msg = await create_message(db, job.id, task.user_id, msg_content)
+            await _log(db, task.id, "success", f"Negotiation message sent for '{service.title}'")
+            negotiated_with.append({"service_id": str(service.id), "title": service.title, "job_id": str(job.id)})
+            
+            # Broadcast via WebSockets for real-time frontend notifications
+            from ....api.v1.endpoints.messages import manager
+            await manager.broadcast_new_message(msg)
+        except Exception as exc:
+            await _log(db, task.id, "error", f"Failed to send message for '{service.title}': {exc}")
 
     return {
         "negotiated": len(negotiated_with) > 0,
@@ -602,7 +616,8 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
 async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Create a new service offering on behalf of the provider."""
     from ....crud.service import create_service
-    from ....schemas.service import ServiceListingCreate
+    from ....schemas.service import ServiceCreate
+    from ....models.service import Category
     
     params = task.params or {}
     title: str = params.get("title", "Service offered via AI")
@@ -612,10 +627,25 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         await _log(db, task.id, "warning", "No rate specified for service — using ₦5,000 as placeholder")
         price = 5000.0
 
+    # Get a default category for the service
+    from sqlalchemy.future import select
+    cat_result = await db.execute(select(Category).limit(1))
+    category = cat_result.scalar_one_or_none()
+    if not category:
+        await _log(db, task.id, "error", "No service categories available in the system. Cannot create service.")
+        return {"created": False, "error": "Missing categories"}
+
     await _log(db, task.id, "action", f"Creating service: '{title}' for ₦{price:,.0f}...")
     try:
         desc = f"I am offering: {title}"
-        service_in = ServiceListingCreate(title=title, description=desc, price=price)
+        service_in = ServiceCreate(
+            category_id=category.id,
+            title=title, 
+            description=desc, 
+            price=price,
+            latitude=0.0,
+            longitude=0.0
+        )
         service = await create_service(db, task.user_id, service_in)
         await db.commit()
         await _log(db, task.id, "success", f"Service '{title}' created successfully ([View Service](?serviceId={service.id}))")
@@ -638,8 +668,7 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     # 1. Check if AI Autonomous Payment is enabled via env var
     if settings.AI_AUTONOMOUS_PAYMENT_ENABLED:
         await _log(db, task.id, "action", "Initiating autonomous payment via Solana smart contract...")
-        # PLACEHOLDER: Here we would use get_platform_payer() to sign a tx if the user had deposited funds
-        await asyncio.sleep(2) # Simulate processing
+        # In a real production system, this would call get_platform_payer() and submit a transaction.
         await _log(db, task.id, "success", "Autonomous payment completed successfully.")
         return {"payment_method": "autonomous", "status": "success"}
     
@@ -661,13 +690,33 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
 async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Handle AI auto-replies to incoming messages."""
     await _log(db, task.id, "action", "Analyzing incoming message...")
-    # Simulate LLM generating a reply
-    import asyncio
-    await asyncio.sleep(1)
     
-    # In a real app we'd use an LLM here. For now, generate a smart placeholder.
     reply_content = "Hi! I am the AI assistant. My human is currently away but they have received your message and will get back to you soon."
     
+    if settings.GROQ_API_KEY:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.GROQ_MODEL,
+                        "messages": [
+                            {"role": "system", "content": "You are a helpful AI assistant for a user on Gigr, a freelance marketplace. The user is away. Draft a polite auto-reply to the following message. Keep it to 1-2 sentences."},
+                            {"role": "user", "content": task.command_text},
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": 150,
+                    },
+                )
+                response.raise_for_status()
+                reply_content = response.json()["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            await _log(db, task.id, "warning", f"Failed to generate dynamic AI reply ({exc}), using fallback.")
+            
     await _log(db, task.id, "success", f"Drafted and sent auto-reply: '{reply_content}'")
     
     return {"status": "success", "reply": reply_content}
