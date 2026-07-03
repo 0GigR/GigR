@@ -239,7 +239,12 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
         {renderType === 'job_cards' && data?.jobs?.length > 0 && (
           <div className="space-y-2 max-w-[90%]">
             {data.jobs.map((job: any) => (
-              <JobResultCard key={job.id} job={job} onNavigate={onNavigate} />
+              <JobResultCard 
+                key={job.id} 
+                job={job} 
+                onNavigate={onNavigate} 
+                onApply={() => onDialogAction(`select_job:${job.id}`)} 
+              />
             ))}
           </div>
         )}
@@ -294,7 +299,7 @@ function ServiceResultCard({ service, onRequest }: { service: any; onRequest: ()
   )
 }
 
-function JobResultCard({ job, onNavigate }: { job: any; onNavigate: (path: string) => void }) {
+function JobResultCard({ job, onNavigate, onApply }: { job: any; onNavigate: (path: string) => void; onApply?: () => void }) {
   return (
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
@@ -304,10 +309,17 @@ function JobResultCard({ job, onNavigate }: { job: any; onNavigate: (path: strin
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{job.description}</p>
         )}
       </div>
-      <Button size="sm" variant="outline" className="shrink-0 text-xs h-7 px-2.5 gap-1"
-        onClick={() => onNavigate(`/dashboard/jobs?jobId=${job.id}`)}>
-        View <ChevronRight className="w-3 h-3" />
-      </Button>
+      <div className="flex gap-1 shrink-0">
+        <Button size="sm" variant="outline" className="text-xs h-7 px-2.5 gap-1"
+          onClick={() => onNavigate(`/dashboard/jobs?jobId=${job.id}`)}>
+          View <ChevronRight className="w-3 h-3" />
+        </Button>
+        {onApply && (
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5" onClick={onApply}>
+            Apply
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

@@ -336,7 +336,7 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
         from ....api.v1.endpoints.messages import manager
         await manager.broadcast_new_message(msg)
 
-        return f"Successfully requested service and sent a message to the provider. [View Job](/dashboard/jobs)"
+        return f"Successfully requested service and sent a message to the provider. Please check your [Jobs](/dashboard/jobs) or [Activity](/dashboard/activity) page for updates."
     except Exception as exc:
         print(f"Failed to auto-request service: {exc}")
         return f"Found service but failed to auto-request it."
@@ -1002,6 +1002,20 @@ async def get_task(
     return task
 
 
+@router.delete("/ai/tasks", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_all_tasks(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete all tasks and logs for the current user."""
+    from sqlalchemy import delete
+    await db.execute(delete(AgentLog).where(AgentLog.task_id.in_(
+        select(AgentTask.id).where(AgentTask.user_id == current_user.id)
+    )))
+    await db.execute(delete(AgentTask).where(AgentTask.user_id == current_user.id))
+    await db.commit()
+
+
 @router.delete("/ai/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_task(
     task_id: uuid.UUID,
@@ -1085,6 +1099,44 @@ async def respond_to_dialog(
         request_msg = await _request_service(db, task, service)
         await _log(db, task.id, "success", request_msg)
         await db.commit()
+        return {"status": "ok"}
+
+    # ── Select a specific job (Apply) ─────────────────────────────────────────
+    if action.startswith("select_job:"):
+        job_id_str = action.split(":", 1)[1]
+        try:
+            job_id = uuid.UUID(job_id_str)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid job ID")
+
+        from ....crud.job import get_job_by_id
+        from ....crud.application import create_application, get_application_by_applicant_and_job
+        from ....schemas.application import ApplicationCreate
+
+        job = await get_job_by_id(db, job_id)
+        if not job:
+            await _log(db, task.id, "error", "Job no longer available.")
+            await db.commit()
+            return {"status": "error", "detail": "Job not found"}
+
+        existing_app = await get_application_by_applicant_and_job(db, current_user.id, job_id)
+        if existing_app:
+            await _log(db, task.id, "warning", "You have already applied to this job.")
+            await db.commit()
+            return {"status": "ok"}
+
+        await _log(db, task.id, "action", f"Applying for job: {job.title}...")
+        try:
+            app_in = ApplicationCreate(
+                job_id=job.id,
+                message="Applied via AI Assistant.",
+            )
+            await create_application(db, current_user.id, app_in)
+            await _log(db, task.id, "success", f"Successfully applied for the job. Please check your [Jobs](/dashboard/jobs) or [Activity](/dashboard/activity) page to see if you have been assigned.")
+            await db.commit()
+        except Exception as exc:
+            await _log(db, task.id, "error", f"Failed to apply for job: {exc}")
+            await db.commit()
         return {"status": "ok"}
 
     # ── Post a job fallback ──────────────────────────────────────────────────
