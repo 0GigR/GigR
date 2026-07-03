@@ -1,9 +1,11 @@
-# Gigr AI Agent — Implementation Plan
+# GigidyAI Agent — Implementation Plan
 
 ## Overview
+
 A powerful, background AI assistant for the Gigr marketplace app that lets users navigate, search, post jobs, find providers, and negotiate prices hands-free. The agent runs in the background and logs all its actions so users can review what it did on their behalf. Uses a free Groq LLM API with a robust rule-based fallback.
 
 ## Features
+
 - **Background Async Execution**: Tasks are queued to a database and processed by a background worker loop, so the frontend isn't blocked.
 - **Negotiation Engine**: The agent can search for services within a budget. If none match, it can automatically message the closest-priced providers to negotiate the price down (if enabled by the user).
 - **Consolidated AI Core**: A single `ai.py` backend file and a single `agentStore.ts` frontend file handle all AI logic.

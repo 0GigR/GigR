@@ -761,7 +761,7 @@ async def _execute_task(task_id: str):
                                 groq_reply = resp.json()["choices"][0]["message"]["content"].strip()
                         except Exception:
                             pass
-                    reply = groq_reply or "I'm your Gigr AI assistant! I can help you find services, post jobs, or navigate the app. Try: 'find a plumber for 5k'."
+                    reply = groq_reply or "I'm Gigidy, your Gigr AI assistant! I can help you find services, post jobs, or navigate the app. Try: 'find a plumber for 5k'."
                     await _log(db, task.id, "info", reply)
                     task.result = {"message": reply}
 

@@ -80,7 +80,7 @@ export default function AgentActivityPanel() {
               <Zap className="w-4 h-4 text-violet-600 dark:text-violet-400" />
             </div>
             <div>
-              <p className="font-semibold text-sm leading-none">Gigr AI</p>
+              <p className="font-semibold text-sm leading-none">GigidyAI</p>
               <p className="text-xs text-gray-500 mt-0.5">Your smart marketplace assistant</p>
             </div>
           </div>
@@ -211,10 +211,10 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
   const bubbleBg = log.level === 'error'
     ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
     : log.level === 'warning'
-    ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'
-    : log.level === 'success'
-    ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900'
-    : 'bg-gray-100 dark:bg-gray-800'
+      ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800'
+      : log.level === 'success'
+        ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900'
+        : 'bg-gray-100 dark:bg-gray-800'
 
   return (
     <div className="flex items-start gap-2.5">
@@ -339,8 +339,8 @@ function DialogOptions({ options, onSelect }: {
               isSelected
                 ? 'bg-violet-600 text-white border-violet-600'
                 : isCancel
-                ? 'border-gray-300 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
-                : 'border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30',
+                  ? 'border-gray-300 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  : 'border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30',
               selected && !isSelected && 'opacity-40 cursor-not-allowed'
             )}
           >
@@ -364,7 +364,7 @@ function EmptyState({ onChipClick }: { onChipClick: (text: string) => void }) {
       <div className="w-16 h-16 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center mb-4">
         <Zap className="w-8 h-8 text-violet-400" />
       </div>
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Hi! I'm Gigr AI</p>
+      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Hi! I'm GigidyAI</p>
       <p className="text-sm text-gray-500 mb-6 max-w-xs">
         I can find services, post jobs, negotiate on your behalf, and navigate the app.
       </p>
