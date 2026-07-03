@@ -454,21 +454,23 @@ export default function JobsPage() {
           <p className="text-gray-500">Find work or get things done</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] bg-white border-gray-200">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="requested">Requested</SelectItem>
-              <SelectItem value="assigned">Assigned</SelectItem>
-              <SelectItem value="funded">Funded</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
+          {activeTab === 'mine' && (
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[140px] bg-white border-gray-200">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="requested">Requested</SelectItem>
+                <SelectItem value="assigned">Assigned</SelectItem>
+                <SelectItem value="funded">Funded</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Select value={sortOrder} onValueChange={setSortOrder}>
             <SelectTrigger className="w-[160px] bg-white border-gray-200">
               <SelectValue placeholder="Sort by" />
