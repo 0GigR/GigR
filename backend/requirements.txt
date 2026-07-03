@@ -24,4 +24,5 @@ google-auth
 email-validator
 vercel
 pydantic[email]
-requestspywebpush==2.3.0
+requests
+pywebpush==2.3.0
