@@ -220,10 +220,12 @@ export const useAgentStore = create<AgentState>()(
       },
 
       clearHistory: async () => {
-        const { tasks } = get()
-        const active = tasks.filter((t) => t.status === 'queued' || t.status === 'running')
-        await Promise.allSettled(active.map((t) => api.delete(`/ai/tasks/${t.id}`)))
-        set({ tasks: [], unreadCount: 0 })
+        try {
+          await api.delete('/ai/tasks')
+          set({ tasks: [], unreadCount: 0 })
+        } catch (err) {
+          console.error('[agentStore] clearHistory error:', err)
+        }
       },
 
       respondToDialog: async (taskId: string, action: string) => {
