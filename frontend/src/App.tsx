@@ -17,6 +17,7 @@ import { CookieConsentBanner } from '@/components/CookieConsent'
 import AdminDashboard from '@/pages/AdminDashboard'
 import PublicProfilePage from '@/pages/PublicProfilePage'
 import AISettingsPage from '@/pages/AISettingsPage'
+import NotFoundPage from '@/pages/NotFoundPage'
 
 const queryClient = new QueryClient()
 
@@ -66,6 +67,8 @@ function App() {
             </Route>
             {/* Legacy public route still works */}
             <Route path="/profile/:userId" element={<PublicProfilePage />} />
+            {/* Catch-all 404 Route */}
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>
       </QueryClientProvider>
