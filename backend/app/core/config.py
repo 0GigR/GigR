@@ -42,11 +42,11 @@ class Settings(BaseSettings):
 
     # App secrets
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 43200 # 30 days
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour; refresh token handles longer sessions
     ALGORITHM: str = "HS256"
     ADMIN_SECRET: str = Field(..., env="ADMIN_SECRET")
 
-    SECURE_COOKIES: bool = Field(default=False, env="SECURE_COOKIES")
+    SECURE_COOKIES: bool = Field(default=True, env="SECURE_COOKIES")
 
     # Auto-release: seconds after a provider submits work before the escrow is
     # automatically released to them (if the client hasn't released or disputed).
