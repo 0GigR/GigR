@@ -38,10 +38,9 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // Never retry these endpoints
+    // Never retry these endpoints (avoids infinite loops)
     if (
       originalRequest.url?.includes('/auth/refresh') ||
-      originalRequest.url?.includes('/auth/me') ||
       originalRequest.url?.includes('/auth/logout')
     ) {
       return Promise.reject(error)

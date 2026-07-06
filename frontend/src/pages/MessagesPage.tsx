@@ -181,11 +181,13 @@ export default function MessagesPage() {
 
   // WebSocket: listen for new messages in real time
   const handleNewMessage = useCallback((msg: Message) => {
-    // Append to live messages if currently viewing that job
-    setLiveMessages((prev) => {
-      if (prev.some((m) => m.id === msg.id)) return prev
-      return [...prev, msg]
-    })
+    // Only append to the visible chat if the message belongs to the selected job
+    if (msg.job_id === lastSelectedJobIdRef.current) {
+      setLiveMessages((prev) => {
+        if (prev.some((m) => m.id === msg.id)) return prev
+        return [...prev, msg]
+      })
+    }
 
     // Update jobMeta for sorting and unread tracking
     setJobMeta((prev) => {
