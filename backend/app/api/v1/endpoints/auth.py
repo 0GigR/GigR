@@ -1,5 +1,3 @@
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
@@ -132,19 +130,13 @@ async def link_google(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    import requests as req
     from google.oauth2 import id_token as google_id_token
     from google.auth.transport import requests as google_requests
-
-    # Create a session that skips SSL verification (DEVELOPMENT ONLY)
-    session = req.Session()
-    session.verify = False
-    transport = google_requests.Request(session=session)
 
     try:
         idinfo = google_id_token.verify_oauth2_token(
             auth_data.token,
-            transport,
+            google_requests.Request(),
             settings.GOOGLE_CLIENT_ID
         )
     except ValueError as e:

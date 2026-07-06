@@ -86,6 +86,12 @@ async def list_applications_for_job(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the job owner can view applications")
+
     # Fetch applications with their applicant and applicant's vouches_received eager-loaded
     stmt = (
         select(Application)
