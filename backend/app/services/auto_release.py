@@ -20,7 +20,7 @@ from ..core.database import engine
 from ..models.job import Job
 from ..crud.job import update_job_status
 from ..crud.user import get_user_by_id
-from .solana_client import release_escrow, ensure_ata_exists
+from .solana_client import release_escrow, ensure_ata_exists, get_platform_payer
 from .wallet import get_user_keypair
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ async def _release_job(db: AsyncSession, job: Job) -> None:
         return
 
     client_kp = get_user_keypair(client_user)
+    platform_kp = get_platform_payer()
     client_pubkey = Pubkey.from_string(client_user.wallet_public_key)
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
 
@@ -58,6 +59,7 @@ async def _release_job(db: AsyncSession, job: Job) -> None:
     await ensure_ata_exists(client_kp, provider_pubkey, USDC_MINT)
     tx_sig = await release_escrow(
         client_kp=client_kp,
+        platform_kp=platform_kp,
         provider_ata=str(provider_ata),
         vault_ata=str(vault_ata),
         escrow_address=str(escrow_pubkey),

@@ -113,6 +113,7 @@ async def update_user_location(db: AsyncSession, user: User, latitude: float, lo
 
 from sqlalchemy import func, text
 from geoalchemy2 import Geography
+from geoalchemy2 import functions as geo_func
 from ..models.vouch import Vouch
 from ..models.user import User
 

@@ -1,8 +1,11 @@
+import logging
 import uuid
 from uuid import UUID
 import random
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, status
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....core.dependencies import get_db, get_current_user
@@ -223,9 +226,9 @@ async def raise_dispute(
             # Not enough eligible jurors — flag for admin
             dispute.resolution = "pending_admin"
             await db.commit()
-    except Exception:
+    except Exception as e:
         # Jury selection failed, but dispute is still created — admin can manually select
-        pass
+        logger.error(f"[disputes] jury auto-selection failed for dispute {dispute.id}: {e}", exc_info=True)
 
     return dispute
 
