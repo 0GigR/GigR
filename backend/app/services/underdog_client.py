@@ -83,14 +83,14 @@ async def mint_vouch_cnft(
         "Content-Type": "application/json",
     }
     payload = {
-        "name": f"BAROS Vouch - Job {job_id[:8]}",
+        "name": f"Gigr Vouch - Job {job_id[:8]}",
         "symbol": "VOUCH",
-        "description": "Proof of completed work on BAROS",
+        "description": "Proof of completed work on Gigr",
         "image": "https://res.cloudinary.com/demo/image/upload/v1/samples/cloudinary-icon.png",
         "receiverAddress": provider_wallet,
         "attributes": {
             "job_id": job_id,
-            "source": "baros_escrow_release",
+            "source": "gigr_escrow_release",
         },
     }
     async with httpx.AsyncClient(timeout=30.0) as client:

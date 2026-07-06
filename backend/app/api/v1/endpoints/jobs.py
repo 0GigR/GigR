@@ -117,7 +117,7 @@ async def request_service(
         _send_email_background(
             to_email=provider.email,
             subject=f"New request for {service.title}",
-            html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='https://baros.app/dashboard/jobs/{job.id}'>View request</a></p>"
+            html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='https://gigr.app/dashboard/jobs/{job.id}'>View request</a></p>"
         )
 
     return job
@@ -363,12 +363,10 @@ async def fund_job_route(
     usd_amount = float(job.price) / ngn_rate
     amount = int(usd_amount * 1_000_000)
     logger.info(f"[fund] NGN rate={ngn_rate:.2f}, price=₦{job.price}, usd={usd_amount:.4f}, lamports={amount}")
-    print(f"DEBUG fund: client_pubkey={str(client_kp.pubkey())}")
-    print(f"DEBUG fund: client_ata={str(client_ata)}")
-    print(f"DEBUG fund: vault_ata={str(vault_ata)}")
-    print(f"DEBUG fund: provider_pubkey={str(provider_pubkey)}")
-    print(f"DEBUG fund: mint={str(USDC_MINT)}")
-    print(f"DEBUG fund: job_id_int={job_id_int} amount={amount} (NGN rate={ngn_rate:.2f})")
+    logger.debug(
+        "[fund] job=%s client=%s provider=%s ata=%s vault=%s amount=%d (₦%s @ %.2f NGN/USD)",
+        job_id, client_kp.pubkey(), provider_pubkey, client_ata, vault_ata, amount, job.price, ngn_rate,
+    )
 
     try:
         tx_sig = await init_escrow(

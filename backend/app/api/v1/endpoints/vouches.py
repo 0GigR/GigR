@@ -54,7 +54,7 @@ async def vouch_for_provider(
                 provider_wallet=provider_wallet,
                 job_id=str(job.id)
             )
-            print(f"[vouches] Underdog result: {result}")  # visible in uvicorn terminal
+            logger.info("[vouches] Underdog result: %s", result)
 
             nft_id = result.get("id") or (result.get("data") or {}).get("id") or str(result)
             tx_sig = result.get("transactionSignature") or "devnet"

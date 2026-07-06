@@ -1,4 +1,7 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
 from ....core.security import create_access_token, verify_password, decode_access_token, create_refresh_token, REFRESH_TOKEN_EXPIRE_DAYS
@@ -68,7 +71,7 @@ async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSe
             settings.GOOGLE_CLIENT_ID
         )
     except ValueError as e:
-        print(f"Google token verification failed: {e}")
+        logger.warning("Google token verification failed: %s", e)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {str(e)}")
 
     if not idinfo.get("email_verified"):

@@ -1,6 +1,9 @@
+import logging
 import cloudinary.uploader
 from cloudinary import config as cloudinary_config
 from ..core.config import settings
+
+logger = logging.getLogger(__name__)
 
 cloudinary_config(
     cloud_name=settings.CLOUDINARY_CLOUD_NAME,
@@ -15,7 +18,7 @@ async def upload_file(file_path: str, public_id: str | None = None) -> dict:
     Uploads a file to Cloudinary. Returns the API response.
     Use this for profile pictures, chat media, etc.
     """
-    print("Trying upload cl")
+    logger.debug("Uploading file to Cloudinary: %s", file_path)
     upload_options = {}
     if public_id:
         upload_options["public_id"] = public_id

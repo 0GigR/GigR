@@ -4,7 +4,10 @@ from uuid import UUID
 from typing import List
 import json
 import asyncio
+import logging
 from pywebpush import webpush, WebPushException
+
+logger = logging.getLogger(__name__)
 
 from ..models.notification import Notification
 from ..models.push_subscription import PushSubscription
@@ -73,13 +76,13 @@ async def _send_web_push(db: AsyncSession, user_id: UUID, title: str, message: s
                     vapid_claims={"sub": settings.VAPID_CLAIM_EMAIL}
                 )
             except WebPushException as ex:
-                print(f"[WebPush] Failed for endpoint {sub.endpoint}: {ex}")
+                logger.warning("[WebPush] Failed for endpoint %s: %s", sub.endpoint, ex)
                 # If 410 Gone, the subscription is expired, we should delete it
                 if ex.response and ex.response.status_code == 410:
                     await db.delete(sub)
                     await db.commit()
     except Exception as e:
-        print(f"[WebPush] Error triggering push: {e}")
+        logger.warning("[WebPush] Error triggering push: %s", e)
 
 async def mark_all_as_read(db: AsyncSession, user_id: UUID) -> None:
     await db.execute(

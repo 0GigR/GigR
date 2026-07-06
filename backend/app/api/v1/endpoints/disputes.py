@@ -19,7 +19,7 @@ from ....crud.dispute import (
 from ....crud.job import get_job_by_id, update_job_status
 from ....crud.user import get_user_by_id, get_eligible_jurors
 from ....crud.vote import create_vote, get_votes_for_dispute
-from ....crud.jury_panel import create_jury_panel, is_juror
+from ....crud.jury_panel import create_jury_panel, get_jury_panel, is_juror
 from ....models.user import User
 from ....models.vote import VoteOption
 from ....models.dispute import Dispute, DisputeStatus
@@ -424,13 +424,23 @@ async def tally_votes(
     if not dispute:
         raise HTTPException(status_code=404, detail="Dispute not found")
 
+    panel = await get_jury_panel(db, dispute_id)
+    panel_size = len(panel)
+    quorum = max(3, (panel_size // 2) + 1)
+
     votes = await get_votes_for_dispute(db, dispute_id)
     for_client = sum(1 for v in votes if v.vote == VoteOption.FOR_CLIENT)
     for_provider = sum(1 for v in votes if v.vote == VoteOption.FOR_PROVIDER)
     total = len(votes)
 
-    if total == 0:
-        return {"result": "tie", "for_client": 0, "for_provider": 0}
+    if total < quorum:
+        return {
+            "result": "pending",
+            "message": f"Quorum not reached ({total}/{quorum} votes required)",
+            "for_client": for_client,
+            "for_provider": for_provider,
+            "total": total,
+        }
 
     if for_client > for_provider:
         outcome = "refund"
