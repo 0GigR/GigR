@@ -7,6 +7,8 @@ build/
 venv/
 .venv/
 *.egg
+CLAUDE.md
+docs/ENGINEERING_AUDIT.md
 
 kosi.md
 

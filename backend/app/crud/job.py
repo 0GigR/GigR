@@ -151,7 +151,7 @@ async def get_jobs_filtered(
         conditions.append(
             geo_func.ST_DWithin(
                 Job.location,
-                func.ST_GeogFromText(point),       # ← geography, not geometry
+                point,
                 radius_km * 1000
             )
         )
@@ -174,7 +174,7 @@ async def get_jobs_filtered(
         query = query.order_by(
             geo_func.ST_Distance(
                 Job.location,
-                func.ST_GeogFromText(point)
+                point
             )
         )
     else:
