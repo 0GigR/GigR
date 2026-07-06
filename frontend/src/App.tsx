@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import LandingPage from '@/pages/LandingPage'
+import LoginPage from '@/pages/LoginPage'
+import RegisterPage from '@/pages/RegisterPage'
 import DashboardLayout from '@/components/DashboardLayout'
 import HomePage from '@/pages/HomePage'
 import JobsPage from '@/pages/JobsPage'
@@ -45,6 +47,8 @@ function App() {
           <CookieConsentBanner />
           <Routes>
             <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
             <Route
               path="/dashboard"
               element={

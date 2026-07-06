@@ -11,37 +11,26 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
-  const login = useAuthStore((s) => s.login)
+  const { login, googleAuth } = useAuthStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     try {
       await login(email, password)
-      navigate('/')
+      navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Login failed')
     }
   }
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    setError('')
     try {
-      const res = await fetch('/api/v1/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: credentialResponse.credential }),
-        credentials: 'include',
-      })
-      if (res.ok) {
-        // fetch user
-        await useAuthStore.getState().fetchUser()
-        navigate('/')
-      } else {
-        const data = await res.json()
-        setError(data.detail || 'Google sign-in failed')
-      }
-    } catch {
-      setError('Network error')
+      await googleAuth(credentialResponse.credential)
+      navigate('/dashboard')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Google sign-in failed')
     }
   }
 
