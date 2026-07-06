@@ -3,6 +3,8 @@ from ....core.database import async_session
 from ....core.security import decode_access_token
 from ....services.ws_manager import manager
 from ....crud.user import get_user_by_id
+from ....crud.job import get_job_by_id
+import uuid as _uuid
 
 router = APIRouter()
 
@@ -31,14 +33,29 @@ async def websocket_messages(
         await websocket.close(code=4001, reason="Invalid token")
         return
 
-    # Use a short-lived DB session only for auth, then release the pool connection.
+    # Use a short-lived DB session only for auth + authz, then release the pool connection.
     # Holding a session for the whole socket lifetime exhausts the pool when the
     # client opens many rooms at once (one socket per job).
     async with async_session() as db:
         user = await get_user_by_id(db, user_id)
-    if user is None:
-        await websocket.close(code=4001, reason="User not found")
-        return
+        if user is None:
+            await websocket.close(code=4001, reason="User not found")
+            return
+
+        try:
+            job_uuid = _uuid.UUID(job_id)
+        except ValueError:
+            await websocket.close(code=4003, reason="Invalid job ID")
+            return
+
+        job = await get_job_by_id(db, job_uuid)
+        if job is None:
+            await websocket.close(code=4004, reason="Job not found")
+            return
+
+        if job.client_id != user.id and job.provider_id != user.id:
+            await websocket.close(code=4003, reason="Not a participant in this job")
+            return
 
     # Accept connection and join room
     await manager.connect(websocket, job_id)

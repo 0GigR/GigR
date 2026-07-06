@@ -7,7 +7,7 @@ from ....crud.user import (
     update_user_location,
     delete_user,
 )
-from ....schemas.user import UserUpdate, UserOut, UserLocationUpdate
+from ....schemas.user import UserUpdate, UserOut, UserLocationUpdate, PublicUserOut
 from ....models.user import User
 from fastapi import Body
 import logging
@@ -125,7 +125,7 @@ async def verify_identity(
     return {"status": "verified"}
 
 
-@router.get("/{user_id}", response_model=UserOut)
+@router.get("/{user_id}", response_model=PublicUserOut)
 async def get_user_by_id_route(
     user_id: str,
     db: AsyncSession = Depends(get_db),
