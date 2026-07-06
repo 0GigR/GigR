@@ -1,7 +1,10 @@
-from sqlalchemy import text   # <-- add this
+import logging
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 # Convert postgresql:// to postgresql+asyncpg://
 database_url = settings.DATABASE_URL
@@ -113,7 +116,7 @@ async def init_db() -> None:
                                 f'ALTER TABLE {table_name} ADD COLUMN "{col.name}" {col_type}{nullable}{default}'
                             )
                         )
-                        print(f"[init_db] Added column '{col.name}' to '{table_name}'")
+                        logger.info("[init_db] Added column '%s' to '%s'", col.name, table_name)
 
         await conn.run_sync(add_missing_columns)
 
@@ -193,7 +196,7 @@ async def init_db() -> None:
                 text(f"DELETE FROM service_listings WHERE id NOT IN ({KEEP_SVC})")
             )
 
-            print("[init_db] Duplicate cleanup completed successfully.")
+            logger.info("[init_db] Duplicate cleanup completed successfully.")
 
         except Exception as e:
-            print(f"[init_db] Duplicate cleanup skipped: {e}")
+            logger.warning("[init_db] Duplicate cleanup skipped: %s", e)

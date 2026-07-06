@@ -1,6 +1,9 @@
+import logging
 from datetime import datetime
 
 from fastapi import FastAPI
+
+logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location, ai, notifications, push
 from .core.database import init_db, engine, Base
@@ -51,7 +54,7 @@ async def _dedup_duplicate_jobs():
 
         if cancelled:
             await db.commit()
-            print(f"[dedup] Cancelled {cancelled} duplicate service-request job(s)")
+            logger.info("[dedup] Cancelled %d duplicate service-request job(s)", cancelled)
 
 
 @app.on_event("startup")
@@ -64,7 +67,7 @@ async def on_startup():
     try:
         await _dedup_duplicate_jobs()
     except Exception as e:  # never block startup on cleanup
-        print(f"[dedup] skipped: {e}")
+        logger.warning("[dedup] skipped: %s", e)
 
     # Background scanner that auto-releases escrow after the client review window.
     asyncio.create_task(auto_release_loop())

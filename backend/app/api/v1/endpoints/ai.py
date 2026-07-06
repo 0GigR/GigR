@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -107,7 +110,7 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
             content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
             return json.loads(content)
     except Exception as exc:
-        print(f"[agent] Groq NLP failed ({exc}), falling back to rule-based")
+        logger.warning("[agent] Groq NLP failed (%s), falling back to rule-based", exc)
         return None
 
 
@@ -338,7 +341,7 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
 
         return f"Successfully requested service and sent a message to the provider. Please check your [Jobs](/dashboard/jobs) or [Activity](/dashboard/activity) page for updates."
     except Exception as exc:
-        print(f"Failed to auto-request service: {exc}")
+        logger.warning("[agent] Failed to auto-request service: %s", exc)
         return f"Found service but failed to auto-request it."
 
 
@@ -820,7 +823,7 @@ async def _execute_task(task_id: str):
                 if task.task_type not in ["find_service", "find_job", "post_job", "post_service"]:
                     await _log(db, task.id, "success", "Task completed")
             except Exception as exc:
-                print(f"[agent] Task {task_id} failed: {exc}")
+                logger.error("[agent] Task %s failed: %s", task_id, exc, exc_info=True)
                 task.status = "failed"
                 task.result = {"error": str(exc)}
                 task.completed_at = datetime.now(timezone.utc)
@@ -832,7 +835,7 @@ async def _execute_task(task_id: str):
             task.updated_at = datetime.now(timezone.utc)
             await db.commit()
     except Exception as exc:
-        print(f"[agent] Unexpected error in task {task_id}: {exc}")
+        logger.error("[agent] Unexpected error in task %s: %s", task_id, exc, exc_info=True)
     finally:
         _running_tasks.discard(task_id)
 
@@ -843,8 +846,11 @@ async def agent_loop():
     Started on FastAPI startup. Respects AI_AGENT_ENABLED and
     AI_AGENT_MAX_CONCURRENT_TASKS settings.
     """
-    print(f"[agent] Loop started (poll every {settings.AI_AGENT_POLL_INTERVAL_SECONDS}s, "
-          f"max {settings.AI_AGENT_MAX_CONCURRENT_TASKS} concurrent)")
+    logger.info(
+        "[agent] Loop started (poll every %ds, max %d concurrent)",
+        settings.AI_AGENT_POLL_INTERVAL_SECONDS,
+        settings.AI_AGENT_MAX_CONCURRENT_TASKS,
+    )
 
     while True:
         await asyncio.sleep(settings.AI_AGENT_POLL_INTERVAL_SECONDS)
@@ -884,7 +890,7 @@ async def agent_loop():
                     asyncio.create_task(_execute_task(str(t.id)))
 
         except Exception as exc:
-            print(f"[agent] Loop error: {exc}")
+            logger.error("[agent] Loop error: %s", exc, exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
