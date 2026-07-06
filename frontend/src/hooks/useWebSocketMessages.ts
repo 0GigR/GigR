@@ -117,6 +117,10 @@ function useWebSocketMessagesInternal({
 }) {
   const connectionsRef = useRef<Map<string, WebSocket>>(new Map())
   const reconnectTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  // Ref-based enabled flag so onclose handlers always see the current value
+  // without needing to be in the useCallback dependency array.
+  const isEnabledRef = useRef(enabled)
+  useEffect(() => { isEnabledRef.current = enabled }, [enabled])
 
   const connectToRoom = useCallback((jobId: string) => {
     const token = getToken()
@@ -148,14 +152,15 @@ function useWebSocketMessagesInternal({
     ws.onclose = (event) => {
       console.log('[WS] Disconnected from room', jobId, ':', event.code, event.reason)
       connectionsRef.current.delete(jobId)
-      if (event.code !== 4001 && enabled) {
+      // Use the ref so this check is never stale after unmount
+      if (event.code !== 4001 && event.code !== 4003 && event.code !== 4004 && isEnabledRef.current) {
         const timeout = setTimeout(() => connectToRoom(jobId), 3000)
         reconnectTimeoutsRef.current.set(jobId, timeout)
       }
     }
 
     ws.onerror = () => ws.close()
-  }, [enabled, onNewMessageRef])
+  }, [onNewMessageRef])
 
   useEffect(() => {
     if (!enabled || !jobIds || jobIds.length === 0) return
@@ -180,6 +185,9 @@ function useWebSocketMessagesInternal({
     }
 
     return () => {
+      // Disable reconnects before tearing down so onclose handlers don't
+      // schedule new timeouts after cleanup has already run.
+      isEnabledRef.current = false
       for (const [, timeout] of reconnectTimeoutsRef.current.entries()) clearTimeout(timeout)
       reconnectTimeoutsRef.current.clear()
       for (const [, ws] of connectionsRef.current.entries()) ws.close()

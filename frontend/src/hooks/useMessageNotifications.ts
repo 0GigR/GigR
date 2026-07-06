@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -31,9 +31,12 @@ export function useMessageNotifications() {
     enabled: !!user?.id,
   })
 
-  const jobIds = (jobs || [])
-    .filter((j) => !['completed', 'cancelled'].includes(j.status))
-    .map((j) => j.id)
+  const jobIds = useMemo(
+    () => (jobs || [])
+      .filter((j) => !['completed', 'cancelled'].includes(j.status))
+      .map((j) => j.id),
+    [jobs]
+  )
 
   const handleNewMessage = useCallback((msg: Message) => {
     const store = useUnreadStore.getState()
