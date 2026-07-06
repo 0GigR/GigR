@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
 from ....crud.vouch import get_vouch_by_id, get_vouches_by_vouchee, create_vouch
 from ....crud.job import get_job_by_id
+from ....crud.user import get_user_by_id
 from ....schemas.vouch import VouchCreate, VouchOut
 from ....models.user import User
 from ....services.underdog_client import mint_vouch_cnft
@@ -36,6 +37,11 @@ async def vouch_for_provider(
         # If the existing record still has "pending", we can retry the background mint
         return existing
 
+    provider_user = await get_user_by_id(db, job.provider_id)
+    if not provider_user:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    provider_wallet = provider_user.wallet_public_key
+
     # Create the vouch record immediately with "pending" status
     vouch = await create_vouch(db, job.id, current_user.id, job.provider_id, "pending", "pending")
     await db.commit()
@@ -45,7 +51,7 @@ async def vouch_for_provider(
     async def _mint_background(vouch_id):
         try:
             result = await mint_vouch_cnft(
-                provider_wallet=str(job.provider_id),
+                provider_wallet=provider_wallet,
                 job_id=str(job.id)
             )
             print(f"[vouches] Underdog result: {result}")  # visible in uvicorn terminal

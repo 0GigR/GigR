@@ -183,6 +183,31 @@ async def get_jobs_filtered(
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
     return result.scalars().all()
+async def transition_job_status(
+    db: AsyncSession,
+    job_id: UUID,
+    from_statuses: list[str],
+    to_status: str,
+    escrow_address: str | None = None,
+) -> bool:
+    """Atomic conditional status update — prevents TOCTOU on escrow transitions.
+
+    Issues UPDATE ... WHERE status IN (from_statuses) and returns True only if
+    a row was actually changed. Callers should treat False as a 409: a concurrent
+    request already transitioned the job.
+    """
+    values: dict = {"status": to_status}
+    if escrow_address:
+        values["escrow_address"] = escrow_address
+    result = await db.execute(
+        update(Job)
+        .where(Job.id == job_id)
+        .where(Job.status.in_(from_statuses))
+        .values(**values)
+    )
+    return result.rowcount > 0
+
+
 async def search_jobs_by_text(db: AsyncSession, query: str, limit: int = 20, offset: int = 0) -> List[Job]:
     """Search for jobs matching the text in title or description."""
     result = await db.execute(

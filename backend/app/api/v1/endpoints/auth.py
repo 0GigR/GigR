@@ -71,6 +71,9 @@ async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSe
         print(f"Google token verification failed: {e}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {str(e)}")
 
+    if not idinfo.get("email_verified"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google account email is not verified")
+
     google_id = idinfo["sub"]
     email = idinfo.get("email")
     name = idinfo.get("name", email)
@@ -143,6 +146,9 @@ async def link_google(
         raise HTTPException(status_code=401, detail=f"Invalid Google token: {e}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Google verification failed: {e}")
+
+    if not idinfo.get("email_verified"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google account email is not verified")
 
     google_id = idinfo["sub"]
     google_email = idinfo.get("email")

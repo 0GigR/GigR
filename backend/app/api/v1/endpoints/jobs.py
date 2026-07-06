@@ -9,6 +9,7 @@ from ....crud.job import (
     update_job_status,
     cancel_job_offchain,
     get_jobs_filtered,
+    transition_job_status,
 )
 from ....crud.notification import create_notification
 from ....crud.user import get_user_by_id
@@ -394,7 +395,9 @@ async def fund_job_route(
             detail = f"Solana transaction failed: {err_str}"
         raise HTTPException(status_code=400, detail=detail)
 
-    job = await update_job_status(db, job, "funded", escrow_address=str(escrow_pubkey))
+    if not await transition_job_status(db, job_id, ["assigned"], "funded", str(escrow_pubkey)):
+        raise HTTPException(status_code=409, detail="Job was already funded by a concurrent request")
+    db.expire(job)
 
     # Notification to provider
     await create_notification(
@@ -484,9 +487,9 @@ async def release_job_route(
             detail = f"Solana transaction failed: {err_str}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
-    # job = await update_job_status(db, job, "completed")
-    # … after Solana release_escrow succeeds …
-    job = await update_job_status(db, job, "completed")
+    if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
+        raise HTTPException(status_code=409, detail="Job was already completed by a concurrent request")
+    db.expire(job)
 
     # Notification to provider
     await create_notification(

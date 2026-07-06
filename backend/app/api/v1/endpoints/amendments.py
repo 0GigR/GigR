@@ -56,10 +56,11 @@ async def propose_amendment(
     if job.status in ("completed", "cancelled", "disputed"):
         raise HTTPException(status_code=400, detail="Cannot amend a job in this state")
 
+    proposed_by = "provider" if current_user.id == job.provider_id else "client"
     amendment = await create_amendment(
         db,
         job_id=job.id,
-        proposed_by=amendment_in.proposed_by,
+        proposed_by=proposed_by,
         reason=amendment_in.reason,
         new_total_price=amendment_in.new_total_price,
         additional_cost=amendment_in.additional_cost,
