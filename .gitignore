@@ -8,7 +8,7 @@ venv/
 .venv/
 *.egg
 CLAUDE.md
-docs/ENGINEERING_AUDIT.md
+docs/*_*.md
 
 kosi.md
 
