@@ -44,6 +44,9 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user?.display_name || '')
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
+  const [bio, setBio] = useState((user as any)?.bio || '')
+  const [skillsInput, setSkillsInput] = useState('')
+  const [skills, setSkills] = useState<string[]>((user as any)?.skills || [])
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null)
 
@@ -58,7 +61,7 @@ export default function ProfilePage() {
     enabled: !!user?.id,
   })
 
-  const { data: myJobs, isLoading: jobsLoading } = useQuery<Job[]>({
+  const { data: myJobs } = useQuery<Job[]>({
     queryKey: ['myJobsForProfile'],
     queryFn: async () => {
       const [c, p] = await Promise.all([
@@ -117,7 +120,7 @@ export default function ProfilePage() {
 
   // Update profile mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: { display_name?: string; phone_number?: string; profile_image_url?: string }) => {
+    mutationFn: async (data: { display_name?: string; phone_number?: string; profile_image_url?: string; bio?: string; skills?: string[] }) => {
       await api.patch('/users/me', data)
     },
     onSuccess: () => {
@@ -142,6 +145,8 @@ export default function ProfilePage() {
       display_name: displayName,
       phone_number: phoneNumber,
       profile_image_url: imageUrl,
+      bio: bio || undefined,
+      skills: skills.length > 0 ? skills : undefined,
     })
   }
 
@@ -205,6 +210,38 @@ export default function ProfilePage() {
                 <>
                   <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
                   <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone" />
+                  <textarea
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="Write a short bio (max 500 chars)..."
+                    maxLength={500}
+                    rows={3}
+                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black resize-none"
+                  />
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">Skills (press Enter to add)</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {skills.map(s => (
+                        <span key={s} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">
+                          {s}
+                          <button onClick={() => setSkills(prev => prev.filter(x => x !== s))} className="text-gray-400 hover:text-red-500">×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <Input
+                      value={skillsInput}
+                      onChange={(e) => setSkillsInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && skillsInput.trim()) {
+                          e.preventDefault()
+                          const tag = skillsInput.trim().toLowerCase()
+                          if (!skills.includes(tag) && skills.length < 15) setSkills(prev => [...prev, tag])
+                          setSkillsInput('')
+                        }
+                      }}
+                      placeholder="e.g. plumbing, electrical, welding…"
+                    />
+                  </div>
                   <div className="flex gap-2">
                     <Button size="sm" onClick={handleUpdateProfile} disabled={updateMutation.isPending} className="bg-black text-white">
                       {updateMutation.isPending ? 'Saving...' : 'Save'}
@@ -220,6 +257,16 @@ export default function ProfilePage() {
                     {user?.display_name}
                     {user?.is_verified && <Badge className="bg-green-100 text-green-700">Verified</Badge>}
                   </div>
+                  {(user as any)?.bio && (
+                    <p className="text-sm text-gray-700 leading-relaxed">{(user as any).bio}</p>
+                  )}
+                  {(user as any)?.skills?.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(user as any).skills.map((s: string) => (
+                        <span key={s} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">{s}</span>
+                      ))}
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                     <div className="flex items-center gap-2"><Mail className="w-4 h-4" /> {user?.email}</div>
                     {user?.phone_number && (
@@ -422,30 +469,130 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Recent Jobs Summary */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Briefcase className="w-5 h-5" /> Recent Jobs
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {jobsLoading ? (
-            <Skeleton className="h-20 w-full" />
-          ) : myJobs?.length ? (
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {myJobs.slice(0, 10).map(job => (
-                <div key={job.id} className="flex justify-between items-center text-sm">
-                  <span>{job.title}</span>
-                  <Badge variant="outline">{job.status}</Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No jobs yet.</p>
-          )}
-        </CardContent>
-      </Card>
+      {/* Full Activity History */}
+      <ActivityHistory userId={user?.id} />
     </div>
+  )
+}
+
+// ─── Full Activity History ────────────────────────────────────────────────────
+
+type ActivityItem = {
+  id: string; kind: string; title: string; status?: string;
+  price?: string; date: string; detail?: string
+}
+
+function ActivityHistory({ userId }: { userId?: string }) {
+  const [filter, setFilter] = useState<'all' | 'jobs_client' | 'jobs_provider' | 'applications' | 'vouches' | 'disputes'>('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortDir, setSortDir] = useState<'desc' | 'asc'>('desc')
+
+  const { data, isLoading } = useQuery<any>({
+    queryKey: ['myActivity'],
+    queryFn: async () => { const { data } = await api.get('/users/me/activity'); return data },
+    enabled: !!userId,
+  })
+
+  const allItems: ActivityItem[] = []
+  if (data) {
+    data.jobs_as_client?.forEach((j: any) => allItems.push({
+      id: j.id, kind: 'jobs_client', title: j.title, status: j.status,
+      price: j.price, date: j.created_at, detail: 'Client'
+    }))
+    data.jobs_as_provider?.forEach((j: any) => allItems.push({
+      id: j.id, kind: 'jobs_provider', title: j.title, status: j.status,
+      price: j.price, date: j.created_at, detail: 'Provider'
+    }))
+    data.applications?.forEach((a: any) => allItems.push({
+      id: a.id, kind: 'applications', title: `Applied: Job ${a.job_id?.slice(0, 8)}`,
+      price: a.proposed_price, date: a.created_at, detail: a.message?.slice(0, 60)
+    }))
+    data.vouches_given?.forEach((v: any) => allItems.push({
+      id: v.id, kind: 'vouches', title: 'Vouch given', date: v.created_at,
+      detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
+    }))
+    data.vouches_received?.forEach((v: any) => allItems.push({
+      id: v.id, kind: 'vouches', title: 'Vouch received', date: v.created_at,
+      detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
+    }))
+    data.disputes?.forEach((d: any) => allItems.push({
+      id: d.id, kind: 'disputes', title: 'Dispute', status: d.status,
+      date: d.created_at, detail: d.reason?.slice(0, 60)
+    }))
+  }
+
+  let visible = allItems
+  if (filter !== 'all') visible = visible.filter(i => i.kind === filter)
+  if (statusFilter !== 'all') visible = visible.filter(i => i.status === statusFilter)
+  visible = visible.sort((a, b) => {
+    const diff = new Date(a.date).getTime() - new Date(b.date).getTime()
+    return sortDir === 'desc' ? -diff : diff
+  })
+
+  const kindLabel: Record<string, string> = {
+    jobs_client: 'Job (Client)', jobs_provider: 'Job (Provider)',
+    applications: 'Application', vouches: 'Vouch', disputes: 'Dispute'
+  }
+  const kindColor: Record<string, string> = {
+    jobs_client: 'bg-blue-50 text-blue-700 border-blue-200',
+    jobs_provider: 'bg-purple-50 text-purple-700 border-purple-200',
+    applications: 'bg-amber-50 text-amber-700 border-amber-200',
+    vouches: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+    disputes: 'bg-red-50 text-red-700 border-red-200',
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Clock className="w-5 h-5" /> Full Activity History
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {(['all','jobs_client','jobs_provider','applications','vouches','disputes'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${filter === f ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+              {f === 'all' ? 'All' : f === 'jobs_client' ? 'As Client' : f === 'jobs_provider' ? 'As Provider' : f === 'applications' ? 'Applications' : f === 'vouches' ? 'Vouches' : 'Disputes'}
+            </button>
+          ))}
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="text-xs px-2 py-1 rounded-full border border-gray-200 bg-white text-gray-600 focus:outline-none">
+            <option value="all">All Status</option>
+            {['open','assigned','funded','in_progress','completed','cancelled','disputed','open','resolved'].map(s => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+          <button onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+            className="text-xs px-3 py-1 rounded-full border border-gray-200 hover:border-gray-400">
+            {sortDir === 'desc' ? '↓ Newest' : '↑ Oldest'}
+          </button>
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-32 w-full" />
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">No activity matching the current filters.</p>
+        ) : (
+          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            {visible.map(item => (
+              <div key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={`text-[10px] border ${kindColor[item.kind] || ''}`}>{kindLabel[item.kind] || item.kind}</Badge>
+                    <span className="text-sm font-medium truncate">{item.title}</span>
+                  </div>
+                  {item.detail && <p className="text-xs text-gray-500 mt-0.5 truncate">{item.detail}</p>}
+                  {item.price && <p className="text-xs text-gray-600 mt-0.5">₦{parseFloat(item.price).toLocaleString()}</p>}
+                </div>
+                <div className="shrink-0 text-right">
+                  {item.status && <Badge variant="outline" className="text-[10px] mb-1">{item.status}</Badge>}
+                  <p className="text-[10px] text-gray-400">{item.date ? new Date(item.date).toLocaleDateString() : ''}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

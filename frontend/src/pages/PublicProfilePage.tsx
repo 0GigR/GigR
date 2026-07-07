@@ -24,6 +24,8 @@ interface PublicUser {
   last_seen_at?: string | null
   location_lat?: number | null
   location_lng?: number | null
+  bio?: string | null
+  skills?: string[] | null
 }
 
 // Haversine distance in km
@@ -140,6 +142,16 @@ export default function PublicProfilePage() {
                 <Calendar className="w-3.5 h-3.5" />
                 Joined {new Date(profile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })}
               </div>
+              {profile.bio && (
+                <p className="mt-3 text-sm text-gray-700 leading-relaxed">{profile.bio}</p>
+              )}
+              {profile.skills && profile.skills.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {profile.skills.map(s => (
+                    <span key={s} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">{s}</span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
