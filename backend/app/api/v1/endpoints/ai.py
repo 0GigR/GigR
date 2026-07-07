@@ -35,7 +35,7 @@ from sqlalchemy.orm import selectinload
 
 from ....core.config import settings
 from ....core.database import async_session
-from ....core.dependencies import get_db, get_current_user
+from ....core.dependencies import get_db, get_current_user, require_ai_enabled
 from ....crud.service import search_services_by_text
 from ....crud.message import create_message
 from ....models.user import User
@@ -141,6 +141,16 @@ def _extract_price(text: str) -> Optional[float]:
             num *= 1000
         return num
 
+    # Bare k-suffix without prefix keyword: "fix my sink 5k" → 5000
+    bare_k = re.search(r"\b(\d[\d,]*(?:\.\d+)?)\s*[kK]\b", text)
+    if bare_k:
+        return float(bare_k.group(1).replace(",", "")) * 1000
+
+    # Bare large number (4+ digits, e.g. "8000"): "fix my sink 8000"
+    bare_num = re.search(r"\b(\d{4,}(?:,\d{3})*(?:\.\d+)?)\b", text)
+    if bare_num:
+        return float(bare_num.group(1).replace(",", ""))
+
     # Try word-number pattern: "five thousand" → 5000
     text_lower = text.lower()
     for word, val in _WORD_NUMBERS.items():
@@ -157,7 +167,9 @@ def _extract_search_query(text: str) -> Optional[str]:
     patterns = [
         r"(?:find|get|hire)\s+(?:someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
         r"(?:search|look\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
-        r"(?:i\s+need|i\s+want)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:i\s+need|i\s+want|i\s+am\s+looking\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:someone|a\s+person)\s+(?:who\s+can\s+|who\s+will\s+|to\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:looking\s+for)\s+(?:a\s+|an\s+|someone\s+(?:to\s+|who\s+can\s+))?(.+?)(?:\s+for\s+|\s*$)",
     ]
     for pat in patterns:
         m = re.search(pat, text, re.IGNORECASE)
@@ -181,22 +193,48 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         "activity": "activity", "disputes": "disputes",
         "profile": "profile",
     }
-    nav_patterns = [r"go\s+to\s+(\w+)", r"open\s+(\w+)", r"show\s+(?:me\s+)?(\w+)", r"navigate\s+to\s+(\w+)"]
+    # Allow "go to my jobs" → captures "jobs" even with "my" prefix
+    nav_patterns = [
+        r"go\s+to\s+(?:my\s+)?(\w+)",
+        r"open\s+(?:my\s+)?(\w+)",
+        r"show\s+(?:me\s+)?(?:my\s+)?(\w+)",
+        r"navigate\s+to\s+(?:my\s+)?(\w+)",
+    ]
     for pat in nav_patterns:
         m = re.search(pat, text_lower)
         if m and m.group(1) in nav_map:
             page = nav_map[m.group(1)]
             return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
 
-    # ─── Find work / open jobs ───────────────────────────────────────
-    if re.search(r"(find|show|browse)\s+(open\s+)?work|open\s+jobs", text_lower):
+    # ─── Generic / greeting guard (before intent checks) ─────────────
+    # Catch short greetings and questions that don't contain actionable keywords
+    _action_words = r"find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
+    if len(text_lower.split()) <= 4 and not re.search(_action_words, text_lower):
+        return {
+            "task_type": "generic",
+            "params": {"query": text},
+            "response": "Hi! I can help you find services, post jobs, negotiate prices, or navigate the app. Try: 'find a plumber for 5k' or 'post a job: fix my sink'.",
+        }
+
+    price = _extract_price(text)
+
+    # ─── Find Job (Looking for work) — checked BEFORE navigate shortcuts ──
+    if re.search(r"(?:find|search|look\s+for|get)\s+(?:a\s+)?(?:job|work|gig)", text_lower) or \
+       re.search(r"\b(?:find|get)\s+work\b", text_lower):
+        query = _extract_search_query(text_lower)
+        return {
+            "task_type": "find_job",
+            "params": {"query": query or text, "min_price": price},
+            "response": f"Searching for open jobs matching '{query or text}'" + (f" above ₦{price:,.0f}" if price else ""),
+        }
+
+    # ─── Browse jobs / open jobs (navigation shortcut) ───────────────
+    if re.search(r"(?:show|browse|see)\s+(?:open\s+)?(?:all\s+)?jobs?", text_lower):
         return {"task_type": "navigate", "params": {"page": "jobs"}, "response": "Showing open jobs"}
 
     # ─── My jobs ─────────────────────────────────────────────────────
-    if re.search(r"(show|check|my)\s+(my\s+)?(active|open|current)?\s*jobs?", text_lower):
-        return {"task_type": "navigate", "params": {"page": "jobs"}, "response": "Showing your jobs"}
-
-    price = _extract_price(text)
+    if re.search(r"(?:check|show)\s+(?:my\s+)(?:active|open|current)?\s*jobs?", text_lower):
+        return {"task_type": "navigate", "params": {"page": "activity"}, "response": "Showing your activity"}
 
     # ─── Negotiate command ────────────────────────────────────────────
     if re.search(r"negotiate|haggle|bargain|offer|can you get|get me", text_lower):
@@ -213,7 +251,6 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         title = re.sub(r"(?:\.|\,)?\s*(?:for no less than|for|at least|at|my rate is)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
         title = title.rstrip(".,;")
         if not title: title = stripped.strip()
-        
         return {
             "task_type": "post_service",
             "params": {"title": title, "price": price},
@@ -226,20 +263,10 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         title = re.sub(r"(?:\.|\,)?\s*(?:i am not willing to pay more than|for no more than|for|under|budget|at)\s*(?:naira|₦)?\s*\d+.*$", "", stripped, flags=re.IGNORECASE).strip()
         title = title.rstrip(".,;")
         if not title: title = stripped.strip()
-        
         return {
             "task_type": "post_job",
             "params": {"title": title, "price": price},
             "response": f"Creating job '{title}'" + (f" for ₦{price:,.0f}" if price else ""),
-        }
-
-    # ─── Find Job (Looking for work) ──────────────────────────────────
-    if re.search(r"(?:find|search|look\s+for)\s+(?:a\s+)?(?:job|work)", text_lower):
-        query = _extract_search_query(text_lower)
-        return {
-            "task_type": "find_job",
-            "params": {"query": query or text, "min_price": price},
-            "response": f"Searching for open jobs matching '{query or text}'" + (f" above ₦{price:,.0f}" if price else ""),
         }
 
     # ─── Find Service (Looking to hire provider) ──────────────────────
@@ -258,7 +285,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
             "params": {"query": text},
             "response": "Processing payment...",
         }
-        
+
     # ─── Reply Message ────────────────────────────────────────────────
     if re.search(r"^reply to this message:", text_lower):
         return {
@@ -267,15 +294,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
             "response": "Auto-replying to message...",
         }
 
-    # ─── Generic fallback ─────────────────────────────────────────────
-    # If the text is very short or clearly irrelevant, classify as generic
-    if len(text_lower.split()) < 3 and not re.search(r"find|job|service|hire|work", text_lower):
-        return {
-            "task_type": "generic",
-            "params": {"query": text},
-            "response": "I am a freelance assistant. I can help you find jobs, offer services, or navigate the app.",
-        }
-
+    # ─── Final fallback ───────────────────────────────────────────────
     query = _extract_search_query(text_lower) or text
     return {
         "task_type": "find_service",
@@ -498,10 +517,8 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
         await _log(db, task.id, "error", "❌ Could not find user account")
         return {"negotiated": False, "error": "User not found"}
 
-    # Check if negotiation is enabled (stored in user metadata or we default to False)
-    # We use a simple approach: look for a flag in the user's profile via a JSON column.
-    # For now we check by querying agent settings stored in the task params or a separate lookup.
-    ai_negotiate = params.get("ai_negotiate_enabled", False)
+    # Check if negotiation is enabled via the user's saved AI settings
+    ai_negotiate = (user.ai_settings or {}).get("aiNegotiateEnabled", False)
     if not ai_negotiate:
         closest = sorted(services, key=lambda s: float(s.price))[:3]
         names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
@@ -927,7 +944,7 @@ async def interpret_command_legacy(request: InterpretCommandRequest):
 @router.post("/ai/command", response_model=AgentTaskOut, status_code=status.HTTP_201_CREATED)
 async def submit_command(
     request: AgentCommandRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a voice or text command. Creates a background agent task."""
@@ -975,7 +992,7 @@ async def submit_command(
 
 @router.get("/ai/tasks", response_model=List[AgentTaskOut])
 async def list_tasks(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
     limit: int = 50,
 ):
@@ -993,7 +1010,7 @@ async def list_tasks(
 @router.get("/ai/tasks/{task_id}", response_model=AgentTaskOut)
 async def get_task(
     task_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single task with all its logs."""
@@ -1010,7 +1027,7 @@ async def get_task(
 
 @router.delete("/ai/tasks", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_all_tasks(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete all tasks and logs for the current user."""
@@ -1025,7 +1042,7 @@ async def clear_all_tasks(
 @router.delete("/ai/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_task(
     task_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Cancel a queued or running task."""
@@ -1053,7 +1070,7 @@ class AgentDialogResponse(BaseModel):
 async def respond_to_dialog(
     task_id: uuid.UUID,
     response: AgentDialogResponse,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_ai_enabled),
     db: AsyncSession = Depends(get_db),
 ):
     """Handle a user's response to an interactive dialog."""

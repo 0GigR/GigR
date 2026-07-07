@@ -28,3 +28,13 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     return user
+
+
+async def require_ai_enabled(current_user=Depends(get_current_user)):
+    """Dependency that blocks access to AI features when ai_enabled is False."""
+    if not getattr(current_user, "ai_enabled", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AI features are not enabled for your account.",
+        )
+    return current_user
