@@ -84,3 +84,9 @@ private_key.pem
 public_key.pem
 vapid_keys.pem
 
+backend/test_5432.py
+backend/test_db.py
+backend/test_dedup.py
+backend/test_init.py
+backend/test_init_full.py
+backend/test_sa.py
