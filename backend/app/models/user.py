@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, func
+from sqlalchemy import Column, String, DateTime, Boolean, Float, func
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
@@ -30,6 +30,11 @@ class User(Base):
     # Geography
     last_location = Column(Geography(geometry_type="POINT", srid=4326), nullable=True)
     last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    # Plain float copies of last_location for easy API exposure (set alongside the PostGIS column)
+    location_lat = Column(Float, nullable=True)
+    location_lng = Column(Float, nullable=True)
+    # Privacy gate: user must opt-in before their location is visible on their public profile
+    location_public = Column(Boolean, default=False, server_default="false", nullable=False)
 
     # Relationships
     service_listings = relationship("ServiceListing", back_populates="provider")

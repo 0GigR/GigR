@@ -139,6 +139,7 @@ async def heartbeat(
 
 
 
+@router.get("/{user_id}", response_model=PublicUserOut)
 async def get_user_by_id_route(
     user_id: str,
     db: AsyncSession = Depends(get_db),
@@ -146,4 +147,8 @@ async def get_user_by_id_route(
     user = await get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+    out = PublicUserOut.model_validate(user)
+    if not getattr(user, "location_public", False):
+        out.location_lat = None
+        out.location_lng = None
+    return out

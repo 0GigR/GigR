@@ -11,11 +11,13 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/store/authStore'
+import UserChip from '@/components/UserChip'
+import { NeighborhoodMap } from '@/components/NeighborhoodMap'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus,
-  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2
+  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -75,7 +77,8 @@ async function uploadFile(file: File): Promise<string> {
 export default function JobsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'open' | 'mine'>('open')
+  const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>('open')
+  const geo = useGeolocation()
 
   // Create Job dialog state
   const [createOpen, setCreateOpen] = useState(false)
@@ -488,10 +491,11 @@ export default function JobsPage() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'mine')}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'mine' | 'map')}>
         <TabsList>
-          <TabsTrigger value="open">Open Jobs</TabsTrigger>
+          <TabsTrigger value="open"><List className="w-3.5 h-3.5 mr-1.5" />Open Jobs</TabsTrigger>
           <TabsTrigger value="mine">My Jobs</TabsTrigger>
+          <TabsTrigger value="map"><Map className="w-3.5 h-3.5 mr-1.5" />Map</TabsTrigger>
         </TabsList>
 
         <TabsContent value="open" className="mt-6">
@@ -586,6 +590,21 @@ export default function JobsPage() {
               <div className="col-span-2 text-center py-12 text-gray-500">No jobs yet.</div>
             )}
           </div>
+        </TabsContent>
+
+        {/* Map Tab */}
+        <TabsContent value="map" className="mt-6">
+          {geo.latitude && geo.longitude ? (
+            <div className="rounded-xl overflow-hidden border border-gray-200 h-[500px]">
+              <NeighborhoodMap latitude={geo.latitude} longitude={geo.longitude} />
+            </div>
+          ) : (
+            <div className="text-center py-16 text-gray-500 border border-dashed rounded-xl">
+              <Map className="w-10 h-10 mx-auto mb-3 text-gray-300" />
+              <p className="font-medium">Location access needed</p>
+              <p className="text-sm mt-1">Allow location access in your browser to see jobs on the map.</p>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -884,15 +903,13 @@ function JobCard({
     <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {/* Poster info */}
-        <div className="flex items-center gap-3 mb-2">
-          <Avatar className="h-8 w-8">
-            <AvatarImage src={poster?.profile_image_url || undefined} />
-            <AvatarFallback>{poster?.display_name?.[0] || '?'}</AvatarFallback>
-          </Avatar>
-          <div>
-            <p className="text-sm font-medium">{poster?.display_name || 'Unknown'}</p>
-            <p className="text-xs text-gray-500">Client</p>
-          </div>
+        <div className="mb-2">
+          <UserChip
+            userId={job.client_id}
+            name={poster?.display_name}
+            avatarUrl={poster?.profile_image_url}
+            lastSeenAt={(poster as any)?.last_seen_at}
+          />
         </div>
         <div className="flex justify-between items-start">
           <div className="flex flex-col items-start gap-1">
@@ -969,12 +986,12 @@ function JobCard({
                   applicants.map(app => (
                     <div key={app.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                       <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={app.applicant_profile_image || undefined} />
-                          <AvatarFallback>{app.applicant_name?.[0] || '?'}</AvatarFallback>
-                        </Avatar>
+                        <UserChip
+                          userId={app.applicant_id}
+                          name={app.applicant_name}
+                          avatarUrl={app.applicant_profile_image}
+                        />
                         <div>
-                          <p className="text-sm font-medium">{app.applicant_name || 'Unknown'}</p>
                           {app.applicant_vouch_count !== undefined && (
                             <p className="text-xs text-gray-500">{app.applicant_vouch_count} vouch{app.applicant_vouch_count !== 1 ? 'es' : ''}</p>
                           )}

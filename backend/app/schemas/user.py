@@ -28,6 +28,7 @@ class UserOut(BaseModel):
     created_at: datetime
     ai_settings: Optional[Dict[str, Any]] = None
     ai_enabled: bool = True
+    location_public: bool = False
 
     class Config:
         from_attributes = True
@@ -42,6 +43,9 @@ class PublicUserOut(BaseModel):
     role: Optional[str] = None
     created_at: datetime
     last_seen_at: Optional[datetime] = None
+    # Location — only populated when the user has enabled location sharing
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -52,6 +56,7 @@ class UserUpdate(BaseModel):
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     ai_settings: Optional[Dict[str, Any]] = None
+    location_public: Optional[bool] = None
 
 class UserLocationUpdate(BaseModel):
     latitude: float

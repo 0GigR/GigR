@@ -11,9 +11,9 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
+import UserChip from '@/components/UserChip'
 import {
   MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2
 } from 'lucide-react'
@@ -79,16 +79,14 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
   return (
     <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
-        {provider && (
-          <div className="flex items-center gap-2 mb-3">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={provider.profile_image_url || undefined} />
-              <AvatarFallback>{provider.display_name?.[0] || '?'}</AvatarFallback>
-            </Avatar>
-            <div>
-              <p className="text-sm font-medium">{provider.display_name || 'Unknown'}</p>
-              {/* vouch count could be added if backend returned it */}
-            </div>
+        {provider && !isOwner && (
+          <div className="mb-3">
+            <UserChip
+              userId={service.provider_id}
+              name={provider.display_name}
+              avatarUrl={provider.profile_image_url}
+              lastSeenAt={(provider as any)?.last_seen_at}
+            />
           </div>
         )}
         {service.image_url && (

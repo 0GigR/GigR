@@ -103,10 +103,11 @@ async def delete_user(db: AsyncSession, user: User) -> None:
     await db.commit()
 
 async def update_user_location(db: AsyncSession, user: User, latitude: float, longitude: float) -> User:
-    # Use text for geography point, assumes PostGIS
     from sqlalchemy import text
     user.last_location = text(f"ST_SetSRID(ST_MakePoint({longitude}, {latitude}), 4326)")
     user.last_seen_at = text("NOW()")
+    user.location_lat = latitude
+    user.location_lng = longitude
     await db.commit()
     await db.refresh(user)
     return user

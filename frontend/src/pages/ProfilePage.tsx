@@ -354,6 +354,42 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      {/* Location privacy */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <MapPin className="w-5 h-5" /> Location Privacy
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Share my location on my public profile</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                When enabled, other users can see roughly where you are and how far they are from you.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={(user as any)?.location_public ?? false}
+              onClick={async () => {
+                const current = (user as any)?.location_public ?? false
+                await api.patch('/users/me', { location_public: !current })
+                queryClient.invalidateQueries({ queryKey: ['auth'] })
+                window.location.reload()
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                (user as any)?.location_public ? 'bg-black' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                (user as any)?.location_public ? 'translate-x-6' : 'translate-x-1'
+              }`} />
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Vouches History */}
       <Card>
         <CardHeader>
@@ -369,8 +405,12 @@ export default function ProfilePage() {
               {vouchesReceived.map(v => (
                 <div key={v.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
                   <div>
-                    <p className="text-sm font-medium">Job: {v.job_id?.slice(0, 8)}...</p>
-                    <p className="text-xs text-gray-500">On‑chain cNFT: {v.cnf_nft_id?.slice(0, 12)}...</p>
+                    <p className="text-sm text-gray-700">Vouched for completed work</p>
+                    {v.cnf_nft_id && (
+                      <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full border border-purple-200">
+                        cNFT on-chain
+                      </span>
+                    )}
                   </div>
                   <span className="text-xs text-gray-400">{new Date(v.created_at).toLocaleDateString()}</span>
                 </div>

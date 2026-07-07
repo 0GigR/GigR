@@ -12,6 +12,7 @@ interface User {
   created_at: string
   role?: string | null
   ai_enabled?: boolean
+  location_public?: boolean
 }
 
 interface AuthState {
