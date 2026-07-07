@@ -18,6 +18,7 @@ class DisputeOut(BaseModel):
     reason: str
     status: str
     resolution: Optional[str] = None
+    ai_summary: Optional[str] = None
     resolved_at: Optional[datetime] = None
     created_at: datetime
 

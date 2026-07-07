@@ -21,6 +21,7 @@ class Dispute(Base):
     reason = Column(Text, nullable=False)
     status = Column(SqlEnum(DisputeStatus), default=DisputeStatus.OPEN)
     resolution = Column(String(50), nullable=True)  # "refund", "release", "split"
+    ai_summary = Column(Text, nullable=True)  # AI-generated neutral jury brief
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

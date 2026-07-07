@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuthStore } from '@/store/authStore'
-import { Gavel, MessageCircle, Send, AlertTriangle } from 'lucide-react'
+import { Gavel, MessageCircle, Send, AlertTriangle, Sparkles } from 'lucide-react'
 
 type JuryDispute = {
   id: string
@@ -19,6 +19,7 @@ type JuryDispute = {
   reason: string
   status: string
   resolution: string | null
+  ai_summary?: string | null
   has_voted: boolean
   created_at: string | null
 }
@@ -278,6 +279,17 @@ export default function DisputesPage() {
               <p><strong>Status:</strong> {statusBadge(selectedDispute.status)}</p>
               <p className="text-xs text-gray-500">Both parties and selected jurors can present arguments and evidence here.</p>
             </div>
+
+            {/* AI neutral summary for jurors */}
+            {selectedDispute.ai_summary && (
+              <div className="bg-violet-50 border border-violet-200 rounded-lg p-4 text-sm">
+                <p className="flex items-center gap-1.5 font-semibold text-violet-800 mb-2">
+                  <Sparkles className="w-4 h-4" /> AI Case Summary
+                  <span className="text-[10px] font-normal text-violet-500 ml-1">(neutral brief — verify against the evidence below)</span>
+                </p>
+                <p className="text-gray-700 whitespace-pre-line leading-relaxed">{selectedDispute.ai_summary}</p>
+              </div>
+            )}
 
             {/* Messages / Evidence */}
             <div className="flex-1 overflow-y-auto space-y-2 py-2">

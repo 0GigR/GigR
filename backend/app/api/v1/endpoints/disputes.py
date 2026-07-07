@@ -236,14 +236,14 @@ async def raise_dispute(
                 resp.raise_for_status()
                 summary = resp.json()["choices"][0]["message"]["content"].strip()
 
-            # Store summary on the dispute record
+            # Store summary in its dedicated column (never touch `resolution`,
+            # which holds jury outcome / pending_admin / withdrawn).
             async with _session() as _db:
-                from sqlalchemy import update as _upd, select as _sel
+                from sqlalchemy import select as _sel
                 from ....models.dispute import Dispute
                 _d = (await _db.execute(_sel(Dispute).where(Dispute.id == dispute.id))).scalar_one_or_none()
                 if _d:
-                    # Prepend AI summary to resolution field so it's visible in the dispute detail
-                    _d.resolution = f"[AI Summary]\n{summary}"
+                    _d.ai_summary = summary
                     await _db.commit()
         except Exception as exc:
             logger.warning("[disputes] AI summary generation failed: %s", exc)
@@ -375,6 +375,7 @@ async def my_jury_disputes(
             "reason": d.reason,
             "status": d.status.value if hasattr(d.status, "value") else str(d.status),
             "resolution": d.resolution,
+            "ai_summary": d.ai_summary,
             "has_voted": has_voted,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         })
