@@ -599,82 +599,160 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
     }
 
 
+async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
+    """Use Groq to generate a professional title and description from raw user text.
+
+    kind: "job" | "service"
+    Returns {"title": ..., "description": ...} or falls back to simple formatting.
+    """
+    if not settings.GROQ_API_KEY:
+        # Rule-based fallback: capitalise and trim
+        title = raw_text.strip().rstrip(".,!?")[:60]
+        title = title[0].upper() + title[1:] if title else raw_text[:60]
+        desc = f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"
+        return {"title": title, "description": desc}
+
+    system = (
+        "You are a professional copywriter for Gigr, a Nigerian freelance marketplace. "
+        "Given a raw user command, produce a clean job listing. "
+        "Return ONLY a JSON object with exactly two fields: "
+        '"title" (max 60 chars, professional, imperative, no filler) and '
+        '"description" (2-3 sentences explaining the work and any stated requirements). '
+        "Do not add prices to the title. Do not invent details not in the input."
+    )
+    user_prompt = (
+        f"User wants to {'hire someone for' if kind == 'job' else 'offer a service:'}: {raw_text}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": settings.GROQ_MODEL,
+                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_prompt}],
+                    "temperature": 0.4,
+                    "max_tokens": 200,
+                },
+            )
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+            content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
+            parsed = json.loads(content)
+            return {
+                "title": str(parsed.get("title", raw_text))[:60],
+                "description": str(parsed.get("description", raw_text)),
+            }
+    except Exception as exc:
+        logger.warning("[agent] Groq posting improvement failed (%s), using raw text", exc)
+        title = raw_text.strip()[:60]
+        return {"title": title, "description": f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"}
+
+
 async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Create a new job posting on behalf of the user."""
     from ....crud.job import create_job
     from ....schemas.job import JobCreate
 
     params = task.params or {}
-    title: str = params.get("title", "Job posted via AI")
+    raw_title: str = params.get("title", task.command_text)
     price: Optional[float] = params.get("price")
 
+    # If no price given, ask the user before creating anything
     if not price:
-        await _log(db, task.id, "warning", "No price specified for job posting — using ₦1,000 as placeholder")
-        price = 1000.0
+        await _log(db, task.id, "info",
+                   f"What's your budget for this job? Enter an amount in Naira.",
+                   data={"action_payload": {
+                       "type": "provide_price",
+                       "raw_title": raw_title,
+                       "kind": "job",
+                       "options": [
+                           {"label": "₦2,000", "action": "price:2000"},
+                           {"label": "₦5,000", "action": "price:5000"},
+                           {"label": "₦10,000", "action": "price:10000"},
+                           {"label": "₦20,000", "action": "price:20000"},
+                       ],
+                   }})
+        return {"created": False, "waiting_for_price": True}
 
-    await _log(db, task.id, "action", f"Creating job: '{title}' for ₦{price:,.0f}...")
+    await _log(db, task.id, "action", "Writing a professional job listing...")
+    content = await _groq_improve_posting(raw_title, "job")
+    title = content["title"]
+    desc = content["description"] + f"\n\nBudget: ₦{price:,.0f}"
+
+    await _log(db, task.id, "action", f"Posting job: '{title}' — ₦{price:,.0f}")
     try:
-        desc = f"I am looking for: {title}"
-        if price:
-            desc += f"\nBudget: ₦{price:,.0f}"
         job_in = JobCreate(title=title, description=desc, price=price)
         job = await create_job(db, task.user_id, job_in)
         await db.commit()
-        await _log(db, task.id, "success", f"Job '{title}' created successfully ([View Job](?jobId={job.id}))")
-        return {
-            "created": True,
-            "job_id": str(job.id),
-            "title": title,
-            "price": price,
-            "message": f"Job '{title}' posted for ₦{price:,.0f}",
-        }
+        await _log(db, task.id, "success",
+                   f"✅ Job **'{title}'** posted for ₦{price:,.0f}. "
+                   f"Providers can now apply. [View in Activity](/dashboard/activity)")
+        return {"created": True, "job_id": str(job.id), "title": title, "price": price}
     except Exception as exc:
         await db.rollback()
         await _log(db, task.id, "error", f"❌ Failed to create job: {exc}")
         return {"created": False, "error": str(exc)}
+
 
 async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Create a new service offering on behalf of the provider."""
     from ....crud.service import create_service
     from ....schemas.service import ServiceCreate
     from ....models.service import Category
-    
+    from ....crud.user import get_user_by_id as _get_user
+
     params = task.params or {}
-    title: str = params.get("title", "Service offered via AI")
+    raw_title: str = params.get("title", task.command_text)
     price: Optional[float] = params.get("price")
 
     if not price:
-        await _log(db, task.id, "warning", "No rate specified for service — using ₦5,000 as placeholder")
-        price = 5000.0
+        await _log(db, task.id, "info",
+                   "What's your rate for this service? Enter an amount in Naira.",
+                   data={"action_payload": {
+                       "type": "provide_price",
+                       "raw_title": raw_title,
+                       "kind": "service",
+                       "options": [
+                           {"label": "₦3,000", "action": "price:3000"},
+                           {"label": "₦5,000", "action": "price:5000"},
+                           {"label": "₦10,000", "action": "price:10000"},
+                           {"label": "₦20,000", "action": "price:20000"},
+                       ],
+                   }})
+        return {"created": False, "waiting_for_price": True}
 
-    # Get a default category for the service
-    from sqlalchemy.future import select
+    # Try to match a category from the title
     cat_result = await db.execute(select(Category).limit(1))
     category = cat_result.scalar_one_or_none()
     if not category:
-        await _log(db, task.id, "error", "No service categories available in the system. Cannot create service.")
+        await _log(db, task.id, "error", "No service categories in the system. Cannot create service.")
         return {"created": False, "error": "Missing categories"}
 
-    await _log(db, task.id, "action", f"Creating service: '{title}' for ₦{price:,.0f}...")
+    await _log(db, task.id, "action", "Writing a professional service listing...")
+    content = await _groq_improve_posting(raw_title, "service")
+    title = content["title"]
+    desc = content["description"]
+
+    # Use user's stored location if available
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    poster = user_res.scalar_one_or_none()
+    lat = poster.location_lat or 0.0 if poster else 0.0
+    lng = poster.location_lng or 0.0 if poster else 0.0
+
+    await _log(db, task.id, "action", f"Posting service: '{title}' — ₦{price:,.0f}")
     try:
-        desc = f"I am offering: {title}"
         service_in = ServiceCreate(
-            category_id=category.id,
-            title=title, 
-            description=desc, 
-            price=price,
-            latitude=0.0,
-            longitude=0.0
+            category_id=category.id, title=title, description=desc,
+            price=price, latitude=lat, longitude=lng,
         )
         service = await create_service(db, task.user_id, service_in)
         await db.commit()
-        await _log(db, task.id, "success", f"Service '{title}' created successfully ([View Service](?serviceId={service.id}))")
-        return {
-            "created": True,
-            "service_id": str(service.id),
-            "title": title,
-            "price": price,
-        }
+        await _log(db, task.id, "success",
+                   f"✅ Service **'{title}'** listed for ₦{price:,.0f}. "
+                   f"Clients can now find and request it. [View in Services](/dashboard/services)")
+        return {"created": True, "service_id": str(service.id), "title": title, "price": price}
     except Exception as exc:
         await db.rollback()
         await _log(db, task.id, "error", f"❌ Failed to create service: {exc}")
@@ -1161,6 +1239,27 @@ async def respond_to_dialog(
             await _log(db, task.id, "error", f"Failed to apply for job: {exc}")
             await db.commit()
         return {"status": "ok"}
+
+    # ── Price provided for post_job / post_service dialog ────────────────────
+    if action.startswith("price:") and payload.get("type") == "provide_price":
+        try:
+            chosen_price = float(action.split(":", 1)[1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid price value")
+        raw_title = payload.get("raw_title", task.command_text)
+        kind = payload.get("kind", "job")
+        new_task = AgentTask(
+            user_id=current_user.id,
+            command_text=task.command_text,
+            task_type="post_job" if kind == "job" else "post_service",
+            params={"title": raw_title, "price": chosen_price},
+            status="queued",
+        )
+        db.add(new_task)
+        await _log(db, task.id, "success",
+                   f"Got it — ₦{chosen_price:,.0f}. Creating your {'job' if kind == 'job' else 'service'}...")
+        await db.commit()
+        return {"status": "ok", "new_task_id": str(new_task.id)}
 
     # ── Post a job fallback ──────────────────────────────────────────────────
     if action in ("confirm", "post_job") and payload.get("type") in ("create_job_fallback", "select_service"):
