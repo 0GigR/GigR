@@ -73,7 +73,7 @@ export default function DashboardLayout() {
   useMessageNotifications()
 
   // Start agent polling (only when AI is enabled)
-  const { startPolling, stopPolling } = useAgentStore()
+  const { startPolling, stopPolling, connectAgentWS, disconnectAgentWS } = useAgentStore()
   useEffect(() => {
     if (!aiEnabled) return
     startPolling()
@@ -87,6 +87,13 @@ export default function DashboardLayout() {
     const id = setInterval(() => api.post('/users/me/heartbeat').catch(() => {}), 60_000)
     return () => clearInterval(id)
   }, [user])
+
+  // Agent push WS — get task updates instantly instead of waiting for the poll
+  useEffect(() => {
+    if (!user || !aiEnabled) return
+    connectAgentWS(user.id)
+    return () => disconnectAgentWS()
+  }, [user, aiEnabled, connectAgentWS, disconnectAgentWS])
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">

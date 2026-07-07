@@ -12,7 +12,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import api from '@/lib/api'
+import api, { getToken } from '@/lib/api'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,7 +31,7 @@ export interface AgentTask {
   command_text: string
   task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'generic' | 'pending'
   params: Record<string, unknown> | null
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_reply'
   result: Record<string, unknown> | null
   created_at: string
   updated_at: string | null
@@ -109,6 +109,14 @@ interface AgentState {
 
   /** Stop the polling loop */
   stopPolling: () => void
+
+  /** Open the agent push WS so task updates arrive instantly */
+  connectAgentWS: (userId: string) => void
+
+  /** Close the agent push WS */
+  disconnectAgentWS: () => void
+
+  _agentWS: WebSocket | null
 }
 
 // ─── Default settings ─────────────────────────────────────────────────────────
@@ -131,6 +139,7 @@ export const useAgentStore = create<AgentState>()(
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
       _pollTimer: null,
+      _agentWS: null,
 
       submitCommand: async (text: string) => {
         try {
@@ -249,6 +258,42 @@ export const useAgentStore = create<AgentState>()(
         )
       },
 
+      connectAgentWS: (userId: string) => {
+        const existing = get()._agentWS
+        if (existing && existing.readyState <= WebSocket.OPEN) return
+
+        const token = getToken()
+        if (!token) return
+
+        const base = import.meta.env.VITE_API_URL
+          ? import.meta.env.VITE_API_URL
+              .replace(/\/api\/v1\/?$/, '')
+              .replace(/^https:/, 'wss:')
+              .replace(/^http:/, 'ws:')
+          : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
+
+        const ws = new WebSocket(`${base}/ws/agent/${userId}?token=${encodeURIComponent(token)}`)
+        ws.onmessage = () => {
+          // Any push from the server means a task changed — refetch immediately
+          get().fetchTasks()
+        }
+        ws.onclose = () => {
+          set({ _agentWS: null })
+          // Reconnect after 5 s
+          setTimeout(() => {
+            if (get()._agentWS === null) get().connectAgentWS(userId)
+          }, 5000)
+        }
+        ws.onerror = () => ws.close()
+        set({ _agentWS: ws })
+      },
+
+      disconnectAgentWS: () => {
+        const ws = get()._agentWS
+        if (ws) { ws.onclose = null; ws.close() }
+        set({ _agentWS: null })
+      },
+
       startPolling: () => {
         const { _pollTimer, fetchTasks } = get()
         if (_pollTimer) return // already polling
@@ -273,7 +318,7 @@ export const useAgentStore = create<AgentState>()(
     }),
     {
       name: 'gigr-agent-settings',
-      // Only persist user settings and unread count — not tasks (fetched from server)
+      // Only persist user settings and unread count — not tasks or WS state
       partialize: (s) => ({
         aiSettings: s.aiSettings,
         unreadCount: s.unreadCount,

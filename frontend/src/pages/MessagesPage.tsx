@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
+import UserChip from '@/components/UserChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -282,7 +283,7 @@ export default function MessagesPage() {
       }
       await api.post(`/amendments/${selectedJob.id}`, {
         job_id: selectedJob.id,
-        proposed_by: 'provider',
+        proposed_by: user?.id === selectedJob?.provider_id ? 'provider' : 'client',
         reason: amendReason,
         new_total_price: amendNewPrice,
         additional_cost: '0',
@@ -400,10 +401,23 @@ export default function MessagesPage() {
           ) : (
             <Card className="flex flex-col h-[60vh]">
               <CardHeader className="border-b">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg">
-                    {selectedJob.title}
-                  </CardTitle>
+                <div className="flex justify-between items-start gap-3">
+                  <div className="min-w-0">
+                    <CardTitle className="text-base font-semibold truncate">
+                      {selectedJob.title}
+                    </CardTitle>
+                    {/* Counterparty chip */}
+                    {(() => {
+                      const counterpartyId = selectedJob.client_id === user?.id
+                        ? selectedJob.provider_id
+                        : selectedJob.client_id
+                      return counterpartyId ? (
+                        <div className="mt-1">
+                          <UserChip userId={counterpartyId} size="sm" />
+                        </div>
+                      ) : null
+                    })()}
+                  </div>
                   {statusBadge(selectedJob.status)}
                 </div>
                 {selectedJob.escrow_address && (
