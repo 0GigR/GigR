@@ -508,17 +508,20 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     jobs = await search_jobs_by_text(db, query, limit=50)
     jobs = [j for j in jobs if j.client_id != task.user_id and j.status == "open"]
 
-    # Proximity filter: prefer results within 25 km, fall back to all if too few
+    # Real proximity filter: compute Haversine distance from the searcher to each
+    # job that has a location. Keep those within 25 km (fall back to all if <3).
     if user_lat and user_lng:
-        nearby = [
-            j for j in jobs
-            if j.location is not None  # PostGIS column populated
-        ]
-        # Use the get_open_jobs_nearby approach for actual geo distance if jobs have location
-        # For now sort by those with location first — geo query is done via API when user searches with lat/lon
-        if nearby:
-            jobs = nearby + [j for j in jobs if j not in nearby]
-    
+        with_distance = []
+        for j in jobs:
+            jlat, jlng = j.latitude, j.longitude
+            if jlat is not None and jlng is not None:
+                d = _haversine_km(user_lat, user_lng, float(jlat), float(jlng))
+                with_distance.append((d, j))
+        nearby = sorted([(d, j) for d, j in with_distance if d <= 25], key=lambda x: x[0])
+        if len(nearby) >= 3:
+            jobs = [j for _, j in nearby]
+        # else: keep the full text-matched list (location_note already reflects intent)
+
     if min_price:
         filtered = [j for j in jobs if float(j.price) >= min_price]
     else:
