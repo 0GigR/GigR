@@ -125,7 +125,20 @@ async def verify_identity(
     return {"status": "verified"}
 
 
-@router.get("/{user_id}", response_model=PublicUserOut)
+@router.post("/me/heartbeat", status_code=204)
+async def heartbeat(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update last_seen_at. Frontend calls this every ~60s while in the dashboard."""
+    from sqlalchemy import update, func as sqlfunc
+    await db.execute(
+        update(User).where(User.id == current_user.id).values(last_seen_at=sqlfunc.now())
+    )
+    await db.commit()
+
+
+
 async def get_user_by_id_route(
     user_id: str,
     db: AsyncSession = Depends(get_db),

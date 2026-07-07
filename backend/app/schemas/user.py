@@ -22,11 +22,12 @@ class UserOut(BaseModel):
     display_name: str
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
-    google_id: Optional[str] = None          # <-- add this
+    google_id: Optional[str] = None
     is_verified: bool
     role: Optional[str] = None
     created_at: datetime
     ai_settings: Optional[Dict[str, Any]] = None
+    ai_enabled: bool = True
 
     class Config:
         from_attributes = True
@@ -40,6 +41,7 @@ class PublicUserOut(BaseModel):
     is_verified: bool
     role: Optional[str] = None
     created_at: datetime
+    last_seen_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

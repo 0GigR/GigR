@@ -44,9 +44,12 @@ class User(Base):
 
     civic_gateway_token = Column(String(255), nullable=True)
     is_identity_verified = Column(Boolean, default=False)
-    
+
     # AI Settings (e.g. auto_reply_enabled, negotiate_enabled)
     ai_settings = Column(JSONB, nullable=True, default={})
+
+    # AI feature gate — set to False to disable the agent for this user (future pro tier)
+    ai_enabled = Column(Boolean, nullable=False, default=True, server_default="true")
 
     @property
     def wallet_private_key(self) -> bytes | None:
