@@ -59,7 +59,64 @@ async def create_job_route(
     job = await create_job(db, current_user.id, job_in)
     await db.commit()
     await db.refresh(job)
+
+    # Proactive agent: notify nearby providers with matching services (non-blocking)
+    asyncio.create_task(_notify_matching_providers(str(job.id), current_user.display_name))
+
     return job
+
+
+async def _notify_matching_providers(job_id: str, poster_name: str):
+    """Find providers with matching services and send them a proactive notification."""
+    try:
+        from ..core.database import engine
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from ..crud.job import get_job_by_id as _get_job
+        from ..crud.notification import create_notification
+        from ..models.service import ServiceListing
+        from ..models.user import User as _User
+        import re as _re
+
+        async with AsyncSession(engine) as db:
+            from sqlalchemy import select as _sel, or_ as _or
+            job = await _get_job(db, __import__('uuid').UUID(job_id))
+            if not job:
+                return
+
+            # Text-match against service titles and descriptions
+            words = [w for w in _re.split(r'\W+', job.title.lower()) if len(w) > 3]
+            if not words:
+                return
+
+            conditions = _or(*[
+                ServiceListing.title.ilike(f"%{w}%") for w in words[:5]
+            ])
+            result = await db.execute(
+                _sel(ServiceListing)
+                .where(conditions)
+                .where(ServiceListing.is_active == True)
+                .where(ServiceListing.provider_id != job.client_id)
+                .limit(10)
+            )
+            services = result.scalars().all()
+
+            notified: set = set()
+            for svc in services:
+                if svc.provider_id in notified:
+                    continue
+                notified.add(svc.provider_id)
+                await create_notification(
+                    db,
+                    user_id=svc.provider_id,
+                    title="New job matching your services",
+                    message=f'{poster_name} posted a job: "{job.title}" for ₦{float(job.price):,.0f}. You might be a great fit!',
+                    link="/dashboard/jobs",
+                )
+            if notified:
+                await db.commit()
+                logger.info("[proactive] Notified %d providers about job %s", len(notified), job_id)
+    except Exception as exc:
+        logger.warning("[proactive] Failed to notify providers: %s", exc)
 
 
 @router.post("/request-service/{service_id}", response_model=JobOut, status_code=status.HTTP_201_CREATED)

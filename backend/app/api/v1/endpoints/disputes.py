@@ -191,8 +191,64 @@ async def raise_dispute(
     # Freeze the job
     await update_job_status(db, job, "disputed")
     dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data, raised_by=current_user.id)
-    # dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data)
     await db.commit()
+
+    # ---- AI dispute summary (non-blocking) ----
+    import asyncio as _asyncio
+    async def _generate_summary():
+        try:
+            from ....core.config import settings as _s
+            from ....crud.message import get_messages_for_job
+            from ....core.database import async_session as _session
+            import httpx
+
+            if not _s.GROQ_API_KEY:
+                return
+
+            async with _session() as _db:
+                msgs = await get_messages_for_job(_db, job.id, limit=50)
+
+            if not msgs:
+                return
+
+            transcript = "\n".join(
+                f"{'Client' if str(m.sender_id) == str(job.client_id) else 'Provider'}: {m.content[:200]}"
+                for m in msgs
+            )
+            prompt = (
+                f"A dispute has been raised for a Gigr job titled \"{job.title}\".\n"
+                f"The dispute reason stated: \"{dispute_data.reason}\"\n\n"
+                f"Chat transcript (last {len(msgs)} messages):\n{transcript}\n\n"
+                "Write a neutral 3-paragraph summary for the jury: (1) what was agreed, "
+                "(2) what went wrong according to each party, (3) the key question for the jury to resolve. "
+                "Be factual, balanced, and concise."
+            )
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {_s.GROQ_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": _s.GROQ_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.3, "max_tokens": 400,
+                    }
+                )
+                resp.raise_for_status()
+                summary = resp.json()["choices"][0]["message"]["content"].strip()
+
+            # Store summary on the dispute record
+            async with _session() as _db:
+                from sqlalchemy import update as _upd, select as _sel
+                from ....models.dispute import Dispute
+                _d = (await _db.execute(_sel(Dispute).where(Dispute.id == dispute.id))).scalar_one_or_none()
+                if _d:
+                    # Prepend AI summary to resolution field so it's visible in the dispute detail
+                    _d.resolution = f"[AI Summary]\n{summary}"
+                    await _db.commit()
+        except Exception as exc:
+            logger.warning("[disputes] AI summary generation failed: %s", exc)
+
+    _asyncio.create_task(_generate_summary())
 
     # ---- Auto-select jury ----
     try:

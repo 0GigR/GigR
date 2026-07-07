@@ -26,6 +26,16 @@ interface PublicUser {
   location_lng?: number | null
   bio?: string | null
   skills?: string[] | null
+  avg_rating?: number | null
+  rating_count?: number | null
+}
+
+interface RatingOut {
+  id: string
+  rater_name?: string | null
+  score: number
+  comment?: string | null
+  created_at: string
 }
 
 // Haversine distance in km
@@ -69,6 +79,12 @@ export default function PublicProfilePage() {
   const { data: profile, isLoading } = useQuery<PublicUser>({
     queryKey: ['publicUser', userId],
     queryFn: async () => { const { data } = await api.get(`/users/${userId}`); return data },
+    enabled: !!userId,
+  })
+
+  const { data: ratings } = useQuery<RatingOut[]>({
+    queryKey: ['ratings', userId],
+    queryFn: async () => { const { data } = await api.get(`/ratings/user/${userId}`); return data },
     enabled: !!userId,
   })
 
@@ -156,14 +172,27 @@ export default function PublicProfilePage() {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-3 gap-4 mt-6 text-center border-t pt-4">
+          <div className="grid grid-cols-4 gap-3 mt-6 text-center border-t pt-4">
             <div>
               <p className="text-xl font-bold">{vouches?.length || 0}</p>
               <p className="text-xs text-gray-500 mt-0.5">Vouches</p>
             </div>
             <div>
               <p className="text-xl font-bold">{services?.filter(s => s.is_active).length || 0}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Active Services</p>
+              <p className="text-xs text-gray-500 mt-0.5">Services</p>
+            </div>
+            <div>
+              {profile.avg_rating ? (
+                <>
+                  <p className="text-xl font-bold text-amber-500">{profile.avg_rating.toFixed(1)} ★</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{profile.rating_count} rating{profile.rating_count !== 1 ? 's' : ''}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xl font-bold text-gray-300">—</p>
+                  <p className="text-xs text-gray-500 mt-0.5">No ratings</p>
+                </>
+              )}
             </div>
             <div>
               <p className="text-xl font-bold">{profile.is_verified ? '✓' : '—'}</p>
@@ -188,6 +217,33 @@ export default function PublicProfilePage() {
                   <p className="font-medium text-sm">{s.title}</p>
                   {s.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{s.description}</p>}
                   <p className="text-sm font-semibold text-black mt-1.5">₦{parseFloat(s.price as string).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Ratings */}
+      {ratings && ratings.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <span className="text-amber-500">★</span> Ratings ({ratings.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {ratings.slice(0, 5).map(r => (
+                <div key={r.id} className="flex items-start justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <div className="text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-amber-400 font-bold">{r.score} ★</span>
+                      {r.rater_name && <span className="text-gray-600 font-medium">{r.rater_name}</span>}
+                    </div>
+                    {r.comment && <p className="text-gray-600 mt-0.5 text-xs">{r.comment}</p>}
+                  </div>
+                  <span className="text-xs text-gray-400 shrink-0 ml-2">{new Date(r.created_at).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>

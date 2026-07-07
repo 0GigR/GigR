@@ -123,11 +123,16 @@ app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["
 app.include_router(push.router, prefix="/api/v1/push", tags=["push"])
 
 from .api.v1.endpoints import admin
-
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
 from .api.v1.endpoints import amendments
 app.include_router(amendments.router, prefix="/api/v1/amendments", tags=["amendments"])
+
+from .api.v1.endpoints import ratings
+app.include_router(ratings.router, prefix="/api/v1/ratings", tags=["ratings"])
+
+from .api.v1.endpoints import milestones
+app.include_router(milestones.router, prefix="/api/v1/milestones", tags=["milestones"])
 
 from .api.v1.endpoints import upload
 app.include_router(upload.router, prefix="/api/v1/upload", tags=["upload"])

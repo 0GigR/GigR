@@ -22,6 +22,7 @@ import {
   ImagePlus,
   Loader2,
   Send,
+  Flag,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -101,6 +102,9 @@ export default function ActivityPage() {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [disputeReason, setDisputeReason] = useState('')
   const [disputeJobId, setDisputeJobId] = useState<string | null>(null)
+  const [ratingJobId, setRatingJobId] = useState<string | null>(null)
+  const [ratingScore, setRatingScore] = useState(5)
+  const [ratingComment, setRatingComment] = useState('')
 
   const { data: myVouchJobIds } = useQuery<string[]>({
     queryKey: ['myVouchJobIds'],
@@ -281,6 +285,20 @@ export default function ActivityPage() {
       setContractRoomOpen(false)
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Action failed'),
+  })
+
+  const ratingMutation = useMutation({
+    mutationFn: async ({ jobId, score, comment }: { jobId: string; score: number; comment: string }) => {
+      await api.post('/ratings/', { job_id: jobId, score, comment: comment || undefined })
+    },
+    onSuccess: () => {
+      toast.success('Rating submitted — thank you!')
+      setRatingJobId(null)
+      setRatingComment('')
+      setRatingScore(5)
+      queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.detail || 'Rating failed'),
   })
 
   const raiseDisputeMutation = useMutation({
@@ -464,20 +482,30 @@ export default function ActivityPage() {
                           )}
                           {tab === 'completed' &&
                             job.client_id === user?.id && (
-                              <Button
-                                size="sm"
-                                onClick={() => vouchMutation.mutate(job.id)}
-                                disabled={vouchMutation.isPending || vouchedJobIds.has(job.id)}
-                                className="bg-yellow-600 text-white disabled:opacity-60"
-                              >
-                                {vouchedJobIds.has(job.id) ? (
-                                  <><CheckCircle className="w-3 h-3 mr-1" /> Already Vouched</>
-                                ) : vouchMutation.isPending ? (
-                                  <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Vouching...</>
-                                ) : (
-                                  <><Star className="w-3 h-3 mr-1" /> Vouch</>
-                                )}
-                              </Button>
+                              <>
+                                <Button
+                                  size="sm"
+                                  onClick={() => vouchMutation.mutate(job.id)}
+                                  disabled={vouchMutation.isPending || vouchedJobIds.has(job.id)}
+                                  className="bg-yellow-600 text-white disabled:opacity-60"
+                                >
+                                  {vouchedJobIds.has(job.id) ? (
+                                    <><CheckCircle className="w-3 h-3 mr-1" /> Vouched</>
+                                  ) : vouchMutation.isPending ? (
+                                    <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Vouching...</>
+                                  ) : (
+                                    <><Star className="w-3 h-3 mr-1" /> Vouch</>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => { setRatingJobId(job.id); setRatingScore(5); setRatingComment('') }}
+                                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                                >
+                                  <Flag className="w-3 h-3 mr-1" /> Rate
+                                </Button>
+                              </>
                             )}
                         </div>
                       </CardContent>
@@ -779,7 +807,45 @@ export default function ActivityPage() {
       />
       {lightboxSrc && <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />}
 
-        {/* Dispute Reason Dialog */}
+        {/* Rating Dialog */}
+      <Dialog open={ratingJobId !== null} onOpenChange={() => setRatingJobId(null)}>
+        <DialogContent className="sm:max-w-md bg-white text-black">
+          <DialogHeader><DialogTitle>Rate your experience</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex justify-center gap-2">
+              {[1,2,3,4,5].map(n => (
+                <button key={n} onClick={() => setRatingScore(n)}
+                  className={`text-3xl transition-transform hover:scale-110 ${n <= ratingScore ? 'text-amber-400' : 'text-gray-200'}`}>
+                  ★
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-sm text-gray-500">
+              {ratingScore === 5 ? 'Excellent' : ratingScore === 4 ? 'Good' : ratingScore === 3 ? 'Average' : ratingScore === 2 ? 'Poor' : 'Terrible'}
+            </p>
+            <textarea
+              placeholder="Leave a comment (optional)..."
+              value={ratingComment}
+              onChange={e => setRatingComment(e.target.value)}
+              rows={3}
+              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setRatingJobId(null)}>Cancel</Button>
+              <Button
+                className="bg-black text-white"
+                disabled={ratingMutation.isPending}
+                onClick={() => ratingJobId && ratingMutation.mutate({ jobId: ratingJobId, score: ratingScore, comment: ratingComment })}
+              >
+                {ratingMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                Submit Rating
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dispute Reason Dialog */}
       <Dialog open={disputeJobId !== null} onOpenChange={() => setDisputeJobId(null)}>
         <DialogContent className="sm:max-w-md bg-white text-black">
           <DialogHeader>

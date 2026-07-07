@@ -50,6 +50,9 @@ class PublicUserOut(BaseModel):
     location_lng: Optional[float] = None
     bio: Optional[str] = None
     skills: Optional[List[str]] = None
+    # Computed from ratings table — injected by the endpoint, not from the model
+    avg_rating: Optional[float] = None
+    rating_count: Optional[int] = None
 
     class Config:
         from_attributes = True

@@ -242,6 +242,8 @@ async def get_user_by_id_route(
     user_id: str,
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import func as sqlfunc
+    from ....models.rating import Rating  # noqa: keep import local to avoid circular
     user = await get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -249,4 +251,12 @@ async def get_user_by_id_route(
     if not getattr(user, "location_public", False):
         out.location_lat = None
         out.location_lng = None
+    # Inject computed rating stats
+    rating_res = await db.execute(
+        select(sqlfunc.avg(Rating.score), sqlfunc.count(Rating.id))
+        .where(Rating.ratee_id == user.id)
+    )
+    avg, count = rating_res.one()
+    out.avg_rating = round(float(avg), 1) if avg else None
+    out.rating_count = count or 0
     return out
