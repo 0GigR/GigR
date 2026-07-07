@@ -31,6 +31,7 @@ if _is_serverless:
         poolclass=NullPool,
         connect_args={
             "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
             "server_settings": {
                 "application_name": "gigr_backend",
             },
@@ -47,6 +48,7 @@ else:
         pool_recycle=1800,
         connect_args={
             "statement_cache_size": 0,
+            "prepared_statement_cache_size": 0,
             "server_settings": {
                 "application_name": "gigr_backend",
             },
@@ -106,6 +108,15 @@ async def init_db() -> None:
                                 default = f" DEFAULT {'TRUE' if raw else 'FALSE'}"
                             elif isinstance(raw, (int, float)):
                                 default = f" DEFAULT {raw}"
+                            elif isinstance(raw, list):
+                                # Postgres array literal is {}
+                                # For now, we only handle empty list safely
+                                if not raw:
+                                    default = f" DEFAULT '{{}}'::{type_str}"
+                                else:
+                                    # Fallback for non-empty lists (assuming string contents)
+                                    joined = ",".join(f'"{str(x).replace(chr(34), chr(34)+chr(34))}"' for x in raw)
+                                    default = f" DEFAULT '{{{joined}}}'::{type_str}"
                             else:
                                 # String/text: wrap in single quotes, escape any inner quotes
                                 escaped = str(raw).replace("'", "''")
