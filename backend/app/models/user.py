@@ -1,6 +1,6 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, Float, func
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, DateTime, Boolean, Float, Text, func
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ARRAY
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 from cryptography.fernet import Fernet
@@ -55,6 +55,10 @@ class User(Base):
 
     # AI feature gate — set to False to disable the agent for this user (future pro tier)
     ai_enabled = Column(Boolean, nullable=False, default=True, server_default="true")
+
+    # Public profile fields
+    bio = Column(Text, nullable=True)
+    skills = Column(ARRAY(String), nullable=True, default=[])
 
     @property
     def wallet_private_key(self) -> bytes | None:

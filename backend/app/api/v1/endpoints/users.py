@@ -139,6 +139,104 @@ async def heartbeat(
 
 
 
+@router.get("/me/activity")
+async def my_full_activity(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full traceable activity history for the logged-in user.
+    Returns jobs (client + provider), applications, vouches given/received, disputes."""
+    from sqlalchemy import select
+    from ....models.job import Job
+    from ....models.application import Application
+    from ....models.vouch import Vouch
+    from ....models.dispute import Dispute
+
+    # Jobs as client
+    jobs_client_res = await db.execute(
+        select(Job).where(Job.client_id == current_user.id).order_by(Job.created_at.desc())
+    )
+    jobs_client = jobs_client_res.scalars().all()
+
+    # Jobs as provider
+    jobs_provider_res = await db.execute(
+        select(Job).where(Job.provider_id == current_user.id).order_by(Job.created_at.desc())
+    )
+    jobs_provider = jobs_provider_res.scalars().all()
+
+    # Applications submitted
+    apps_res = await db.execute(
+        select(Application).where(Application.applicant_id == current_user.id).order_by(Application.created_at.desc())
+    )
+    applications = apps_res.scalars().all()
+
+    # Vouches given
+    vouches_given_res = await db.execute(
+        select(Vouch).where(Vouch.voucher_id == current_user.id).order_by(Vouch.created_at.desc())
+    )
+    vouches_given = vouches_given_res.scalars().all()
+
+    # Vouches received
+    vouches_received_res = await db.execute(
+        select(Vouch).where(Vouch.vouchee_id == current_user.id).order_by(Vouch.created_at.desc())
+    )
+    vouches_received = vouches_received_res.scalars().all()
+
+    # Disputes involved in
+    from sqlalchemy import or_
+    disputes_res = await db.execute(
+        select(Dispute).where(
+            or_(Dispute.client_id == current_user.id, Dispute.provider_id == current_user.id)
+        ).order_by(Dispute.created_at.desc())
+    )
+    disputes = disputes_res.scalars().all()
+
+    def job_dict(j: Job) -> dict:
+        return {
+            "id": str(j.id), "title": j.title, "status": j.status,
+            "price": str(j.price), "created_at": j.created_at.isoformat() if j.created_at else None,
+            "client_id": str(j.client_id), "provider_id": str(j.provider_id) if j.provider_id else None,
+            "escrow_address": j.escrow_address, "image_url": j.image_url,
+        }
+
+    return {
+        "jobs_as_client": [job_dict(j) for j in jobs_client],
+        "jobs_as_provider": [job_dict(j) for j in jobs_provider],
+        "applications": [
+            {
+                "id": str(a.id), "job_id": str(a.job_id),
+                "message": a.message, "proposed_price": str(a.proposed_price) if a.proposed_price else None,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+                "portfolio_url": a.portfolio_url,
+            }
+            for a in applications
+        ],
+        "vouches_given": [
+            {
+                "id": str(v.id), "job_id": str(v.job_id), "vouchee_id": str(v.vouchee_id),
+                "cnf_nft_id": v.cnf_nft_id, "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in vouches_given
+        ],
+        "vouches_received": [
+            {
+                "id": str(v.id), "job_id": str(v.job_id), "voucher_id": str(v.voucher_id),
+                "cnf_nft_id": v.cnf_nft_id, "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in vouches_received
+        ],
+        "disputes": [
+            {
+                "id": str(d.id), "job_id": str(d.job_id), "reason": d.reason,
+                "status": d.status.value if hasattr(d.status, "value") else str(d.status),
+                "resolution": d.resolution, "raised_by": str(d.raised_by),
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in disputes
+        ],
+    }
+
+
 @router.get("/{user_id}", response_model=PublicUserOut)
 async def get_user_by_id_route(
     user_id: str,

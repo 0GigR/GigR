@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
 
@@ -29,6 +29,8 @@ class UserOut(BaseModel):
     ai_settings: Optional[Dict[str, Any]] = None
     ai_enabled: bool = True
     location_public: bool = False
+    bio: Optional[str] = None
+    skills: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -46,6 +48,8 @@ class PublicUserOut(BaseModel):
     # Location — only populated when the user has enabled location sharing
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    bio: Optional[str] = None
+    skills: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -57,6 +61,8 @@ class UserUpdate(BaseModel):
     profile_image_url: Optional[str] = None
     ai_settings: Optional[Dict[str, Any]] = None
     location_public: Optional[bool] = None
+    bio: Optional[str] = Field(None, max_length=500)
+    skills: Optional[List[str]] = None
 
 class UserLocationUpdate(BaseModel):
     latitude: float
