@@ -39,7 +39,7 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
-  const { user } = useAuthStore()
+  const { user, fetchUser } = useAuthStore()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user?.display_name || '')
@@ -422,8 +422,7 @@ export default function ProfilePage() {
               onClick={async () => {
                 const current = (user as any)?.location_public ?? false
                 await api.patch('/users/me', { location_public: !current })
-                queryClient.invalidateQueries({ queryKey: ['auth'] })
-                window.location.reload()
+                await fetchUser()
               }}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 (user as any)?.location_public ? 'bg-black' : 'bg-gray-200'

@@ -323,16 +323,9 @@ export default function JobsPage() {
           return // upload failed, toast already shown
         }
       }
-      // await api.post(`/amendments/${contractRoomJobId}`, {
-      //   proposed_by: 'provider',
-      //   reason: amendReason,
-      //   new_total_price: amendNewPrice,
-      //   additional_cost: 0,
-      //   image_url: imageUrl || undefined,
-      // })
       await api.post(`/amendments/${contractRoomJobId}`, {
         job_id: contractRoomJobId,
-        proposed_by: 'provider',
+        proposed_by: user?.id === contractRoomJob?.provider_id ? 'provider' : 'client',
         reason: amendReason,
         new_total_price: amendNewPrice,
         additional_cost: 0,

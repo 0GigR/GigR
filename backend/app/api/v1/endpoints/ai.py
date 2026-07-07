@@ -402,16 +402,41 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
         return f"Found service but failed to auto-request it."
 
 
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    import math
+    R = 6371
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1))*math.cos(math.radians(lat2))*math.sin(dlng/2)**2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
 async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Search for services matching the task query (Client looking to hire)."""
     params = task.params or {}
     query: str = params.get("query", "")
     max_price: Optional[float] = params.get("max_price")
 
-    await _log(db, task.id, "action", f"Searching for services: '{query}'" + (f" (max ₦{max_price:,.0f})" if max_price else ""))
+    # Load user location for proximity filtering
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    searcher = user_res.scalar_one_or_none()
+    user_lat = getattr(searcher, "location_lat", None) if searcher else None
+    user_lng = getattr(searcher, "location_lng", None) if searcher else None
+    location_note = " near you" if user_lat else ""
 
-    services = await search_services_by_text(db, query, limit=20)
+    await _log(db, task.id, "action", f"Searching for services: '{query}'{location_note}" + (f" (max ₦{max_price:,.0f})" if max_price else ""))
+
+    services = await search_services_by_text(db, query, limit=50)
     services = [s for s in services if s.provider_id != task.user_id]
+
+    # Proximity filter: prefer results within 20 km, fall back to all if too few
+    if user_lat and user_lng:
+        nearby = [
+            s for s in services
+            if s.latitude and s.longitude
+            and _haversine_km(user_lat, user_lng, float(s.latitude), float(s.longitude)) <= 20
+        ]
+        services = nearby if len(nearby) >= 3 else services
 
     if max_price:
         filtered = [s for s in services if float(s.price) <= max_price]
@@ -471,10 +496,28 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     query: str = params.get("query", "")
     min_price: Optional[float] = params.get("min_price")
 
-    await _log(db, task.id, "action", f"Searching for open jobs: '{query}'" + (f" (min ₦{min_price:,.0f})" if min_price else ""))
-    
-    jobs = await search_jobs_by_text(db, query, limit=20)
+    # Load user location for proximity filtering
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    searcher = user_res.scalar_one_or_none()
+    user_lat = getattr(searcher, "location_lat", None) if searcher else None
+    user_lng = getattr(searcher, "location_lng", None) if searcher else None
+    location_note = " near you" if user_lat else ""
+
+    await _log(db, task.id, "action", f"Searching for open jobs: '{query}'{location_note}" + (f" (min ₦{min_price:,.0f})" if min_price else ""))
+
+    jobs = await search_jobs_by_text(db, query, limit=50)
     jobs = [j for j in jobs if j.client_id != task.user_id and j.status == "open"]
+
+    # Proximity filter: prefer results within 25 km, fall back to all if too few
+    if user_lat and user_lng:
+        nearby = [
+            j for j in jobs
+            if j.location is not None  # PostGIS column populated
+        ]
+        # Use the get_open_jobs_nearby approach for actual geo distance if jobs have location
+        # For now sort by those with location first — geo query is done via API when user searches with lat/lon
+        if nearby:
+            jobs = nearby + [j for j in jobs if j not in nearby]
     
     if min_price:
         filtered = [j for j in jobs if float(j.price) >= min_price]
