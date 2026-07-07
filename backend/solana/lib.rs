@@ -120,6 +120,57 @@ pub mod gigr_escrow {
 
         Ok(())
     }
+
+    /// Release ONE milestone's portion of the escrow to the provider.
+    ///
+    /// This is a strictly partial payout: it transfers `amount` from the vault
+    /// to the provider and decrements the tracked remaining balance
+    /// (`escrow.amount`) WITHOUT closing the vault or escrow accounts.
+    ///
+    /// The FINAL milestone must be paid via `release_escrow`, which transfers
+    /// the remaining `escrow.amount` and closes everything (rent → platform).
+    /// The backend enforces: every milestone except the last → `release_partial`,
+    /// the last → `release_escrow`.
+    pub fn release_partial(ctx: Context<ReleasePartial>, amount: u64) -> Result<()> {
+        // Must be strictly less than the remaining balance so the final payout
+        // always goes through release_escrow (which closes accounts + refunds rent).
+        require!(amount > 0, CustomError::InvalidAmount);
+        require!(amount < ctx.accounts.escrow.amount, CustomError::InvalidAmount);
+
+        // Copy owned values so we can take a &mut borrow of escrow afterwards.
+        let client_key = ctx.accounts.escrow.client;
+        let job_id_bytes = ctx.accounts.escrow.job_id.to_le_bytes();
+        let bump = ctx.accounts.escrow.bump;
+        let seeds = &[
+            b"escrow".as_ref(),
+            client_key.as_ref(),
+            job_id_bytes.as_ref(),
+            &[bump],
+        ];
+        let signer = &[&seeds[..]];
+
+        // Transfer `amount` USDC from vault → provider, signed by the escrow PDA.
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.vault_ata.to_account_info(),
+            to: ctx.accounts.provider_ata.to_account_info(),
+            authority: ctx.accounts.escrow.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            cpi_accounts,
+            signer,
+        );
+        token::transfer(cpi_ctx, amount)?;
+
+        // Decrement the tracked remaining balance.
+        let escrow = &mut ctx.accounts.escrow;
+        escrow.amount = escrow
+            .amount
+            .checked_sub(amount)
+            .ok_or(CustomError::InvalidAmount)?;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -194,6 +245,23 @@ pub struct CancelEscrow<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+pub struct ReleasePartial<'info> {
+    // Only the client signs — nothing closes and no rent moves, so the
+    // platform account is not needed here (unlike release_escrow).
+    pub client: Signer<'info>,
+    #[account(mut)]
+    pub provider_ata: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub vault_ata: Account<'info, TokenAccount>,
+    #[account(
+        mut,
+        has_one = client @ CustomError::UnauthorizedClient,
+    )]
+    pub escrow: Account<'info, Escrow>,
+    pub token_program: Program<'info, Token>,
+}
+
 #[account]
 pub struct Escrow {
     pub client: Pubkey,
@@ -207,4 +275,6 @@ pub struct Escrow {
 pub enum CustomError {
     #[msg("Unauthorized: You are not the client.")]
     UnauthorizedClient,
+    #[msg("Invalid release amount.")]
+    InvalidAmount,
 }

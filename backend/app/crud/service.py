@@ -102,15 +102,34 @@ async def search_services_by_text(
     limit: int = 20,
     offset: int = 0
 ) -> List[ServiceListing]:
+    """Word-tokenized search: match services containing ANY significant query
+    word in title or description, then rank by how many words match.
+
+    Fixes the naive full-phrase bug where 'samsung repair guy' failed to match
+    a service titled 'Samsung phone repairs'.
+    """
+    from ..core.text_search import tokenize_query, relevance_score
+
+    tokens = tokenize_query(query)
+    if tokens:
+        conditions = []
+        for t in tokens:
+            conditions.append(ServiceListing.title.ilike(f"%{t}%"))
+            conditions.append(ServiceListing.description.ilike(f"%{t}%"))
+    else:
+        # Nothing meaningful to tokenize — fall back to raw phrase match
+        conditions = [
+            ServiceListing.title.ilike(f"%{query}%"),
+            ServiceListing.description.ilike(f"%{query}%"),
+        ]
+
+    # Pull a wider candidate set, then rank + trim in Python
     result = await db.execute(
-        select(ServiceListing)
-        .where(
-            or_(
-                ServiceListing.title.ilike(f"%{query}%"),
-                ServiceListing.description.ilike(f"%{query}%")
-            )
-        )
-        .limit(limit)
-        .offset(offset)
+        select(ServiceListing).where(or_(*conditions)).limit(max(limit * 3, 30))
     )
-    return result.scalars().all()
+    services = list(result.scalars().all())
+
+    if tokens:
+        services.sort(key=lambda s: relevance_score(tokens, s.title, s.description), reverse=True)
+
+    return services[offset:offset + limit]

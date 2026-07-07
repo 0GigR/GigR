@@ -209,11 +209,26 @@ async def transition_job_status(
 
 
 async def search_jobs_by_text(db: AsyncSession, query: str, limit: int = 20, offset: int = 0) -> List[Job]:
-    """Search for jobs matching the text in title or description."""
+    """Word-tokenized search: match jobs containing ANY significant query word
+    in title or description, ranked by number of matching words. Fixes the naive
+    full-phrase bug (e.g. 'fix my samsung' failing to match 'Samsung screen fix')."""
+    from ..core.text_search import tokenize_query, relevance_score
+
+    tokens = tokenize_query(query)
+    if tokens:
+        conditions = []
+        for t in tokens:
+            conditions.append(Job.title.ilike(f"%{t}%"))
+            conditions.append(Job.description.ilike(f"%{t}%"))
+    else:
+        conditions = [Job.title.ilike(f"%{query}%"), Job.description.ilike(f"%{query}%")]
+
     result = await db.execute(
-        select(Job)
-        .where(or_(Job.title.ilike(f"%{query}%"), Job.description.ilike(f"%{query}%")))
-        .limit(limit)
-        .offset(offset)
+        select(Job).where(or_(*conditions)).limit(max(limit * 3, 30))
     )
-    return result.scalars().all()
+    jobs = list(result.scalars().all())
+
+    if tokens:
+        jobs.sort(key=lambda j: relevance_score(tokens, j.title, j.description), reverse=True)
+
+    return jobs[offset:offset + limit]
