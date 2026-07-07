@@ -9,6 +9,44 @@ import uuid as _uuid
 router = APIRouter()
 
 
+@router.websocket("/ws/agent/{user_id}")
+async def websocket_agent_notifications(
+    websocket: WebSocket,
+    user_id: str,
+    token: str = Query(...),
+):
+    """User-level push channel for agent task updates.
+
+    Connect with: ws://host/ws/agent/{user_id}?token=<JWT>
+    The server sends {"type": "agent_task_update"} whenever a task
+    finishes or its status changes.
+    """
+    payload = decode_access_token(token)
+    if payload is None or payload.get("type") == "refresh":
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    token_user_id: str | None = payload.get("sub")
+    if token_user_id is None or token_user_id != user_id:
+        await websocket.close(code=4003, reason="Unauthorized")
+        return
+
+    async with async_session() as db:
+        user = await get_user_by_id(db, token_user_id)
+    if user is None:
+        await websocket.close(code=4001, reason="User not found")
+        return
+
+    await manager.connect_user(websocket, user_id)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect_user(websocket, user_id)
+    except Exception:
+        manager.disconnect_user(websocket, user_id)
+
+
 @router.websocket("/ws/messages/{job_id}")
 async def websocket_messages(
     websocket: WebSocket,

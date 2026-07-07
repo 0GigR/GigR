@@ -43,6 +43,7 @@ from ....models.service import ServiceListing
 from ....models.agent_task import AgentTask
 from ....models.agent_log import AgentLog
 from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, AgentTaskListOut
+from ....services.ws_manager import manager as _ws_manager
 
 router = APIRouter()
 
@@ -306,13 +307,26 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
 # (Removed extract_search_query from here since it was moved up)
 
 
-async def parse_command(text: str) -> Dict[str, Any]:
+async def parse_command(text: str, memory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Parse a natural language command into structured intent.
 
     Tries Groq Llama-3 first (better understanding). Falls back to
     rule-based regex parser if Groq key is missing or the call fails.
     """
-    groq_result = await _parse_command_groq(text)
+    # Enrich text with memory context so Groq can fill in omitted details
+    enriched = text
+    if memory:
+        hints = []
+        if memory.get("last_search"):
+            hints.append(f"user previously searched for: {memory['last_search']}")
+        if memory.get("usual_price_job"):
+            hints.append(f"user's typical job budget: ₦{memory['usual_price_job']:,.0f}")
+        if memory.get("usual_price_service"):
+            hints.append(f"user's typical service rate: ₦{memory['usual_price_service']:,.0f}")
+        if hints:
+            enriched = f"{text} [context: {'; '.join(hints)}]"
+
+    groq_result = await _parse_command_groq(enriched)
     if groq_result and groq_result.get("task_type"):
         return groq_result
     return _parse_command_rules(text)
@@ -327,6 +341,30 @@ async def _log(db: AsyncSession, task_id: uuid.UUID, level: str, message: str, d
     entry = AgentLog(task_id=task_id, level=level, message=message, data=data)
     db.add(entry)
     await db.flush()
+
+
+async def _load_memory(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, Any]:
+    """Load the agent memory stored in user.ai_settings['memory']."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        return {}
+    return (user.ai_settings or {}).get("memory", {})
+
+
+async def _save_memory(db: AsyncSession, user_id: uuid.UUID, updates: Dict[str, Any]) -> None:
+    """Merge updates into user.ai_settings['memory'] and persist."""
+    from sqlalchemy import update as sa_update
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        return
+    settings_now = dict(user.ai_settings or {})
+    memory = dict(settings_now.get("memory", {}))
+    memory.update(updates)
+    settings_now["memory"] = memory
+    await db.execute(sa_update(User).where(User.id == user_id).values(ai_settings=settings_now))
+    # flush only — caller commits
 
 
 async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceListing) -> str:
@@ -532,16 +570,16 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
             "message": "Negotiation is disabled. Enable it in AI Settings to let me message providers.",
         }
 
-    # Step 3: Send negotiation messages to top 3 closest providers
-    closest = sorted(services, key=lambda s: float(s.price))[:3]
-    if not closest:
+    # Step 3: Send ONE negotiation message to the best match (lowest price, closest to budget)
+    closest = sorted(services, key=lambda s: abs(float(s.price) - (max_price or float(s.price))))
+    best = closest[0] if closest else None
+    if not best:
         await _log(db, task.id, "warning", f"No services found at all for '{query}'")
         return {"negotiated": False, "message": "No providers found to negotiate with"}
 
     negotiated_with = []
-    for service in closest:
+    for service in [best]:
         # Find an existing job/chat between this user and provider for this service
-        # We need a job to send a message. Look for any open job linking client to this service.
         from ....models.job import Job
         job_result = await db.execute(
             select(Job).where(
@@ -555,12 +593,11 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
         job = job_result.scalar_one_or_none()
 
         if not job:
-            # Create a provisional job to allow messaging for negotiation
             from ....crud.job import create_job
             from ....schemas.job import JobCreate
             job_in = JobCreate(
                 title=f"Negotiation for: {service.title}",
-                description="Auto-generated job created by AI for negotiation purposes.",
+                description="Auto-generated job created by AI agent for price negotiation.",
                 price=max_price or float(service.price)
             )
             try:
@@ -580,22 +617,48 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
             f"I have a budget of {price_str}. Could you accommodate? This message was sent by my AI assistant on Gigr."
         )
         try:
-            await _log(db, task.id, "action", f"Sending negotiation message to provider for '{service.title}'...")
+            await _log(db, task.id, "action", f"Sending opening offer to '{service.title}' provider...")
             msg = await create_message(db, job.id, task.user_id, msg_content)
-            await _log(db, task.id, "success", f"Negotiation message sent for '{service.title}'")
-            negotiated_with.append({"service_id": str(service.id), "title": service.title, "job_id": str(job.id)})
-            
-            # Broadcast via WebSockets for real-time frontend notifications
-            from ....api.v1.endpoints.messages import manager
-            await manager.broadcast_new_message(msg)
+            await db.flush()
+            await _ws_manager.broadcast_new_message(msg)
+
+            # Count messages so the reply-checker knows where to start reading
+            from ....models.message import Message as _Msg
+            msg_count_res = await db.execute(
+                select(_Msg).where(_Msg.job_id == job.id)
+            )
+            msg_count = len(msg_count_res.scalars().all())
+
+            await _log(db, task.id, "success",
+                       f"Opening offer sent to provider for **'{service.title}'** (₦{float(service.price):,.0f}). "
+                       f"I'll monitor their reply and negotiate on your behalf. "
+                       f"[View chat](/dashboard/messages)")
+            negotiated_with.append({
+                "service_id": str(service.id), "title": service.title, "job_id": str(job.id)
+            })
         except Exception as exc:
             await _log(db, task.id, "error", f"Failed to send message for '{service.title}': {exc}")
+
+    neg_state = None
+    if negotiated_with:
+        neg_state = {
+            "active": True,
+            "job_id": negotiated_with[0]["job_id"],
+            "service_id": negotiated_with[0]["service_id"],
+            "user_id": str(task.user_id),
+            "target_price": max_price,
+            "current_offer": max_price,
+            "round": 1,
+            "last_msg_count": msg_count if negotiated_with else 0,
+            "last_check_ts": datetime.now(timezone.utc).timestamp(),
+        }
 
     return {
         "negotiated": len(negotiated_with) > 0,
         "negotiated_with": negotiated_with,
-        "message": f"Sent negotiation messages to {len(negotiated_with)} provider(s)" if negotiated_with
-                   else "No active chats found. Request a service first to negotiate.",
+        "negotiation_state": neg_state,
+        "message": "Opening offer sent. I'll follow up when the provider replies." if negotiated_with
+                   else "No providers found to negotiate with.",
     }
 
 
@@ -842,12 +905,19 @@ async def _execute_task(task_id: str):
             task.updated_at = datetime.now(timezone.utc)
             await db.flush()
 
+            # Load user's memory context and inject into params
+            memory = await _load_memory(db, task.user_id)
+            if memory and task.params is not None:
+                task.params = {**task.params, "_memory": memory}
+            elif memory:
+                task.params = {"_memory": memory}
+
             await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
             
             # --- NLP Parsing moved to background loop to avoid blocking the UI ---
             if task.task_type == "pending":
                 await _log(db, task.id, "info", "Parsing command intent...")
-                parsed = await parse_command(task.command_text)
+                parsed = await parse_command(task.command_text, memory=memory)
                 task.task_type = parsed.get("task_type", "generic")
                 
                 # Merge original params (like ai_negotiate_enabled) with parsed params
@@ -928,11 +998,175 @@ async def _execute_task(task_id: str):
                     pass
 
             task.updated_at = datetime.now(timezone.utc)
+
+            # Update memory from task results
+            if task.status == "completed" and task.result:
+                mem_updates: Dict[str, Any] = {}
+                r = task.result
+                if task.task_type in ("find_service", "negotiate") and task.params:
+                    q = task.params.get("query")
+                    if q:
+                        mem_updates["last_search"] = q
+                    if task.params.get("max_price"):
+                        mem_updates["usual_price_job"] = task.params["max_price"]
+                if task.task_type == "post_job" and r.get("price"):
+                    mem_updates["usual_price_job"] = r["price"]
+                if task.task_type == "post_service" and r.get("price"):
+                    mem_updates["usual_price_service"] = r["price"]
+                if mem_updates:
+                    await _save_memory(db, task.user_id, mem_updates)
+
             await db.commit()
+
+            # Push WS notification so frontend refreshes immediately (no poll lag)
+            try:
+                await _ws_manager.notify_user(str(task.user_id), {
+                    "type": "agent_task_update",
+                    "task_id": task_id,
+                    "status": task.status,
+                })
+            except Exception:
+                pass  # WS push is best-effort
+
     except Exception as exc:
         logger.error("[agent] Unexpected error in task %s: %s", task_id, exc, exc_info=True)
     finally:
         _running_tasks.discard(task_id)
+
+
+async def _check_negotiation_reply(task_id: str):
+    """Check if the provider replied to our negotiation message and continue if so."""
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentTask)
+            .options(selectinload(AgentTask.logs))
+            .where(AgentTask.id == uuid.UUID(task_id))
+        )
+        task = result.scalar_one_or_none()
+        if not task:
+            return
+
+        ns = (task.result or {}).get("negotiation_state", {})
+        if not ns.get("active"):
+            return
+
+        job_id = ns.get("job_id")
+        user_id = ns.get("user_id") or str(task.user_id)
+        last_msg_count = ns.get("last_msg_count", 0)
+        round_num = ns.get("round", 1)
+        target_price = ns.get("target_price")
+        current_offer = ns.get("current_offer")
+
+        # Update last check timestamp
+        new_result = dict(task.result or {})
+        new_result["negotiation_state"] = {**ns, "last_check_ts": datetime.now(timezone.utc).timestamp()}
+        task.result = new_result
+
+        if not job_id:
+            await db.commit()
+            return
+
+        # Fetch messages in the job
+        from ....models.message import Message
+        msgs_result = await db.execute(
+            select(Message)
+            .where(Message.job_id == uuid.UUID(job_id))
+            .order_by(Message.created_at.asc())
+        )
+        all_msgs = msgs_result.scalars().all()
+        await db.commit()
+
+        # Only new messages since last check that aren't from us
+        new_msgs = [m for m in all_msgs[last_msg_count:] if str(m.sender_id) != str(task.user_id)]
+        if not new_msgs:
+            return
+
+        # There's a reply — call Groq to analyse it
+        provider_reply = new_msgs[-1].content
+        if not settings.GROQ_API_KEY or round_num >= 3:
+            # Max rounds reached or no Groq — log outcome and close
+            async with async_session() as db2:
+                t = (await db2.execute(select(AgentTask).where(AgentTask.id == task.id))).scalar_one_or_none()
+                if t:
+                    nr = dict(t.result or {})
+                    nr["negotiation_state"] = {**ns, "active": False}
+                    t.result = nr
+                    if round_num >= 3:
+                        await _log(db2, t.id, "warning", f"Negotiation reached max rounds. Provider's last message: \"{provider_reply[:120]}\"")
+                    await db2.commit()
+                    await _ws_manager.notify_user(str(t.user_id), {"type": "agent_task_update", "task_id": task_id})
+            return
+
+        # Ask Groq: should we accept this price or counter?
+        system_prompt = (
+            "You are a negotiation assistant on Gigr, a Nigerian freelance marketplace. "
+            "Analyse the provider's reply to our price offer. "
+            "Return ONLY JSON: {\"decision\": \"accept\" | \"counter\" | \"walk\", "
+            "\"counter_price\": <number or null>, \"reply\": \"<1-2 sentence message to send>\"}. "
+            f"Our target price is ₦{target_price:,.0f}. Our current offer was ₦{current_offer:,.0f}."
+        )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"},
+                    json={
+                        "model": settings.GROQ_MODEL,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": f"Provider replied: \"{provider_reply}\""},
+                        ],
+                        "temperature": 0.3, "max_tokens": 150,
+                    }
+                )
+                resp.raise_for_status()
+                raw = resp.json()["choices"][0]["message"]["content"].strip()
+                raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` ")
+                decision_data = json.loads(raw)
+        except Exception as exc:
+            logger.warning("[agent] Negotiation Groq call failed: %s", exc)
+            return
+
+        decision = decision_data.get("decision", "walk")
+        reply_msg = decision_data.get("reply", "")
+        counter_price = decision_data.get("counter_price")
+
+        async with async_session() as db2:
+            t = (await db2.execute(select(AgentTask).where(AgentTask.id == task.id))).scalar_one_or_none()
+            if not t:
+                return
+
+            if decision == "accept":
+                await _log(db2, t.id, "success",
+                           f"✅ Deal accepted! Provider agreed. Final price: ₦{current_offer:,.0f}. "
+                           f"Check your [Activity](/dashboard/activity) to fund the escrow.")
+                new_ns = {**ns, "active": False, "final_price": current_offer}
+            elif decision == "counter" and counter_price:
+                # Send counter-offer
+                from ....models.message import Message as Msg
+                counter_msg = Msg(
+                    job_id=uuid.UUID(job_id),
+                    sender_id=task.user_id,
+                    content=reply_msg or f"Thank you for your reply. Could we do ₦{counter_price:,.0f}?",
+                )
+                db2.add(counter_msg)
+                await db2.flush()
+                from ....services.ws_manager import manager as _m
+                await _m.broadcast_new_message(counter_msg)
+                await _log(db2, t.id, "action",
+                           f"Counter-offered ₦{counter_price:,.0f} (round {round_num + 1}/3)")
+                new_ns = {**ns, "active": True, "round": round_num + 1,
+                          "current_offer": counter_price, "last_msg_count": len(all_msgs) + 1,
+                          "last_check_ts": datetime.now(timezone.utc).timestamp()}
+            else:
+                await _log(db2, t.id, "warning", "Negotiation ended — could not reach an agreement.")
+                new_ns = {**ns, "active": False}
+
+            new_r = dict(t.result or {})
+            new_r["negotiation_state"] = new_ns
+            t.result = new_r
+            await db2.commit()
+            await _ws_manager.notify_user(str(t.user_id), {"type": "agent_task_update", "task_id": task_id})
 
 
 async def agent_loop():
@@ -965,6 +1199,32 @@ async def agent_loop():
                     .values(status="failed", result={"error": "Task timed out"}, updated_at=datetime.now(timezone.utc))
                 )
                 await db.commit()
+
+                # ── Negotiation reply check ──────────────────────────────────
+                # Find completed negotiate tasks that have active negotiation state
+                # and check whether the provider has replied since our last message.
+                neg_result = await db.execute(
+                    select(AgentTask)
+                    .where(
+                        and_(
+                            AgentTask.status == "completed",
+                            AgentTask.task_type == "negotiate",
+                        )
+                    )
+                    .order_by(AgentTask.updated_at.desc())
+                    .limit(20)
+                )
+                neg_tasks = neg_result.scalars().all()
+                for nt in neg_tasks:
+                    ns = (nt.result or {}).get("negotiation_state")
+                    if not ns or not ns.get("active"):
+                        continue
+                    # Only check once every ~60 s to avoid hammering the DB
+                    last_check = ns.get("last_check_ts", 0)
+                    now_ts = datetime.now(timezone.utc).timestamp()
+                    if now_ts - last_check < 55:
+                        continue
+                    asyncio.create_task(_check_negotiation_reply(str(nt.id)))
 
                 # Fetch queued tasks up to concurrency limit
                 slots = settings.AI_AGENT_MAX_CONCURRENT_TASKS - len(_running_tasks)
