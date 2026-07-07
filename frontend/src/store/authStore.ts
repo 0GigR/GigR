@@ -11,6 +11,7 @@ interface User {
   is_verified: boolean
   created_at: string
   role?: string | null
+  ai_enabled?: boolean
 }
 
 interface AuthState {

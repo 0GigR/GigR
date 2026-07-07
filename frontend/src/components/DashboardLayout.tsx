@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import NotificationBell from '@/components/NotificationBell'
 import AgentActivityPanel from '@/components/agent/AgentActivityPanel'
 import GlobalItemModal from '@/components/GlobalItemModal'
 import { useAgentStore } from '@/store/agentStore'
-import { useEffect } from 'react'
+import api from '@/lib/api'
 import {
   LayoutDashboard,
   Briefcase,
@@ -56,6 +56,7 @@ export default function DashboardLayout() {
   }
 
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
+  const aiEnabled = user?.ai_enabled !== false
 
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Home', end: true },
@@ -71,17 +72,26 @@ export default function DashboardLayout() {
   // Global live message notifications (light + toast on any page)
   useMessageNotifications()
 
-  // Start agent polling
+  // Start agent polling (only when AI is enabled)
   const { startPolling, stopPolling } = useAgentStore()
   useEffect(() => {
+    if (!aiEnabled) return
     startPolling()
     return () => stopPolling()
-  }, [startPolling, stopPolling])
+  }, [startPolling, stopPolling, aiEnabled])
+
+  // Heartbeat — keep last_seen_at fresh every 60 s
+  useEffect(() => {
+    if (!user) return
+    api.post('/users/me/heartbeat').catch(() => {})
+    const id = setInterval(() => api.post('/users/me/heartbeat').catch(() => {}), 60_000)
+    return () => clearInterval(id)
+  }, [user])
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
-      <VoiceAssistant />
-      <AgentActivityPanel />
+      {aiEnabled && <VoiceAssistant />}
+      {aiEnabled && <AgentActivityPanel />}
       <OnboardingOverlay />
       <GlobalItemModal />
       {/* Top Bar */}
@@ -93,7 +103,7 @@ export default function DashboardLayout() {
           </div>
           <div className="flex items-center gap-2">
             <NotificationBell />
-            <AgentBell />
+            {aiEnabled && <AgentBell />}
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>

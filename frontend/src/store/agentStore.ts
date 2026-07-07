@@ -29,7 +29,7 @@ export interface AgentTask {
   id: string
   user_id: string
   command_text: string
-  task_type: 'search' | 'negotiate' | 'post_job' | 'navigate' | 'generic' | 'pending'
+  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'generic' | 'pending'
   params: Record<string, unknown> | null
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   result: Record<string, unknown> | null

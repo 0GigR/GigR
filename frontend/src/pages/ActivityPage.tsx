@@ -239,7 +239,7 @@ export default function ActivityPage() {
       }
       await api.post(`/amendments/${contractRoomJob.id}`, {
         job_id: contractRoomJob.id,
-        proposed_by: 'provider',
+        proposed_by: user?.id === contractRoomJob?.provider_id ? 'provider' : 'client',
         reason: amendReason,
         new_total_price: amendNewPrice,
         additional_cost: '0',
@@ -752,19 +752,6 @@ export default function ActivityPage() {
             ? `Are you sure you want to cancel "${confirmAction?.title}"? This action cannot be undone.`
             : ''
         }
-        // onConfirm={() => {
-        //   if (!confirmAction) return
-        //   const { type, jobId } = confirmAction
-        //   if (type === 'fund') fundMutation.mutate(jobId)
-        //   else if (type === 'release') releaseMutation.mutate(jobId)
-        //   else if (type === 'submit') submitWorkMutation.mutate(jobId)
-        //   else if (type === 'dispute') {
-        //     const reason = window.prompt('Briefly describe the problem you want the jury to review:')
-        //     if (!reason) return
-        //     raiseDisputeMutation.mutate({ jobId, reason })
-        //   }
-        //   setConfirmAction(null)
-        // }}
         onConfirm={() => {
           if (!confirmAction) return
           const { type, jobId } = confirmAction

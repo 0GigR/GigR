@@ -24,17 +24,20 @@ export default function AgentActivityPanel() {
   const [sending, setSending] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
+  // Track log IDs we've already acted on so navigate doesn't re-fire every poll
+  const handledLogIds = useRef<Set<string>>(new Set())
 
   // Auto-scroll on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [tasks])
 
-  // Listen for navigate_to in logs and redirect
+  // Listen for navigate_to in logs and redirect — only once per log entry
   useEffect(() => {
     for (const task of tasks) {
       for (const log of task.logs ?? []) {
-        if (log.data?.navigate_to) {
+        if (log.data?.navigate_to && !handledLogIds.current.has(log.id)) {
+          handledLogIds.current.add(log.id)
           navigate(log.data.navigate_to as string)
           closePanel()
         }
@@ -105,7 +108,7 @@ export default function AgentActivityPanel() {
         {/* Chat thread */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {sortedTasks.length === 0 ? (
-            <EmptyState onChipClick={(text) => { setInput(text); }} />
+            <EmptyState onChipClick={(text) => { setInput(text); setTimeout(() => document.getElementById('agent-input')?.focus(), 50) }} />
           ) : (
             sortedTasks.map((task) => (
               <TaskThread key={task.id} task={task} onNavigate={(path) => { navigate(path); closePanel() }} />
@@ -124,6 +127,7 @@ export default function AgentActivityPanel() {
               placeholder="Ask me anything…"
               rows={1}
               className="flex-1 bg-transparent resize-none outline-none text-sm leading-snug max-h-28"
+            id="agent-input"
               style={{ scrollbarWidth: 'none' }}
             />
             <Button
