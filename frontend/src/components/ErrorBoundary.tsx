@@ -39,7 +39,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </p>
             <div className="flex gap-3 justify-center">
               <Button
-                onClick={() => this.setState({ hasError: false, error: null })}
+                onClick={() => window.location.reload()}
                 className="bg-black text-white"
               >
                 <RefreshCw className="w-4 h-4 mr-2" /> Try Again

@@ -243,10 +243,11 @@ export default function ActivityPage() {
     })
   }
 
-  const clientingJobs = filterJobs(allJobs?.filter((j) => j.client_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
-  const providingJobs = filterJobs(allJobs?.filter((j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
-  const completedJobs = filterJobs(allJobs?.filter((j) => j.status === 'completed'))
-  const cancelledJobs = filterJobs(allJobs?.filter((j) => j.status === 'cancelled'))
+  const safeJobs = Array.isArray(allJobs) ? allJobs : []
+  const clientingJobs = filterJobs(safeJobs.filter((j) => j.client_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
+  const providingJobs = filterJobs(safeJobs.filter((j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
+  const completedJobs = filterJobs(safeJobs.filter((j) => j.status === 'completed'))
+  const cancelledJobs = filterJobs(safeJobs.filter((j) => j.status === 'cancelled'))
 
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
