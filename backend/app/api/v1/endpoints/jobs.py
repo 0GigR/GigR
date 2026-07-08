@@ -91,6 +91,7 @@ async def _notify_matching_providers(job_id: str, poster_name: str):
         from ..models.service import ServiceListing
         from ..models.user import User as _User
         import re as _re
+        
 
         async with AsyncSession(engine) as db:
             from sqlalchemy import select as _sel, or_ as _or
