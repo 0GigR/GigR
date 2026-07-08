@@ -28,7 +28,11 @@ import {
   LogOut,
   MoreHorizontal,
   X,
+  RefreshCw,
 } from 'lucide-react'
+
+import { useQueryClient } from '@tanstack/react-query'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore()
@@ -36,6 +40,11 @@ export default function DashboardLayout() {
   const messageUnread = useUnreadStore((s) => s.messageUnread)
   const [showMore, setShowMore] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const queryClient = useQueryClient()
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW()
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -111,6 +120,9 @@ export default function DashboardLayout() {
           <div className="flex items-center gap-2">
             <NotificationBell />
             {aiEnabled && <AgentBell />}
+            <Button variant="ghost" size="icon" onClick={() => queryClient.invalidateQueries()}>
+              <RefreshCw className="h-5 w-5" />
+            </Button>
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
@@ -133,6 +145,23 @@ export default function DashboardLayout() {
               Install
             </button>
             <button onClick={() => setDeferredPrompt(null)} className="opacity-70 hover:opacity-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Update Available Banner */}
+      {needRefresh && (
+        <div className="bg-blue-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">Update Available</span>
+            <span className="hidden sm:inline opacity-80">A new version of Gigr is ready.</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => updateServiceWorker(true)} className="bg-white text-blue-600 px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+              Reload to Update
+            </button>
+            <button onClick={() => setNeedRefresh(false)} className="opacity-70 hover:opacity-100">
               <X className="w-4 h-4" />
             </button>
           </div>

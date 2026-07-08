@@ -417,9 +417,11 @@ export default function ProfilePage() {
               </p>
             </div>
             <button
+              type="button"
               role="switch"
               aria-checked={(user as any)?.location_public ?? false}
-              onClick={async () => {
+              onClick={async (e) => {
+                e.preventDefault()
                 const current = (user as any)?.location_public ?? false
                 await api.patch('/users/me', { location_public: !current })
                 await fetchUser()
