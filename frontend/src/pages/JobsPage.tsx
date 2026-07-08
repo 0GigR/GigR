@@ -455,7 +455,7 @@ export default function JobsPage() {
         <div className="flex flex-wrap gap-2">
           {activeTab === 'mine' && (
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] bg-white border-gray-200">
+              <SelectTrigger className="w-[140px] bg-background border-border">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -471,7 +471,7 @@ export default function JobsPage() {
             </Select>
           )}
           <Select value={sortOrder} onValueChange={setSortOrder}>
-            <SelectTrigger className="w-[160px] bg-white border-gray-200">
+            <SelectTrigger className="w-[160px] bg-background border-border">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
             <SelectContent>
@@ -606,7 +606,7 @@ export default function JobsPage() {
 
       {/* Create Job Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg bg-white text-black">
+        <DialogContent className="sm:max-w-lg bg-background text-foreground">
           <DialogHeader><DialogTitle>Post a New Job</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
@@ -655,7 +655,7 @@ export default function JobsPage() {
 
       {/* Apply Dialog */}
       <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
-        <DialogContent className="sm:max-w-md bg-white text-black">
+        <DialogContent className="sm:max-w-md bg-background text-foreground">
           <DialogHeader><DialogTitle>Apply for {applyTargetJob?.title}</DialogTitle></DialogHeader>
           {applyTargetJob?.image_url && <img src={applyTargetJob.image_url} className="rounded-lg max-h-48 object-cover mb-4" />}
           <div className="space-y-4 py-4">
@@ -672,7 +672,7 @@ export default function JobsPage() {
 
       {/* Contract Room Dialog */}
       <Dialog open={contractRoomOpen} onOpenChange={setContractRoomOpen}>
-        <DialogContent className="sm:max-w-lg bg-white text-black max-h-[80vh] flex flex-col">
+        <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[80vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{contractRoomJob?.title} – Contract Room</DialogTitle>
           </DialogHeader>
@@ -783,7 +783,7 @@ export default function JobsPage() {
       {/* Job Detail Modal */}
       {detailJob && (
         <Dialog open={!!detailJob} onOpenChange={() => setDetailJob(null)}>
-          <DialogContent className="sm:max-w-2xl bg-white text-black">
+          <DialogContent className="sm:max-w-2xl bg-background text-foreground">
             <DialogHeader><DialogTitle>{detailJob.title}</DialogTitle></DialogHeader>
             <div className="space-y-4">
               {detailJob.image_url && <img src={detailJob.image_url} className="rounded-lg max-h-64 object-cover cursor-pointer" onClick={() => setLightboxSrc(detailJob.image_url!)} />}
@@ -896,7 +896,7 @@ function JobCard({
   })
 
   return (
-    <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+    <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {/* Poster info */}
         <div className="mb-2">
