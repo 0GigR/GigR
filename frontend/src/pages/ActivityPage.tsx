@@ -12,6 +12,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 // import { Separator } from '@/components/ui/separator'
 // import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Link } from 'react-router-dom'
+import UserChip from '@/components/UserChip'
 import { useAuthStore } from '@/store/authStore'
 import {
   MessageCircle,
@@ -34,16 +37,116 @@ type ScopeAmendment = components['schemas']['ScopeAmendmentOut']
 type Vouch = components['schemas']['VouchOut']
 
 // Helper to fetch user info
-// function useUserInfo(userId: string | undefined) {
-//   return useQuery({
-//     queryKey: ['user', userId],
-//     queryFn: async () => {
-//       const { data } = await api.get(`/users/${userId}`)
-//       return data
-//     },
-//     enabled: !!userId,
-//   })
-// }
+function useUserInfo(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['user', userId],
+    queryFn: async () => {
+      const { data } = await api.get(`/users/${userId}`)
+      return data
+    },
+    enabled: !!userId,
+  })
+}
+
+function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, onAccept, onCancel, onVouch, onLightbox, onDispute, onRate, fundPending, submitPending, acceptPending, cancelPending, vouchPending, vouched }: any) {
+  const { user } = useAuthStore()
+  
+  // Determine counterpart ID
+  let counterpartId = null
+  let roleLabel = ''
+  
+  if (tab === 'clienting') {
+    counterpartId = job.provider_id
+    roleLabel = 'Provider'
+  } else if (tab === 'providing') {
+    counterpartId = job.client_id
+    roleLabel = 'Client'
+  } else {
+    // For completed/cancelled, guess based on our ID
+    if (job.client_id === user?.id) {
+      counterpartId = job.provider_id
+      roleLabel = 'Provider'
+    } else {
+      counterpartId = job.client_id
+      roleLabel = 'Client'
+    }
+  }
+
+  const { data: counterpart } = useUserInfo(counterpartId)
+
+  return (
+    <Card className="bg-white border border-gray-100 relative">
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle className="text-base mb-2">{job.title}</CardTitle>
+            {counterpart && (
+              <div className="mb-2 hover:opacity-80 transition-opacity w-fit">
+                <Link to={`/dashboard/user/${counterpartId}`}>
+                  <UserChip
+                    userId={counterpartId}
+                    name={counterpart.display_name}
+                    avatarUrl={counterpart.profile_image_url}
+                    lastSeenAt={(counterpart as any)?.last_seen_at}
+                  />
+                </Link>
+                <span className="text-[10px] text-gray-400 ml-1 uppercase tracking-wider">{roleLabel}</span>
+              </div>
+            )}
+          </div>
+          {statusBadge(job.status)}
+        </div>
+      </CardHeader>
+      <CardContent className="text-sm">
+        <p className="text-gray-600 mb-2">₦{parseFloat(job.price as string).toLocaleString()}</p>
+        {job.escrow_address && <p className="text-xs text-green-600 mb-2">Escrow: {job.escrow_address.slice(0, 8)}...</p>}
+        {job.image_url && <img src={job.image_url} className="rounded-lg w-20 h-20 object-cover mb-2 cursor-pointer" onClick={() => onLightbox(job.image_url)} />}
+        
+        <div className="flex gap-2 flex-wrap">
+          <Button size="sm" variant="outline" onClick={() => onOpenContractRoom(job)}>
+            <MessageCircle className="w-3 h-3 mr-1" /> Contract Room
+          </Button>
+          {tab === 'clienting' && job.status === 'assigned' && (
+            <Button size="sm" onClick={() => onFund({ type: 'fund', jobId: job.id, title: job.title })} className="bg-green-600 text-white" disabled={fundPending}>
+              {fundPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />} Fund
+            </Button>
+          )}
+          {tab === 'providing' && job.status === 'funded' && (
+            <Button size="sm" onClick={() => onSubmitWork({ type: 'submit', jobId: job.id, title: job.title })} className="bg-purple-600 text-white" disabled={submitPending}>
+              {submitPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />} Submit Work
+            </Button>
+          )}
+          {tab === 'clienting' && (job.status === 'funded' || job.status === 'in_progress') && (
+            <>
+              <Button size="sm" onClick={() => onAccept({ type: 'release', jobId: job.id, title: job.title })} className="bg-black text-white" disabled={acceptPending}>
+                <CheckCircle className="w-3 h-3 mr-1" /> Accept & Pay
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onDispute(job.id)} className="text-red-600 hover:text-red-700">
+                <Flag className="w-3 h-3 mr-1" /> Dispute
+              </Button>
+            </>
+          )}
+          {(job.status === 'open' || job.status === 'assigned') && tab === 'clienting' && (
+            <Button size="sm" variant="outline" onClick={() => onCancel({ type: 'cancel', jobId: job.id, title: job.title })} className="text-red-600 hover:text-red-700" disabled={cancelPending}>
+              {cancelPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+              Cancel
+            </Button>
+          )}
+          {job.status === 'completed' && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => onRate(job.id)}>
+                <Star className="w-3 h-3 mr-1" /> Rate
+              </Button>
+              <Button size="sm" variant={vouched ? "secondary" : "outline"} onClick={() => onVouch(job.id)} disabled={vouched || vouchPending}>
+                <Shield className="w-3 h-3 mr-1" /> {vouched ? 'Vouched' : 'Vouch & Mint'}
+              </Button>
+            </>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 // Cloudinary upload helper
 async function uploadFile(file: File): Promise<string> {
@@ -87,7 +190,9 @@ const statusBadge = (status: string) => {
 export default function ActivityPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'clienting' | 'providing' | 'completed'>('clienting')
+  const [activeTab, setActiveTab] = useState<'clienting' | 'providing' | 'completed' | 'cancelled'>('clienting')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   // Contract room state
   const [contractRoomOpen, setContractRoomOpen] = useState(false)
@@ -128,19 +233,20 @@ export default function ActivityPage() {
     },
   })
 
-  // Categorize jobs
-  const clientingJobs =
-    allJobs?.filter(
-      (j) => j.client_id === user?.id && !['completed', 'cancelled'].includes(j.status)
-    ) || []
-  const providingJobs =
-    allJobs?.filter(
-      (j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)
-    ) || []
-  const completedJobs =
-    allJobs?.filter((j) => j.status === 'completed') || []
-  const cancelledJobs =
-    allJobs?.filter((j) => j.status === 'cancelled') || []
+  // Categorize and filter jobs
+  const filterJobs = (jobs: Job[] | undefined) => {
+    if (!jobs) return []
+    return jobs.filter((j) => {
+      const matchesSearch = j.title.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || j.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }
+
+  const clientingJobs = filterJobs(allJobs?.filter((j) => j.client_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
+  const providingJobs = filterJobs(allJobs?.filter((j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
+  const completedJobs = filterJobs(allJobs?.filter((j) => j.status === 'completed'))
+  const cancelledJobs = filterJobs(allJobs?.filter((j) => j.status === 'cancelled'))
 
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
@@ -329,11 +435,33 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-3xl font-bold">My Activity</h1>
-        <p className="text-gray-500">
-          Track your jobs, escrow, and reputation
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">My Activity</h1>
+          <p className="text-gray-500">
+            Track your jobs, escrow, and reputation
+          </p>
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <Input 
+            placeholder="Search by title..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full md:w-64 bg-white"
+          />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] bg-white">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="open">Open</SelectItem>
+              <SelectItem value="assigned">Assigned</SelectItem>
+              <SelectItem value="funded">Funded</SelectItem>
+              <SelectItem value="in_progress">In Progress</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Tabs
@@ -381,135 +509,25 @@ export default function ActivityPage() {
                     ? completedJobs
                     : cancelledJobs
                   ).map((job) => (
-                    <Card
+                    <ActivityJobCard
                       key={job.id}
-                      className="bg-white border border-gray-100"
-                    >
-                      <CardHeader className="pb-2">
-                        <div className="flex justify-between">
-                          <CardTitle className="text-base">
-                            {job.title}
-                          </CardTitle>
-                          {statusBadge(job.status)}
-                        </div>
-                      </CardHeader>
-                      <CardContent className="text-sm">
-                        <p className="text-gray-600 mb-2">
-                          ₦
-                          {parseFloat(
-                            job.price as string
-                          ).toLocaleString()}
-                        </p>
-                        {job.escrow_address && (
-                          <p className="text-xs text-green-600 mb-2">
-                            Escrow: {job.escrow_address.slice(0, 8)}...
-                          </p>
-                        )}
-                        {job.image_url && (
-                          <img
-                            src={job.image_url}
-                            className="rounded-lg w-20 h-20 object-cover mb-2 cursor-pointer"
-                            onClick={() => setLightboxSrc(job.image_url!)}
-                          />
-                        )}
-                        <div className="flex gap-2 flex-wrap">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => openContractRoom(job)}
-                          >
-                            <MessageCircle className="w-3 h-3 mr-1" />{' '}
-                            Contract Room
-                          </Button>
-                          {tab === 'clienting' &&
-                            job.status === 'assigned' && (
-                              <Button
-                                size="sm"
-                                onClick={() => setConfirmAction({ type: 'fund', jobId: job.id, title: job.title })}
-                                className="bg-green-600 text-white"
-                                disabled={fundMutation.isPending}
-                              >
-                                {fundMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Shield className="w-3 h-3 mr-1" />}
-                                Fund
-                              </Button>
-                          )}
-                          {tab === 'providing' &&
-                            job.status === 'funded' && (
-                              <Button
-                                size="sm"
-                                onClick={() => setConfirmAction({ type: 'submit', jobId: job.id, title: job.title })}
-                                className="bg-purple-600 text-white"
-                                disabled={submitWorkMutation.isPending}
-                              >
-                                {submitWorkMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                                Submit Work
-                              </Button>
-                          )}
-                          {tab === 'clienting' &&
-                            (job.status === 'funded' ||
-                              job.status === 'in_progress') && (
-                              <Button
-                                size="sm"
-                                onClick={() => setConfirmAction({ type: 'release', jobId: job.id, title: job.title })}
-                                className="bg-blue-600 text-white"
-                                disabled={releaseMutation.isPending}
-                              >
-                                {releaseMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-                                Release
-                              </Button>
-                          )}
-                          {job.status === 'in_progress' &&
-                            (job as any).auto_release_at && (
-                              <span className="text-xs text-purple-600 self-center">
-                                Auto-releases{' '}
-                                {new Date(
-                                  (job as any).auto_release_at
-                                ).toLocaleString()}
-                              </span>
-                            )}
-                          {/* Cancel button — pre-funding only */}
-                          {['open', 'assigned', 'requested'].includes(job.status) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-red-300 text-red-600 hover:bg-red-50"
-                              onClick={() => setConfirmAction({ type: 'cancel', jobId: job.id, title: job.title })}
-                              disabled={cancelMutation.isPending}
-                            >
-                              {cancelMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
-                              Cancel Job
-                            </Button>
-                          )}
-                          {tab === 'completed' &&
-                            job.client_id === user?.id && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  onClick={() => vouchMutation.mutate(job.id)}
-                                  disabled={vouchMutation.isPending || vouchedJobIds.has(job.id)}
-                                  className="bg-yellow-600 text-white disabled:opacity-60"
-                                >
-                                  {vouchedJobIds.has(job.id) ? (
-                                    <><CheckCircle className="w-3 h-3 mr-1" /> Vouched</>
-                                  ) : vouchMutation.isPending ? (
-                                    <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Vouching...</>
-                                  ) : (
-                                    <><Star className="w-3 h-3 mr-1" /> Vouch</>
-                                  )}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => { setRatingJobId(job.id); setRatingScore(5); setRatingComment('') }}
-                                  className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                                >
-                                  <Flag className="w-3 h-3 mr-1" /> Rate
-                                </Button>
-                              </>
-                            )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                      job={job}
+                      tab={tab}
+                      onOpenContractRoom={openContractRoom}
+                      onFund={setConfirmAction}
+                      onSubmitWork={setConfirmAction}
+                      onAccept={setConfirmAction}
+                      onCancel={setConfirmAction}
+                      onVouch={(id: string) => vouchMutation.mutate(id)}
+                      onLightbox={setLightboxSrc}
+                      onDispute={(id: string) => { setDisputeJobId(id); setContractRoomOpen(false) }}
+                      onRate={(id: string) => setRatingJobId(id)}
+                      fundPending={fundMutation.isPending}
+                      submitPending={submitWorkMutation.isPending}
+                      acceptPending={releaseMutation.isPending}
+                      vouchPending={vouchMutation.isPending}
+                      vouched={vouchedJobIds.has(job.id)}
+                    />
                   ))}
                 </div>
               )
