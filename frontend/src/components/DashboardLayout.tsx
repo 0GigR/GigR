@@ -158,7 +158,18 @@ export default function DashboardLayout() {
             <span className="hidden sm:inline opacity-80">A new version of Gigr is ready.</span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => updateServiceWorker(true)} className="bg-background text-primary px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+            <button onClick={() => {
+              if (navigator.serviceWorker) {
+                navigator.serviceWorker.getRegistrations().then((registrations) => {
+                  for (let registration of registrations) {
+                    registration.unregister()
+                  }
+                  window.location.reload()
+                })
+              } else {
+                window.location.reload()
+              }
+            }} className="bg-background text-primary px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
               Reload to Update
             </button>
             <button onClick={() => setNeedRefresh(false)} className="opacity-70 hover:opacity-100">
