@@ -14,6 +14,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
 import UserChip from '@/components/UserChip'
+import { Link } from 'react-router-dom'
 import {
   MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2
 } from 'lucide-react'
@@ -80,13 +81,15 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
     <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {provider && !isOwner && (
-          <div className="mb-3">
-            <UserChip
-              userId={service.provider_id}
-              name={provider.display_name}
-              avatarUrl={provider.profile_image_url}
-              lastSeenAt={(provider as any)?.last_seen_at}
-            />
+          <div className="mb-3 hover:opacity-80 transition-opacity w-fit">
+            <Link to={`/dashboard/user/${service.provider_id}`}>
+              <UserChip
+                userId={service.provider_id}
+                name={provider.display_name}
+                avatarUrl={provider.profile_image_url}
+                lastSeenAt={(provider as any)?.last_seen_at}
+              />
+            </Link>
           </div>
         )}
         {service.image_url && (

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
 from ....crud.message import get_messages_for_job, create_message, get_messages_for_job_since
 from ....crud.job import get_job_by_id
+from ....crud.notification import create_notification
 from ....schemas.message import MessageCreate, MessageOut
 from ....models.user import User
 from ....services.ws_manager import manager
@@ -44,6 +45,23 @@ async def send_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     _assert_participant(job, current_user)
     message = await create_message(db, msg.job_id, current_user.id, msg.content, msg.image_url)
+    
     # Broadcast the new message to all WebSocket clients in this job room
     await manager.broadcast_new_message(message)
+    
+    # Trigger DB notification & Web Push
+    recipient_id = job.provider_id if current_user.id == job.client_id else job.client_id
+    sender_name = current_user.display_name or "Someone"
+    
+    # We await create_notification (which internally fires a background web push task)
+    await create_notification(
+        db, 
+        user_id=recipient_id, 
+        title=f"New message from {sender_name}", 
+        message=msg.content[:100] + ("..." if len(msg.content) > 100 else ""),
+        link=f"/dashboard/messages?jobId={job.id}"
+    )
+    # create_notification doesn't commit, so commit here
+    await db.commit()
+    
     return message
