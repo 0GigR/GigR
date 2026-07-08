@@ -29,6 +29,21 @@ from datetime import datetime, timedelta, timezone
 from ....models.job import Job
 
 logger = logging.getLogger(__name__)
+# ------------------------------------------------------------------
+# Idempotency helper – check if a Solana account exists
+# ------------------------------------------------------------------
+from solana.rpc.async_api import AsyncClient as SolanaAsyncClient
+
+async def _get_solana_account(pubkey: Pubkey) -> bool:
+    """Return True if the account exists on-chain and has data."""
+    try:
+        async with SolanaAsyncClient(settings.SOLANA_RPC_URL) as client:
+            resp = await client.get_account_info(pubkey)
+            if resp.value is not None and resp.value.data:
+                return True
+    except Exception:
+        pass
+    return False
 
 # USDC Devnet mint
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
@@ -376,7 +391,7 @@ async def fund_job_route(
         raise HTTPException(status_code=404, detail="Job not found")
     if job.client_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the client can fund")
-    if job.status != "assigned":
+    if job.status not in ("assigned", "funded"):
         raise HTTPException(status_code=400, detail="Job must be assigned before funding")
     if job.status == "funded":
         return job
@@ -388,7 +403,7 @@ async def fund_job_route(
         raise HTTPException(status_code=404, detail="Provider not found")
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
 
-    # Guard: contract_job_id must be set (NULL = job was created before Solana integration)
+    # Guard: contract_job_id must be set
     if not job.contract_job_id:
         raise HTTPException(
             status_code=400,
@@ -396,14 +411,33 @@ async def fund_job_route(
                    "integration. Please delete it and post a new job."
         )
 
-    # Derive escrow PDA
-    job_id_int = int(job.contract_job_id, 16)   # reliable hex field
+    # Derive escrow PDA using same seeds as contract
+    job_id_int = int(job.contract_job_id, 16)
     escrow_pubkey, escrow_bump = Pubkey.find_program_address(
         [b"escrow", bytes(client_kp.pubkey()), job_id_int.to_bytes(8, "little")],
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
     )
 
-    # Derive vault ATA (custom PDA, not standard SPL ATA)
+    # --- IDEMPOTENCY CHECK ---
+    # If the escrow PDA already exists on-chain, just sync the database.
+    if await _get_solana_account(escrow_pubkey):
+        if not await transition_job_status(db, job_id, ["assigned"], "funded", str(escrow_pubkey)):
+            # already funded, just reload and return
+            await db.refresh(job)
+            return job
+        db.expire(job)
+        await create_notification(
+            db,
+            user_id=job.provider_id,
+            title="Escrow Funded",
+            message=f"The client has funded the escrow for \"{job.title}\". You can begin working!",
+            link=f"/dashboard/activity"
+        )
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    # Derive vault ATA
     vault_ata, _ = Pubkey.find_program_address(
         [b"vault", bytes(escrow_pubkey)],
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
@@ -415,15 +449,11 @@ async def fund_job_route(
         Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
     )
 
-    # Convert job price (Naira) → USDC micro-units (6 decimals) using live exchange rate
+    # Convert job price (Naira) → USDC micro-units (6 decimals)
     ngn_rate = await get_ngn_usd_rate()
     usd_amount = float(job.price) / ngn_rate
     amount = int(usd_amount * 1_000_000)
     logger.info(f"[fund] NGN rate={ngn_rate:.2f}, price=₦{job.price}, usd={usd_amount:.4f}, lamports={amount}")
-    logger.debug(
-        "[fund] job=%s client=%s provider=%s ata=%s vault=%s amount=%d (₦%s @ %.2f NGN/USD)",
-        job_id, client_kp.pubkey(), provider_pubkey, client_ata, vault_ata, amount, job.price, ngn_rate,
-    )
 
     try:
         tx_sig = await init_escrow(
@@ -434,7 +464,7 @@ async def fund_job_route(
             mint=str(USDC_MINT),
             job_id=job_id_int,
             amount=amount,
-            escrow_pubkey=str(escrow_pubkey),   # PDA derived above — must be passed explicitly
+            escrow_pubkey=str(escrow_pubkey),
         )
     except Exception as e:
         err_str = str(e)
@@ -454,7 +484,6 @@ async def fund_job_route(
         raise HTTPException(status_code=409, detail="Job was already funded by a concurrent request")
     db.expire(job)
 
-    # Notification to provider
     await create_notification(
         db,
         user_id=job.provider_id,
@@ -479,10 +508,8 @@ async def release_job_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
     if job.client_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the client can release")
-    if job.status not in ("funded", "in_progress"):
+    if job.status not in ("funded", "in_progress", "completed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not in a releasable state")
-
-    # Idempotency
     if job.status == "completed":
         return job
 
@@ -490,7 +517,7 @@ async def release_job_route(
     provider_user = await get_user_by_id(db, job.provider_id)
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
 
-    # Guard: contract_job_id must be set (old jobs won't have it)
+    # Guard: contract_job_id must be set
     if not job.contract_job_id:
         raise HTTPException(
             status_code=400,
@@ -498,42 +525,70 @@ async def release_job_route(
                    "integration. Please cancel it and create a new job."
         )
 
-    # Derive the escrow PDA using the same contract_job_id used at funding time
+    # Derive escrow PDA and vault ATA
     job_id_int = int(job.contract_job_id, 16)
-    escrow_pubkey = Pubkey.find_program_address(
+    escrow_pubkey, _ = Pubkey.find_program_address(
         [b"escrow", bytes(Pubkey.from_string(client_user.wallet_public_key)), job_id_int.to_bytes(8, 'little')],
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
-    )[0]
-
-    # Derive vault ATA owned by escrow PDA
-    vault_ata = Pubkey.find_program_address(
+    )
+    vault_ata, _ = Pubkey.find_program_address(
         [b"vault", bytes(escrow_pubkey)],
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
-    )[0]
+    )
 
+    # --- IDEMPOTENCY CHECK ---
+    # If the escrow PDA no longer exists, the funds were already released.
+    # Just update the DB to completed and return.
+    if not await _get_solana_account(escrow_pubkey):
+        if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
+            await db.refresh(job)
+            return job
+        db.expire(job)
+        await create_notification(
+            db,
+            user_id=job.provider_id,
+            title="Payment Released",
+            message=f"The payment for \"{job.title}\" has been released to your wallet.",
+            link=f"/dashboard/activity"
+        )
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    # Provider ATA – derive and ensure it exists
+    from spl.token.instructions import get_associated_token_address
+    from ....services.solana_client import ensure_ata_exists
+
+    provider_ata_pubkey = get_associated_token_address(provider_pubkey, USDC_MINT)
+    await ensure_ata_exists(get_platform_payer(), provider_pubkey, USDC_MINT)
 
     try:
-        from spl.token.instructions import get_associated_token_address
-        from ....services.solana_client import ensure_ata_exists
-
         client_kp = _get_user_keypair(client_user)
-
-        # Derive provider ATA the canonical way, then create it if missing
-        provider_ata_pubkey = get_associated_token_address(provider_pubkey, USDC_MINT)
-        # await ensure_ata_exists(client_kp, provider_pubkey, USDC_MINT)
-        await ensure_ata_exists(get_platform_payer(), provider_pubkey, USDC_MINT)
-
         tx_sig = await release_escrow(
             client_kp=client_kp,
             provider_ata=str(provider_ata_pubkey),
             vault_ata=str(vault_ata),
-            escrow_address=str(escrow_pubkey), 
-            platform_kp = get_platform_payer()
+            escrow_address=str(escrow_pubkey),
+            platform_kp=get_platform_payer()
         )
     except Exception as e:
         err_str = str(e)
+        # If the escrow was already closed, the transaction would fail with "AccountNotFound"
         if "3012" in err_str or "AccountNotInitialized" in err_str or "AccountNotFound" in err_str:
-            detail = "Account error: One of the token accounts is missing or not initialized."
+            # Already released – update DB to completed
+            if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
+                raise HTTPException(status_code=409, detail="Job already completed")
+            db.expire(job)
+            await create_notification(
+                db,
+                user_id=job.provider_id,
+                title="Payment Released",
+                message=f"The payment for \"{job.title}\" has been released to your wallet.",
+                link=f"/dashboard/activity"
+            )
+            await db.commit()
+            await db.refresh(job)
+            return job
         elif "insufficient lamports" in err_str.lower() or "0x1" in err_str:
             detail = "Transaction failed: Insufficient SOL for network gas/rent fees in your wallet."
         elif "11001" in err_str or "getaddrinfo failed" in err_str or "ConnectError" in err_str:
@@ -546,7 +601,6 @@ async def release_job_route(
         raise HTTPException(status_code=409, detail="Job was already completed by a concurrent request")
     db.expire(job)
 
-    # Notification to provider
     await create_notification(
         db,
         user_id=job.provider_id,

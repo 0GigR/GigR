@@ -133,9 +133,12 @@ export default function JobsPage() {
   } = useInfiniteQuery<Job[]>({
     queryKey: ['jobs', 'open'],
     queryFn: async ({ pageParam = 0 }) => {
+      // const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
       const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
-      const all: Job[] = res.data
+      const all = Array.isArray(res.data) ? res.data : []
       return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
+      // const all: Job[] = res.data
+      // return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
