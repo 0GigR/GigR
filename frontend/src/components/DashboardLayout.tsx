@@ -43,7 +43,6 @@ export default function DashboardLayout() {
   const queryClient = useQueryClient()
   const {
     needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
   } = useRegisterSW()
 
   useEffect(() => {
