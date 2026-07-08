@@ -133,7 +133,7 @@ export default function VoiceAssistant() {
       {/* Floating mic button */}
       <button
         onClick={handleToggle}
-        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[55] w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
           isListening
             ? 'bg-red-500 text-white scale-110 animate-pulse shadow-red-500/50'
             : 'bg-black text-white hover:bg-gray-800 hover:scale-105'
@@ -151,7 +151,7 @@ export default function VoiceAssistant() {
 
       {/* Assistant Popup Panel */}
       {isOpen && (
-        <div className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-[55] w-80 max-w-[calc(100vw-2rem)]">
+        <div className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-[9999] w-80 max-w-[calc(100vw-2rem)]">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-in slide-in-from-bottom-5">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50">
