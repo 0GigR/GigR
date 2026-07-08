@@ -114,35 +114,35 @@ export default function HomePage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="bg-white border-gray-100">
+        <Card className="bg-card text-card-foreground border-border">
           <CardContent className="pt-6 text-center">
             <Briefcase className="w-7 h-7 mx-auto mb-2 text-gray-700" />
             <p className="text-2xl font-bold">{activeJobs.length}</p>
             <p className="text-xs text-gray-500">Active</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-gray-100">
+        <Card className="bg-card text-card-foreground border-border">
           <CardContent className="pt-6 text-center">
             <Bell className="w-7 h-7 mx-auto mb-2 text-gray-700" />
             <p className="text-2xl font-bold">{pendingApplications}</p>
             <p className="text-xs text-gray-500">Pending Apps</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-gray-100">
+        <Card className="bg-card text-card-foreground border-border">
           <CardContent className="pt-6 text-center">
             <Star className="w-7 h-7 mx-auto mb-2 text-gray-700" />
             <p className="text-2xl font-bold">{myVouches?.length || 0}</p>
             <p className="text-xs text-gray-500">Vouches</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-gray-100">
+        <Card className="bg-card text-card-foreground border-border">
           <CardContent className="pt-6 text-center">
             <MapPin className="w-7 h-7 mx-auto mb-2 text-gray-700" />
             <p className="text-2xl font-bold">{myServices?.length || 0}</p>
             <p className="text-xs text-gray-500">Services</p>
           </CardContent>
         </Card>
-        <Card className="bg-white border-gray-100">
+        <Card className="bg-card text-card-foreground border-border">
           <CardContent className="pt-6 text-center">
             <TrendingUp className="w-7 h-7 mx-auto mb-2 text-gray-700" />
             <p className="text-2xl font-bold">{completedJobs.length}</p>

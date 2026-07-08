@@ -78,7 +78,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
   const [showFullDesc, setShowFullDesc] = useState(false)
 
   return (
-    <Card className="bg-white border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+    <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {provider && !isOwner && (
           <div className="mb-3 hover:opacity-80 transition-opacity w-fit">
@@ -442,7 +442,7 @@ export default function ServicesPage() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {activeTab === 'browse' && (
-            <div className="flex items-center gap-2 mr-2 bg-white px-3 py-1 rounded-md border border-gray-200">
+            <div className="flex items-center gap-2 mr-2 bg-background px-3 py-1 rounded-md border border-border">
               <span className="text-sm text-gray-500 whitespace-nowrap">Radius: {radius}km</span>
               <input 
                 type="range" 
@@ -456,7 +456,7 @@ export default function ServicesPage() {
           )}
           {activeTab !== 'map' && (
             <Select value={sortOrder} onValueChange={setSortOrder}>
-              <SelectTrigger className="w-[140px] bg-white border-gray-200">
+              <SelectTrigger className="w-[140px] bg-background border-border">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -482,7 +482,7 @@ export default function ServicesPage() {
             <DialogTrigger asChild>
               <Button className="bg-black text-white hover:bg-gray-800"><Plus className="w-4 h-4 mr-2" /> New</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg bg-white text-black max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editService ? 'Edit Service' : 'Create Service'}</DialogTitle></DialogHeader>
               <div className="space-y-4 py-4">
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
@@ -515,7 +515,7 @@ export default function ServicesPage() {
                         }}
                       />
                       {catSearch && catSearchResults.length > 0 && (
-                        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
+                        <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
                           {catSearchResults.map(cat => (
                             <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm" onClick={() => {
                               setFormData({...formData, category_id: cat.id})
@@ -528,7 +528,7 @@ export default function ServicesPage() {
                         </div>
                       )}
                       {catSearch && catSearchResults.length === 0 && (
-                        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg mt-1 p-2 shadow-lg">
+                        <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 p-2 shadow-lg">
                           <p className="text-sm text-gray-500 mb-2">No matches. Create "{catSearch}"</p>
                           <Button size="sm" onClick={() => createCategoryMutation.mutate(catSearch.trim())} disabled={!catSearch.trim()} className="w-full bg-black text-white">
                             <Plus className="w-4 h-4 mr-1" /> Create "{catSearch}"
@@ -597,7 +597,7 @@ export default function ServicesPage() {
         <div className="flex gap-2 items-center">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-            <Input placeholder="Search services..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleTextSearch()} className="pl-10 bg-white border-gray-200" />
+            <Input placeholder="Search services..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleTextSearch()} className="pl-10 bg-background border-border" />
           </div>
           <Button variant="outline" onClick={handleTextSearch} disabled={searchLoading} className="border-gray-200">{searchLoading ? 'Searching...' : 'Search'}</Button>
           {searchResults && <Button variant="ghost" size="sm" onClick={clearSearch} className="text-gray-500"><X className="w-4 h-4 mr-1" /> Clear</Button>}

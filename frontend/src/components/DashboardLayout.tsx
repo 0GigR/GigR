@@ -158,7 +158,10 @@ export default function DashboardLayout() {
             <span className="hidden sm:inline opacity-80">A new version of Gigr is ready.</span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => updateServiceWorker(true)} className="bg-white text-blue-600 px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+            <button onClick={() => {
+              updateServiceWorker(true);
+              setTimeout(() => window.location.reload(), 100);
+            }} className="bg-white text-blue-600 px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
               Reload to Update
             </button>
             <button onClick={() => setNeedRefresh(false)} className="opacity-70 hover:opacity-100">

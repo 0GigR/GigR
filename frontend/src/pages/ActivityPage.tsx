@@ -75,7 +75,7 @@ function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, o
   const { data: counterpart } = useUserInfo(counterpartId)
 
   return (
-    <Card className="bg-white border border-gray-100 relative">
+    <Card className="bg-card text-card-foreground border-border relative">
       <CardHeader className="pb-2">
         <div className="flex justify-between items-start">
           <div>
@@ -447,10 +447,10 @@ export default function ActivityPage() {
             placeholder="Search by title..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:w-64 bg-white"
+            className="w-full md:w-64 bg-background"
           />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] bg-white">
+            <SelectTrigger className="w-[140px] bg-background">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -542,7 +542,7 @@ export default function ActivityPage() {
           open={contractRoomOpen}
           onOpenChange={setContractRoomOpen}
         >
-          <DialogContent className="sm:max-w-lg bg-white text-black max-h-[80vh] flex flex-col">
+          <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[80vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>
                 {contractRoomJob.title} — Contract Room
@@ -827,7 +827,7 @@ export default function ActivityPage() {
 
         {/* Rating Dialog */}
       <Dialog open={ratingJobId !== null} onOpenChange={() => setRatingJobId(null)}>
-        <DialogContent className="sm:max-w-md bg-white text-black">
+        <DialogContent className="sm:max-w-md bg-background text-foreground">
           <DialogHeader><DialogTitle>Rate your experience</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <div className="flex justify-center gap-2">
@@ -865,7 +865,7 @@ export default function ActivityPage() {
 
       {/* Dispute Reason Dialog */}
       <Dialog open={disputeJobId !== null} onOpenChange={() => setDisputeJobId(null)}>
-        <DialogContent className="sm:max-w-md bg-white text-black">
+        <DialogContent className="sm:max-w-md bg-background text-foreground">
           <DialogHeader>
             <DialogTitle>Describe the problem</DialogTitle>
           </DialogHeader>
