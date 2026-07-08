@@ -43,14 +43,14 @@ function MapUpdater({ center }: { center: [number, number] }) {
   return null
 }
 
-export function NeighborhoodMap({ latitude, longitude }: { latitude: number, longitude: number }) {
+export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitude: number, longitude: number, type?: 'jobs' | 'services' | 'all' }) {
   const { data: nearbyJobs } = useQuery<Job[]>({
     queryKey: ['nearbyJobs', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/jobs/', { params: { lat: latitude, lon: longitude, radius: 10 } })
       return data
     },
-    enabled: !!latitude && !!longitude,
+    enabled: !!latitude && !!longitude && (type === 'jobs' || type === 'all'),
   })
 
   const { data: nearbyServices } = useQuery<Service[]>({
@@ -59,11 +59,11 @@ export function NeighborhoodMap({ latitude, longitude }: { latitude: number, lon
       const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 10 } })
       return data
     },
-    enabled: !!latitude && !!longitude,
+    enabled: !!latitude && !!longitude && (type === 'services' || type === 'all'),
   })
 
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm z-0">
+    <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0 isolate">
       <MapContainer center={[latitude, longitude]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

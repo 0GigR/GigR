@@ -606,7 +606,7 @@ export default function ServicesPage() {
         {activeTab === 'map' ? (
           <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {latitude && longitude ? (
-              <NeighborhoodMap latitude={latitude} longitude={longitude} />
+              <NeighborhoodMap latitude={latitude} longitude={longitude} type="services" />
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
                 <MapPin className="w-10 h-10 text-gray-400 mx-auto mb-3" />

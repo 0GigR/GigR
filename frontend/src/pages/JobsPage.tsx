@@ -589,7 +589,7 @@ export default function JobsPage() {
         <TabsContent value="map" className="mt-6">
           {geo.latitude && geo.longitude ? (
             <div className="rounded-xl overflow-hidden border border-gray-200 h-[500px]">
-              <NeighborhoodMap latitude={geo.latitude} longitude={geo.longitude} />
+              <NeighborhoodMap latitude={geo.latitude} longitude={geo.longitude} type="jobs" />
             </div>
           ) : (
             <div className="text-center py-16 text-gray-500 border border-dashed rounded-xl">
