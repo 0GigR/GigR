@@ -3,6 +3,12 @@ import { precacheAndRoute } from 'workbox-precaching'
 // This will be replaced by workbox-build (via vite-plugin-pwa)
 precacheAndRoute(self.__WB_MANIFEST || [])
 
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
+
 // Handle incoming push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return
