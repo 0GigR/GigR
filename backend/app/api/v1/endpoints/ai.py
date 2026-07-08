@@ -208,13 +208,16 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
             return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
 
     # ─── Generic / greeting guard (before intent checks) ─────────────
-    # Catch short greetings and questions that don't contain actionable keywords
+    # Catch short greetings, rhetorical questions, and ambiguous inputs
     _action_words = r"find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
-    if len(text_lower.split()) <= 4 and not re.search(_action_words, text_lower):
+    is_question = text_lower.endswith("?") or re.match(r"^(are|is|do|does|can|could|would|will|what|where|why|how|who)\b", text_lower)
+    has_action = bool(re.search(_action_words, text_lower))
+    
+    if (len(text_lower.split()) <= 5 and not has_action) or (is_question and not has_action):
         return {
             "task_type": "generic",
             "params": {"query": text},
-            "response": "Hi! I can help you find services, post jobs, negotiate prices, or navigate the app. Try: 'find a plumber for 5k' or 'post a job: fix my sink'.",
+            "response": "Could you clarify what you'd like to do? I can help you find services, post jobs, negotiate prices, or navigate the app. Try: 'find a plumber for 5k'.",
         }
 
     price = _extract_price(text)
@@ -598,7 +601,7 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
     user = user_result.scalar_one_or_none()
 
     if not user:
-        await _log(db, task.id, "error", "❌ Could not find user account")
+        await _log(db, task.id, "error", "Error: Could not find user account")
         return {"negotiated": False, "error": "User not found"}
 
     # Check if negotiation is enabled via the user's saved AI settings
@@ -796,12 +799,12 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         job = await create_job(db, task.user_id, job_in)
         await db.commit()
         await _log(db, task.id, "success",
-                   f"✅ Job **'{title}'** posted for ₦{price:,.0f}. "
+                   f"Job **'{title}'** posted for ₦{price:,.0f}. "
                    f"Providers can now apply. [View in Activity](/dashboard/activity)")
         return {"created": True, "job_id": str(job.id), "title": title, "price": price}
     except Exception as exc:
         await db.rollback()
-        await _log(db, task.id, "error", f"❌ Failed to create job: {exc}")
+        await _log(db, task.id, "error", f"Failed to create job: {exc}")
         return {"created": False, "error": str(exc)}
 
 
@@ -859,12 +862,12 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         service = await create_service(db, task.user_id, service_in)
         await db.commit()
         await _log(db, task.id, "success",
-                   f"✅ Service **'{title}'** listed for ₦{price:,.0f}. "
+                   f"Service **'{title}'** listed for ₦{price:,.0f}. "
                    f"Clients can now find and request it. [View in Services](/dashboard/services)")
         return {"created": True, "service_id": str(service.id), "title": title, "price": price}
     except Exception as exc:
         await db.rollback()
-        await _log(db, task.id, "error", f"❌ Failed to create service: {exc}")
+        await _log(db, task.id, "error", f"Failed to create service: {exc}")
         return {"created": False, "error": str(exc)}
 
 
@@ -1184,7 +1187,7 @@ async def _check_negotiation_reply(task_id: str):
 
             if decision == "accept":
                 await _log(db2, t.id, "success",
-                           f"✅ Deal accepted! Provider agreed. Final price: ₦{current_offer:,.0f}. "
+                           f"Deal accepted! Provider agreed. Final price: ₦{current_offer:,.0f}. "
                            f"Check your [Activity](/dashboard/activity) to fund the escrow.")
                 new_ns = {**ns, "active": False, "final_price": current_offer}
             elif decision == "counter" and counter_price:
