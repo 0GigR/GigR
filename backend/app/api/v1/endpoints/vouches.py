@@ -6,7 +6,7 @@ from ....crud.job import get_job_by_id
 from ....crud.user import get_user_by_id
 from ....schemas.vouch import VouchCreate, VouchOut
 from ....models.user import User
-from ....services.underdog_client import mint_vouch_cnft
+from ....services.underdog_client import mint_vouch_cnft, UnderdogNotReady
 import uuid
 import logging
 import asyncio as _asyncio
@@ -71,6 +71,10 @@ async def vouch_for_provider(
                 )
                 await _db.commit()
             logger.info(f"[vouches] Background cNFT minted for job {job.id}: id={nft_id}")
+        except UnderdogNotReady as e:
+            # Expected: project not confirmed yet. Vouch stays 'pending';
+            # the retry_pending_vouches_loop will heal it automatically.
+            logger.info("[vouches] mint deferred (project not ready): %s — retry loop will handle it", e)
         except Exception as e:
             logger.warning(f"[vouches] Background cNFT mint failed (non-fatal): {e}")
 
