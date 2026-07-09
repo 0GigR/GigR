@@ -33,6 +33,8 @@ interface PublicUser {
 interface RatingOut {
   id: string
   rater_name?: string | null
+  rater_image?: string | null
+  job_title?: string | null
   score: number
   comment?: string | null
   created_at: string
@@ -229,21 +231,66 @@ export default function PublicProfilePage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <span className="text-amber-500">★</span> Ratings ({ratings.length})
+              <span className="text-amber-500">★</span> Ratings & Reviews
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              {ratings.slice(0, 5).map(r => (
-                <div key={r.id} className="flex items-start justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
-                  <div className="text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-400 font-bold">{r.score} ★</span>
-                      {r.rater_name && <span className="text-gray-600 font-medium">{r.rater_name}</span>}
-                    </div>
-                    {r.comment && <p className="text-gray-600 mt-0.5 text-xs">{r.comment}</p>}
+            {/* Average header + star distribution */}
+            {(() => {
+              const avg = ratings.reduce((s, r) => s + r.score, 0) / ratings.length
+              const dist = [5, 4, 3, 2, 1].map(star => ({
+                star,
+                n: ratings.filter(r => r.score === star).length,
+              }))
+              return (
+                <div className="flex gap-6 items-center mb-4 pb-4 border-b">
+                  <div className="text-center shrink-0">
+                    <p className="text-4xl font-bold text-amber-500">{avg.toFixed(1)}</p>
+                    <p className="text-amber-400 text-sm">{'★'.repeat(Math.round(avg))}{'☆'.repeat(5 - Math.round(avg))}</p>
+                    <p className="text-xs text-gray-500 mt-1">{ratings.length} review{ratings.length !== 1 ? 's' : ''}</p>
                   </div>
-                  <span className="text-xs text-gray-400 shrink-0 ml-2">{new Date(r.created_at).toLocaleDateString()}</span>
+                  <div className="flex-1 space-y-1">
+                    {dist.map(({ star, n }) => (
+                      <div key={star} className="flex items-center gap-2 text-xs">
+                        <span className="w-3 text-gray-500">{star}</span>
+                        <span className="text-amber-400">★</span>
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(n / ratings.length) * 100}%` }} />
+                        </div>
+                        <span className="w-4 text-right text-gray-400">{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })()}
+
+            {/* Individual reviews, each tied to its job */}
+            <div className="space-y-3">
+              {ratings.map(r => (
+                <div key={r.id} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {r.rater_image ? (
+                        <img src={r.rater_image} alt={r.rater_name || ''} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                      ) : (
+                        <span className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-[10px] font-medium text-gray-600 shrink-0">
+                          {(r.rater_name || '?').slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{r.rater_name || 'Someone'}</p>
+                        <p className="text-amber-400 text-xs leading-none">{'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0">{new Date(r.created_at).toLocaleDateString()}</span>
+                  </div>
+                  {r.job_title && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      for <span className="font-medium text-gray-700">{r.job_title}</span>
+                    </p>
+                  )}
+                  {r.comment && <p className="text-sm text-gray-600 mt-1">{r.comment}</p>}
                 </div>
               ))}
             </div>

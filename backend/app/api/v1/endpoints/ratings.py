@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
 from ....crud.job import get_job_by_id
 from ....models.rating import Rating
+from ....models.job import Job
 from ....models.user import User
 from ....schemas.rating import RatingCreate, RatingOut
 
@@ -68,9 +69,12 @@ async def get_user_ratings(
     user_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
+    """All ratings received by a user, each tied to the job that earned it
+    and the rater's name + avatar."""
     result = await db.execute(
-        select(Rating, User.display_name)
+        select(Rating, User.display_name, User.profile_image_url, Job.title)
         .join(User, User.id == Rating.rater_id)
+        .outerjoin(Job, Job.id == Rating.job_id)
         .where(Rating.ratee_id == user_id)
         .order_by(Rating.created_at.desc())
     )
@@ -79,22 +83,28 @@ async def get_user_ratings(
         RatingOut(
             id=r.id, job_id=r.job_id, rater_id=r.rater_id, ratee_id=r.ratee_id,
             score=r.score, comment=r.comment, created_at=r.created_at,
-            rater_name=display_name,
+            rater_name=display_name, rater_image=rater_image, job_title=job_title,
         )
-        for r, display_name in rows
+        for r, display_name, rater_image, job_title in rows
     ]
 
 
 @router.get("/user/{user_id}/summary")
 async def get_user_rating_summary(user_id: UUID, db: AsyncSession = Depends(get_db)):
+    """Average, count, and per-star distribution for a user's received ratings."""
     result = await db.execute(
-        select(func.avg(Rating.score), func.count(Rating.id))
-        .where(Rating.ratee_id == user_id)
+        select(Rating.score).where(Rating.ratee_id == user_id)
     )
-    avg_score, count = result.one()
+    scores = [row[0] for row in result.all()]
+    count = len(scores)
+    if count == 0:
+        return {"average": None, "count": 0, "distribution": {5: 0, 4: 0, 3: 0, 2: 0, 1: 0}}
+
+    distribution = {s: scores.count(s) for s in (5, 4, 3, 2, 1)}
     return {
-        "average": round(float(avg_score), 1) if avg_score else None,
+        "average": round(sum(scores) / count, 1),
         "count": count,
+        "distribution": distribution,
     }
 
 
