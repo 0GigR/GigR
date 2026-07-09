@@ -132,9 +132,9 @@ export default function DashboardLayout() {
         </div>
       </header>
 
-      {/* Optional Install PWA Banner */}
+      {/* Optional Install PWA Banner — sticky under the header, above the fixed sidebar (z-40) */}
       {deferredPrompt && (
-        <div className="bg-indigo-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
+        <div className="sticky top-14 z-[60] bg-indigo-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
           <div className="flex items-center gap-2">
             <span className="font-semibold">Install Gigr App</span>
             <span className="hidden sm:inline opacity-80">for a better, faster experience.</span>
@@ -149,9 +149,9 @@ export default function DashboardLayout() {
           </div>
         </div>
       )}
-      {/* Update Available Banner */}
+      {/* Update Available Banner — sticky under the header, above the fixed sidebar (z-40) */}
       {needRefresh && (
-        <div className="bg-blue-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
+        <div className="sticky top-14 z-[60] bg-blue-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
           <div className="flex items-center gap-2">
             <span className="font-semibold">Update Available</span>
             <span className="hidden sm:inline opacity-80">A new version of Gigr is ready.</span>
