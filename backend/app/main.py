@@ -61,6 +61,7 @@ async def _dedup_duplicate_jobs():
 async def on_startup():
     import asyncio
     from .services.auto_release import auto_release_loop
+    from .services.vouch_retry import retry_pending_vouches_loop
     from .api.v1.endpoints.ai import agent_loop
 
     await init_db()
@@ -74,6 +75,9 @@ async def on_startup():
 
     # AI agent background loop — picks up queued tasks and executes them
     asyncio.create_task(agent_loop())
+
+    # Retry loop that heals vouch cNFT mints stuck on 'pending'
+    asyncio.create_task(retry_pending_vouches_loop())
 
 # CORS
 # app.add_middleware(
