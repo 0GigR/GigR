@@ -48,7 +48,7 @@ function useUserInfo(userId: string | undefined) {
   })
 }
 
-function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, onAccept, onCancel, onVouch, onLightbox, onDispute, onRate, fundPending, submitPending, acceptPending, cancelPending, vouchPending, vouched }: any) {
+function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, onAccept, onCancel, onVouch, onLightbox, onDispute, onRate, fundPending, submitPending, acceptPending, cancelPending, vouchPending, vouched, rated }: any) {
   const { user } = useAuthStore()
   
   // Determine counterpart ID
@@ -134,12 +134,15 @@ function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, o
           )}
           {job.status === 'completed' && (
             <>
-              <Button size="sm" variant="outline" onClick={() => onRate(job.id)}>
-                <Star className="w-3 h-3 mr-1" /> Rate
+              <Button size="sm" variant={rated ? "secondary" : "outline"} onClick={() => onRate(job.id)} disabled={rated}>
+                <Star className="w-3 h-3 mr-1" /> {rated ? 'Rated' : 'Rate'}
               </Button>
-              <Button size="sm" variant={vouched ? "secondary" : "outline"} onClick={() => onVouch(job.id)} disabled={vouched || vouchPending}>
-                <Shield className="w-3 h-3 mr-1" /> {vouched ? 'Vouched' : 'Vouch & Mint'}
-              </Button>
+              {/* Only the client can vouch (backend enforces); hide for the provider */}
+              {job.client_id === user?.id && (
+                <Button size="sm" variant={vouched ? "secondary" : "outline"} onClick={() => onVouch(job.id)} disabled={vouched || vouchPending}>
+                  <Shield className="w-3 h-3 mr-1" /> {vouched ? 'Vouched' : 'Vouch & Mint'}
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -220,6 +223,16 @@ export default function ActivityPage() {
     enabled: !!user?.id,
   })
   const vouchedJobIds = new Set(myVouchJobIds || [])
+
+  const { data: myRatedJobIds } = useQuery<string[]>({
+    queryKey: ['myRatedJobIds'],
+    queryFn: async () => {
+      const { data } = await api.get('/ratings/mine')
+      return data
+    },
+    enabled: !!user?.id,
+  })
+  const ratedJobIds = new Set(myRatedJobIds || [])
 
   // Fetch all my jobs
   const { data: allJobs, isLoading } = useQuery<Job[]>({
@@ -404,6 +417,7 @@ export default function ActivityPage() {
       setRatingComment('')
       setRatingScore(5)
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
+      queryClient.invalidateQueries({ queryKey: ['myRatedJobIds'] })
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Rating failed'),
   })
@@ -528,6 +542,7 @@ export default function ActivityPage() {
                       acceptPending={releaseMutation.isPending}
                       vouchPending={vouchMutation.isPending}
                       vouched={vouchedJobIds.has(job.id)}
+                      rated={ratedJobIds.has(job.id)}
                     />
                   ))}
                 </div>

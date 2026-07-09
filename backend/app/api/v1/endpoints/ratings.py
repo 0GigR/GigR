@@ -108,6 +108,18 @@ async def get_user_rating_summary(user_id: UUID, db: AsyncSession = Depends(get_
     }
 
 
+@router.get("/mine", response_model=list[str])
+async def my_rated_job_ids(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Job ids the current user has already rated — used to disable the Rate button."""
+    result = await db.execute(
+        select(Rating.job_id).where(Rating.rater_id == current_user.id)
+    )
+    return [str(jid) for jid in result.scalars().all()]
+
+
 @router.get("/job/{job_id}/mine")
 async def my_job_rating(
     job_id: UUID,

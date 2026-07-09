@@ -164,7 +164,7 @@ export default function ServicesPage() {
     return () => window.removeEventListener('open-lightbox', handleOpenLightbox)
   }, [])
 
-  useAuthStore() // we need user for checks, but we don't destructure to avoid unused warning
+  const { user: currentUser } = useAuthStore()
   const { latitude, longitude, loading: locLoading, error: locError, refresh: refreshLoc } = useGeolocation()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchLoading, setSearchLoading] = useState(false)
@@ -238,7 +238,9 @@ export default function ServicesPage() {
     },
     enabled: !!latitude && !!longitude,
   })
-  const nearbyServices = Array.isArray(nearbyPages?.pages) ? nearbyPages.pages.flat() : []
+  // Exclude the viewer's own services from the public browse list
+  const nearbyServices = (Array.isArray(nearbyPages?.pages) ? nearbyPages.pages.flat() : [])
+    .filter((s) => s.provider_id !== currentUser?.id)
 
   // Reverse geocode
   useEffect(() => {
@@ -429,7 +431,9 @@ export default function ServicesPage() {
   }
 
   const processedNearby = sortServices(nearbyServices)
-  const processedSearch = searchResults ? sortServices(searchResults) : null
+  const processedSearch = searchResults
+    ? sortServices(searchResults.filter((s) => s.provider_id !== currentUser?.id))
+    : null
   const processedMine = sortServices(myServices || [])
 
   return (
