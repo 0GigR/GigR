@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 _UNDERDOG_PROJECT_ID: int | None = None
 _PROJECT_NAME = "Gigr Vouches"
+# Gigr PWA logo on Cloudinary CDN (stable public URL for Underdog project + NFT image)
+_GIGR_LOGO_URL = "https://res.cloudinary.com/dxssh54wy/image/upload/v1783638065/gigr_logo.png"
 
 
 class UnderdogNotReady(Exception):
@@ -68,7 +70,7 @@ async def _get_confirmed_project() -> int:
                 "name": _PROJECT_NAME,
                 "symbol": "VOUCH",
                 "description": "On-chain reputation vouches for Gigr marketplace providers",
-                "image": "https://img.icons8.com/ios-filled/100/000000/trust.png",
+                "image": _GIGR_LOGO_URL,
                 "compression": True,
             },
         )
@@ -96,7 +98,7 @@ async def mint_vouch_cnft(
         "name": f"Gigr Vouch - Job {job_id[:8]}",
         "symbol": "VOUCH",
         "description": "Proof of completed work on Gigr",
-        "image": "https://res.cloudinary.com/demo/image/upload/v1/samples/cloudinary-icon.png",
+        "image": _GIGR_LOGO_URL,
         "receiverAddress": provider_wallet,
         "attributes": {
             "job_id": job_id,
