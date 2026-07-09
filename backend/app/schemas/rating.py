@@ -19,6 +19,8 @@ class RatingOut(BaseModel):
     comment: Optional[str] = None
     created_at: datetime
     rater_name: Optional[str] = None
+    rater_image: Optional[str] = None
+    job_title: Optional[str] = None
 
     class Config:
         from_attributes = True
