@@ -1,11 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import HTTPException, status, Request
 from fastapi.security import HTTPBearer, APIKeyCookie
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# We use the `bcrypt` library directly instead of passlib. passlib 1.7.4
+# (unmaintained since 2020) crashes on init with bcrypt >= 4.1 / 5.x
+# ("password cannot be longer than 72 bytes"), which broke ALL password
+# hashing and verification (registration + email login). bcrypt hashes are
+# standard $2b$ so existing hashes remain verifiable.
 
 # Simple Bearer token scheme for Swagger UI (shows just a token input)
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -15,12 +19,20 @@ bearer_scheme = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
 cookie_scheme = APIKeyCookie(name="access_token", auto_error=False)
 
 
+def _to_72_bytes(password: str) -> bytes:
+    """bcrypt only uses the first 72 bytes; longer inputs raise in bcrypt 5.x."""
+    return password.encode("utf-8")[:72]
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_to_72_bytes(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_to_72_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:

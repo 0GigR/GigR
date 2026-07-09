@@ -43,6 +43,7 @@ export default function DashboardLayout() {
   const queryClient = useQueryClient()
   const {
     needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
   } = useRegisterSW()
 
   useEffect(() => {
@@ -158,16 +159,13 @@ export default function DashboardLayout() {
           </div>
           <div className="flex items-center gap-3">
             <button onClick={() => {
-              if (navigator.serviceWorker) {
-                navigator.serviceWorker.getRegistrations().then((registrations) => {
-                  for (let registration of registrations) {
-                    registration.unregister()
-                  }
-                  window.location.reload()
-                })
-              } else {
-                window.location.reload()
-              }
+              // Hide the banner immediately, then activate the waiting SW.
+              // updateServiceWorker(true) skip-waits the new worker AND reloads
+              // the page once it takes control — so on the next load there is no
+              // waiting worker and the banner does not reappear (the old
+              // unregister+reload approach left the update pending → banner stuck).
+              setNeedRefresh(false)
+              updateServiceWorker(true)
             }} className="bg-background text-primary px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
               Reload to Update
             </button>
