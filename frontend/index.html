@@ -6,6 +6,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#000000" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
+    <!-- Speed up Google Identity script load on slow networks so the Sign-in
+         button shows reliably. preconnect opens the TLS connection early;
+         preload starts fetching the GSI client script before React mounts. -->
+    <link rel="preconnect" href="https://accounts.google.com" crossorigin />
+    <link rel="dns-prefetch" href="https://accounts.google.com" />
+    <link rel="preload" as="script" href="https://accounts.google.com/gsi/client" crossorigin />
     <title>Gigr</title>
   </head>
   <body>
