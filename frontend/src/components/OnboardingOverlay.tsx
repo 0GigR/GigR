@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Briefcase, Shield, Star, MessageSquare, ArrowRight, Wallet } from 'lucide-react'
+import { Briefcase, Shield, Star, ArrowRight, Wallet, Bot, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
@@ -15,21 +15,27 @@ const BASE_STEPS = [
     isFundWallet: false,
   },
   {
+    icon: Bot,
+    title: 'Meet Your AI Assistant',
+    desc: 'Speak or type to instantly find jobs, analyze data, and manage your account hands-free.',
+    isFundWallet: false,
+  },
+  {
     icon: Shield,
     title: 'Payments are guaranteed',
-    desc: 'Funds are locked in a secure escrow until the work is done — no scams, no awkward chasing.',
+    desc: 'Funds are locked in a secure on-chain escrow until the work is done — no scams, no awkward chasing.',
     isFundWallet: false,
   },
   {
     icon: MessageSquare,
-    title: 'Chat in one place',
-    desc: 'Every job gets its own contract room. Message, share photos and agree on scope changes right there.',
+    title: 'Communicate in Real Time',
+    desc: 'Chat with your clients and providers in real-time. Messages are stored in a decentralized, censorship-resistant manner.',
     isFundWallet: false,
   },
   {
     icon: Star,
-    title: 'Build real reputation',
-    desc: 'Finish a job, earn a vouch. Your reputation is verifiable and travels with you everywhere.',
+    title: 'Build Verifiable Reputation',
+    desc: 'Finish a job, earn a vouch. Your reputation is public, verifiable, and travels with you everywhere.',
     isFundWallet: false,
   },
 ]
@@ -49,6 +55,7 @@ export default function OnboardingOverlay() {
   const { user } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(0)
+  const [doNotShowAgain, setDoNotShowAgain] = useState(true)
 
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
@@ -87,10 +94,12 @@ export default function OnboardingOverlay() {
   }, [user?.id])
 
   const finish = () => {
-    try {
-      localStorage.setItem(storageKey(user?.id), '1')
-    } catch {
-      /* ignore */
+    if (doNotShowAgain) {
+      try {
+        localStorage.setItem(storageKey(user?.id), '1')
+      } catch {
+        /* ignore */
+      }
     }
     setOpen(false)
   }
@@ -175,6 +184,20 @@ export default function OnboardingOverlay() {
                   <FundWalletButton walletAddress={walletInfo.wallet_public_key} />
                 </div>
               )}
+
+              {/* Do not show again checkbox */}
+              <div className="flex items-center justify-center gap-2 mb-4 text-sm text-gray-500">
+                <input
+                  type="checkbox"
+                  id="doNotShowAgain"
+                  checked={doNotShowAgain}
+                  onChange={(e) => setDoNotShowAgain(e.target.checked)}
+                  className="rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                />
+                <label htmlFor="doNotShowAgain" className="cursor-pointer select-none">
+                  Do not show this again
+                </label>
+              </div>
 
               <div className="flex items-center justify-between gap-3">
                 <button
