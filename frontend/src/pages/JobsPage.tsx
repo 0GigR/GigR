@@ -385,6 +385,9 @@ export default function JobsPage() {
       min_price: formData.min_price || undefined,
       max_price: formData.max_price || undefined,
       image_url: imageUrl,
+      // Attach the poster's location so the job appears on the neighbourhood map
+      latitude: geo.latitude ?? undefined,
+      longitude: geo.longitude ?? undefined,
     })
   }
 
