@@ -399,7 +399,8 @@ export default function MessagesPage() {
               <p>Select a job to open its contract room</p>
             </div>
           ) : (
-            <Card className="flex flex-col h-[60vh]">
+            // dvh so the card shrinks when the mobile keyboard opens (keeps input visible)
+            <Card className="flex flex-col h-[70dvh] max-h-[calc(100dvh-9rem)]">
               <CardHeader className="border-b">
                 <div className="flex justify-between items-start gap-3">
                   <div className="min-w-0">
@@ -514,6 +515,11 @@ export default function MessagesPage() {
                     onChange={(e) => setMessageText(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !isSending) handleSendMessage()
+                    }}
+                    onFocus={(e) => {
+                      // When the keyboard opens, make sure the input scrolls
+                      // into the visible area above it.
+                      setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300)
                     }}
                     className="flex-1"
                   />

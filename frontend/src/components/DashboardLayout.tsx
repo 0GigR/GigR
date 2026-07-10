@@ -177,7 +177,9 @@ export default function DashboardLayout() {
       )}
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 py-6 md:pl-72">
+      {/* pb-24 on mobile keeps page content clear of the fixed bottom nav;
+          md:pb-6 restores normal padding on desktop where the nav is hidden */}
+      <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72">
         <Outlet />
       </main>
 

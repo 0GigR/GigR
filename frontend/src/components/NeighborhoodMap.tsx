@@ -18,22 +18,37 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// ── Avatar marker: a rounded profile photo (or initials) with a coloured ring ──
+// ── Avatar marker: classic map "pin/teardrop" shape with the profile photo
+//    inside the round head and a pointed tip anchored to the exact location. ──
 function makeAvatarIcon(avatarUrl: string | null | undefined, name: string | null | undefined, ring: string): L.DivIcon {
   const initials = (name || '?').slice(0, 2).toUpperCase()
   const inner = avatarUrl
     ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px" />`
-    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:13px;font-weight:600;border-radius:9999px">${initials}</div>`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:13px;font-weight:700;border-radius:9999px">${initials}</div>`
+  // The wrapper is rounded on 3 corners and sharp on the bottom-left, then
+  // rotated 45° -> a teardrop/pin whose point is at the bottom. The avatar
+  // is counter-rotated -45° so the photo stays upright inside the head.
   const html = `
-    <div style="width:40px;height:40px;border-radius:9999px;border:3px solid ${ring};box-shadow:0 2px 6px rgba(0,0,0,.3);overflow:hidden;background:#fff">
-      ${inner}
+    <div style="position:relative;width:42px;height:42px;">
+      <div style="
+        position:absolute;inset:0;
+        background:${ring};
+        border-radius:50% 50% 50% 0;
+        transform:rotate(45deg);
+        box-shadow:0 3px 6px rgba(0,0,0,.35);
+      "></div>
+      <div style="
+        position:absolute;top:4px;left:4px;width:34px;height:34px;
+        border-radius:9999px;overflow:hidden;background:#fff;
+        border:2px solid #fff;
+      ">${inner}</div>
     </div>`
   return L.divIcon({
     html,
     className: 'gigr-avatar-marker',
-    iconSize: [40, 40],
-    iconAnchor: [20, 40],
-    popupAnchor: [0, -38],
+    iconSize: [42, 42],
+    iconAnchor: [21, 42], // tip of the teardrop points to the coordinate
+    popupAnchor: [0, -40],
   })
 }
 
