@@ -18,37 +18,28 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 })
 
-// ── Avatar marker: classic map "pin/teardrop" shape with the profile photo
-//    inside the round head and a pointed tip anchored to the exact location. ──
+// ── Avatar marker: classic location-pin shape — a round head containing the
+//    profile photo, with a triangle point below anchored to the coordinate. ──
 function makeAvatarIcon(avatarUrl: string | null | undefined, name: string | null | undefined, ring: string): L.DivIcon {
   const initials = (name || '?').slice(0, 2).toUpperCase()
   const inner = avatarUrl
     ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px" />`
-    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:13px;font-weight:700;border-radius:9999px">${initials}</div>`
-  // The wrapper is rounded on 3 corners and sharp on the bottom-left, then
-  // rotated 45° -> a teardrop/pin whose point is at the bottom. The avatar
-  // is counter-rotated -45° so the photo stays upright inside the head.
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;border-radius:9999px">${initials}</div>`
   const html = `
-    <div style="position:relative;width:42px;height:42px;">
-      <div style="
-        position:absolute;inset:0;
-        background:${ring};
-        border-radius:50% 50% 50% 0;
-        transform:rotate(45deg);
-        box-shadow:0 3px 6px rgba(0,0,0,.35);
-      "></div>
-      <div style="
-        position:absolute;top:4px;left:4px;width:34px;height:34px;
-        border-radius:9999px;overflow:hidden;background:#fff;
-        border:2px solid #fff;
-      ">${inner}</div>
+    <div style="position:relative;width:40px;height:52px;">
+      <!-- round head (coloured ring) with the avatar in the centre -->
+      <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">
+        <div style="width:32px;height:32px;border-radius:9999px;overflow:hidden;background:#fff;">${inner}</div>
+      </div>
+      <!-- downward point in the same colour -->
+      <div style="position:absolute;top:35px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:15px solid ${ring};"></div>
     </div>`
   return L.divIcon({
     html,
     className: 'gigr-avatar-marker',
-    iconSize: [42, 42],
-    iconAnchor: [21, 42], // tip of the teardrop points to the coordinate
-    popupAnchor: [0, -40],
+    iconSize: [40, 52],
+    iconAnchor: [20, 52], // the tip of the point sits on the exact coordinate
+    popupAnchor: [0, -48],
   })
 }
 
