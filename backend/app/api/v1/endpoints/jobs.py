@@ -399,7 +399,11 @@ async def fund_job_route(
 
     client_user = current_user
     client_kp = _get_user_keypair(client_user)
-    provider_user = await get_user_by_id(db, job.provider_id)
+    # Capture what we need as plain locals up front — never touch ORM lazy
+    # attributes after a commit/refresh (that caused MissingGreenlet 500s).
+    provider_id = job.provider_id
+    job_title = job.title
+    provider_user = await get_user_by_id(db, provider_id)
     if not provider_user:
         raise HTTPException(status_code=404, detail="Provider not found")
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
@@ -419,24 +423,25 @@ async def fund_job_route(
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
     )
 
-    # --- IDEMPOTENCY CHECK ---
-    # If the escrow PDA already exists on-chain, just sync the database.
-    if await _get_solana_account(escrow_pubkey):
-        if not await transition_job_status(db, job_id, ["assigned"], "funded", str(escrow_pubkey)):
-            # already funded, just reload and return
-            await db.refresh(job)
-            return job
-        db.expire(job)
+    async def _mark_funded_and_return():
+        """Idempotently flip the DB to funded, notify, and return the fresh job.
+        Safe to call whether or not the row was already funded."""
+        await transition_job_status(db, job_id, ["assigned", "funded"], "funded", str(escrow_pubkey))
         await create_notification(
             db,
-            user_id=job.provider_id,
+            user_id=provider_id,
             title="Escrow Funded",
-            message=f"The client has funded the escrow for \"{job.title}\". You can begin working!",
-            link=f"/dashboard/activity"
+            message=f'The client has funded the escrow for "{job_title}". You can begin working!',
+            link="/dashboard/activity",
         )
         await db.commit()
         await db.refresh(job)
         return job
+
+    # --- IDEMPOTENCY CHECK ---
+    # If the escrow PDA already exists on-chain, the money is already escrowed.
+    if await _get_solana_account(escrow_pubkey):
+        return await _mark_funded_and_return()
 
     # Derive vault ATA
     vault_ata, _ = Pubkey.find_program_address(
@@ -469,6 +474,12 @@ async def fund_job_route(
         )
     except Exception as e:
         err_str = str(e)
+        # The escrow was already created on-chain (a prior attempt succeeded
+        # on-chain but failed to save). init fails with "already in use" /
+        # custom program error 0x0. The money is escrowed — sync DB and succeed.
+        if "already in use" in err_str or "custom program error: 0x0" in err_str:
+            if await _get_solana_account(escrow_pubkey):
+                return await _mark_funded_and_return()
         if "3012" in err_str or "AccountNotInitialized" in err_str or "AccountNotFound" in err_str:
             detail = "Insufficient USDC: Your wallet lacks the required USDC or the token account is not initialized. Please fund your wallet."
         elif "insufficient lamports" in err_str.lower() or "0x1" in err_str:
@@ -481,21 +492,7 @@ async def fund_job_route(
             detail = f"Solana transaction failed: {err_str}"
         raise HTTPException(status_code=400, detail=detail)
 
-    if not await transition_job_status(db, job_id, ["assigned"], "funded", str(escrow_pubkey)):
-        raise HTTPException(status_code=409, detail="Job was already funded by a concurrent request")
-    db.expire(job)
-
-    await create_notification(
-        db,
-        user_id=job.provider_id,
-        title="Escrow Funded",
-        message=f"The client has funded the escrow for \"{job.title}\". You can begin working!",
-        link=f"/dashboard/activity"
-    )
-
-    await db.commit()
-    await db.refresh(job)
-    return job
+    return await _mark_funded_and_return()
 
 
 @router.post("/{job_id}/release", response_model=JobOut)
@@ -515,7 +512,9 @@ async def release_job_route(
         return job
 
     client_user = current_user
-    provider_user = await get_user_by_id(db, job.provider_id)
+    provider_id = job.provider_id
+    job_title = job.title
+    provider_user = await get_user_by_id(db, provider_id)
     provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
 
     # Guard: contract_job_id must be set
@@ -537,24 +536,24 @@ async def release_job_route(
         Pubkey.from_string(settings.GIGR_PROGRAM_ID)
     )
 
-    # --- IDEMPOTENCY CHECK ---
-    # If the escrow PDA no longer exists, the funds were already released.
-    # Just update the DB to completed and return.
-    if not await _get_solana_account(escrow_pubkey):
-        if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
-            await db.refresh(job)
-            return job
-        db.expire(job)
+    async def _mark_completed_and_return():
+        """Idempotently flip the DB to completed, notify, and return the fresh job."""
+        await transition_job_status(db, job_id, ["funded", "in_progress"], "completed")
         await create_notification(
             db,
-            user_id=job.provider_id,
+            user_id=provider_id,
             title="Payment Released",
-            message=f"The payment for \"{job.title}\" has been released to your wallet.",
-            link=f"/dashboard/activity"
+            message=f'The payment for "{job_title}" has been released to your wallet.',
+            link="/dashboard/activity",
         )
         await db.commit()
         await db.refresh(job)
         return job
+
+    # --- IDEMPOTENCY CHECK ---
+    # If the escrow PDA no longer exists, the funds were already released.
+    if not await _get_solana_account(escrow_pubkey):
+        return await _mark_completed_and_return()
 
     # Provider ATA – derive and ensure it exists
     from spl.token.instructions import get_associated_token_address
@@ -574,22 +573,9 @@ async def release_job_route(
         )
     except Exception as e:
         err_str = str(e)
-        # If the escrow was already closed, the transaction would fail with "AccountNotFound"
+        # Escrow already closed => already released on-chain. Sync DB and succeed.
         if "3012" in err_str or "AccountNotInitialized" in err_str or "AccountNotFound" in err_str:
-            # Already released – update DB to completed
-            if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
-                raise HTTPException(status_code=409, detail="Job already completed")
-            db.expire(job)
-            await create_notification(
-                db,
-                user_id=job.provider_id,
-                title="Payment Released",
-                message=f"The payment for \"{job.title}\" has been released to your wallet.",
-                link=f"/dashboard/activity"
-            )
-            await db.commit()
-            await db.refresh(job)
-            return job
+            return await _mark_completed_and_return()
         elif "insufficient lamports" in err_str.lower() or "0x1" in err_str:
             detail = "Transaction failed: Insufficient SOL for network gas/rent fees in your wallet."
         elif "11001" in err_str or "getaddrinfo failed" in err_str or "ConnectError" in err_str:
@@ -598,21 +584,7 @@ async def release_job_route(
             detail = f"Solana transaction failed: {err_str}"
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
 
-    if not await transition_job_status(db, job_id, ["funded", "in_progress"], "completed"):
-        raise HTTPException(status_code=409, detail="Job was already completed by a concurrent request")
-    db.expire(job)
-
-    await create_notification(
-        db,
-        user_id=job.provider_id,
-        title="Payment Released",
-        message=f"The payment for \"{job.title}\" has been released to your wallet.",
-        link=f"/dashboard/activity"
-    )
-
-    await db.commit()
-    await db.refresh(job)
-    return job
+    return await _mark_completed_and_return()
 
 @router.post("/{job_id}/submit-work", response_model=JobOut)
 async def submit_work_route(
