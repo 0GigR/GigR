@@ -43,7 +43,7 @@ class User(Base):
     applications = relationship("Application", back_populates="applicant")
     vouches_given = relationship("Vouch", back_populates="voucher", foreign_keys="[Vouch.voucher_id]")
     vouches_received = relationship("Vouch", back_populates="vouchee", foreign_keys="[Vouch.vouchee_id]")
-    messages = relationship("Message", back_populates="sender")
+    messages = relationship("Message", back_populates="sender", foreign_keys="[Message.sender_id]")
     disputes_as_client = relationship("Dispute", back_populates="client", foreign_keys="[Dispute.client_id]")
     disputes_as_provider = relationship("Dispute", back_populates="provider", foreign_keys="[Dispute.provider_id]")
 
