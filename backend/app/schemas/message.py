@@ -8,6 +8,8 @@ class MessageCreate(BaseModel):
     job_id: UUID
     content: str = Field(..., min_length=1)
     image_url: Optional[str] = None
+    # NULL => contract room; set => pre-assignment discussion with this applicant
+    applicant_id: Optional[UUID] = None
 
 class MessageOut(BaseModel):
     id: UUID
@@ -15,6 +17,7 @@ class MessageOut(BaseModel):
     sender_id: UUID
     content: str
     image_url: Optional[str] = None
+    applicant_id: Optional[UUID] = None
     created_at: datetime
 
     class Config:
