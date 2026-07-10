@@ -53,6 +53,21 @@ function usePublicUser(userId: string | undefined) {
   })
 }
 
+// "You are here" — a distinct blue location dot (divIcon so it never depends
+// on the CDN pin PNG, which was silently failing to load).
+const userLocationIcon = L.divIcon({
+  html: `
+    <div style="position:relative;width:22px;height:22px;">
+      <div style="position:absolute;inset:0;border-radius:9999px;background:rgba(37,99,235,.25);animation:gigrPulse 2s ease-out infinite;"></div>
+      <div style="position:absolute;top:5px;left:5px;width:12px;height:12px;border-radius:9999px;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>
+    </div>
+    <style>@keyframes gigrPulse{0%{transform:scale(.6);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`,
+  className: 'gigr-user-marker',
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+  popupAnchor: [0, -12],
+})
+
 // Center map on the user
 function MapUpdater({ center }: { center: [number, number] }) {
   const map = useMap()
@@ -138,8 +153,8 @@ export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitud
         />
         <MapUpdater center={[latitude, longitude]} />
 
-        {/* User location marker */}
-        <Marker position={[latitude, longitude]}>
+        {/* User location marker — pulsing blue dot */}
+        <Marker position={[latitude, longitude]} icon={userLocationIcon} zIndexOffset={1000}>
           <Popup>You are here</Popup>
         </Marker>
 
