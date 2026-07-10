@@ -20,4 +20,5 @@ class Message(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     job = relationship("Job", back_populates="messages")
-    sender = relationship("User", back_populates="messages")
+    # Two FKs to users (sender_id, applicant_id) — disambiguate explicitly
+    sender = relationship("User", back_populates="messages", foreign_keys=[sender_id])
