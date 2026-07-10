@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Briefcase, Shield, Star, ArrowRight, Wallet, Bot, MessageSquare } from 'lucide-react'
+import { Briefcase, Shield, Star, ArrowRight, ArrowLeft, Wallet, Bot, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
@@ -109,6 +109,10 @@ export default function OnboardingOverlay() {
     else finish()
   }
 
+  const back = () => {
+    if (step > 0) setStep((s) => s - 1)
+  }
+
   const current = STEPS[step] ?? STEPS[0]
   const Icon = current.icon
 
@@ -200,12 +204,22 @@ export default function OnboardingOverlay() {
               </div>
 
               <div className="flex items-center justify-between gap-3">
-                <button
-                  onClick={finish}
-                  className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
-                >
-                  {current.isFundWallet ? 'Maybe later' : 'Skip'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {step > 0 && (
+                    <button
+                      onClick={back}
+                      className="inline-flex items-center text-sm text-gray-500 hover:text-black dark:hover:text-white font-medium"
+                    >
+                      <ArrowLeft className="mr-1 h-4 w-4" /> Back
+                    </button>
+                  )}
+                  <button
+                    onClick={finish}
+                    className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                  >
+                    {current.isFundWallet ? 'Maybe later' : 'Skip'}
+                  </button>
+                </div>
                 <Button onClick={next} className="bg-black text-white rounded-full px-6">
                   {step < STEPS.length - 1 ? 'Next' : 'Done'}
                   <ArrowRight className="ml-1.5 h-4 w-4" />

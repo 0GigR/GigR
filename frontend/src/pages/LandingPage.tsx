@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import AuthDialog from '@/components/AuthDialog'
 import ParticleBackground from '@/components/ParticleBackground'
 import { Logo } from '@/components/Logo'
-import { Shield, Users, Smartphone, ArrowRight, Zap } from 'lucide-react'
+import { Shield, Users, ArrowRight, Zap, Bot, Star, Gavel, MapPin } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
 import { Navigate } from 'react-router-dom'
@@ -180,7 +180,7 @@ export default function LandingPage() {
           {[
             { step: '01', icon: Users, title: 'Post a job or service', desc: 'Describe what you need. Set your price. Your neighborhood sees it.' },
             { step: '02', icon: Shield, title: 'Fund escrow securely', desc: 'Payment is locked in a smart contract. No one can touch it.' },
-            { step: '03', icon: Zap, title: 'Complete & get paid', desc: 'Work done? Confirm and the money flows instantly. Plus, leave a vouch.' },
+            { step: '03', icon: Zap, title: 'Complete, get paid & reviewed', desc: 'Work done? Confirm and the money flows instantly. Then leave a vouch and a star rating.' },
           ].map((item, i) => (
             <motion.div
               key={item.step}
@@ -209,9 +209,12 @@ export default function LandingPage() {
           Why <span className="text-black">trust</span> Gigr?
         </h2>
         <div className="grid md:grid-cols-3 gap-10">
-          <FeatureCard icon={Users} title="Social Vouching" description="Every vouch is a permanent, tamper‑proof NFT. Your reputation travels with you." delay={0} />
-          <FeatureCard icon={Shield} title="Smart Contract Escrow" description="Funds locked in audited Solana programs. No one, not even Gigr, can touch them." delay={0.15} />
-          <FeatureCard icon={Smartphone} title="Invisible Blockchain" description="Pay with mobile money or card. Under the hood, Solana settles in seconds." delay={0.3} />
+          <FeatureCard icon={Bot} title="AI Assistant" description="Speak or type — your AI agent finds services, posts jobs, and even negotiates on your behalf, hands-free." delay={0} />
+          <FeatureCard icon={Shield} title="Smart Contract Escrow" description="Funds locked in Solana programs. No one, not even Gigr, can touch them until the work is done." delay={0.1} />
+          <FeatureCard icon={Users} title="Social Vouching" description="Every vouch is a permanent, tamper-proof cNFT. Your reputation travels with you." delay={0.2} />
+          <FeatureCard icon={Star} title="Ratings & Reviews" description="Real 1–5 star reviews tied to real completed jobs. See exactly who trusts whom, and why." delay={0.3} />
+          <FeatureCard icon={Gavel} title="Community Disputes" description="Disagreements are settled by a jury of verified neighbors voting on-chain — not a faceless support desk." delay={0.4} />
+          <FeatureCard icon={MapPin} title="Hyper-Local Map" description="See jobs and providers around you on a live neighborhood map. Trust starts close to home." delay={0.5} />
         </div>
       </section>
 
