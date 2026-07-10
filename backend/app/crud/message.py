@@ -15,24 +15,24 @@ async def get_messages_for_job(
     db: AsyncSession,
     job_id: UUID,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    applicant_id: UUID | None = None,
 ) -> List[Message]:
-    result = await db.execute(
-        select(Message)
-        .where(Message.job_id == job_id)
-        .order_by(Message.created_at.asc())
-        .limit(limit)
-        .offset(offset)
-    )
+    query = select(Message).where(Message.job_id == job_id)
+    # applicant_id None => contract room thread (NULL rows); set => that thread
+    query = query.where(Message.applicant_id == applicant_id)
+    query = query.order_by(Message.created_at.asc()).limit(limit).offset(offset)
+    result = await db.execute(query)
     return result.scalars().all()
 
 async def get_messages_for_job_since(
     db: AsyncSession,
     job_id: UUID,
     since_id: UUID | None = None,
-    limit: int = 50
+    limit: int = 50,
+    applicant_id: UUID | None = None,
 ) -> List[Message]:
-    query = select(Message).where(Message.job_id == job_id).order_by(Message.created_at.asc())
+    query = select(Message).where(Message.job_id == job_id).where(Message.applicant_id == applicant_id).order_by(Message.created_at.asc())
     if since_id:
         # Fetch messages after the given id (simple cursor)
         sub = select(Message.created_at).where(Message.id == since_id).scalar_subquery()
@@ -45,13 +45,15 @@ async def create_message(
     job_id: UUID,
     sender_id: UUID,
     content: str,
-    image_url: str | None = None
+    image_url: str | None = None,
+    applicant_id: UUID | None = None,
 ) -> Message:
     message = Message(
         job_id=job_id,
         sender_id=sender_id,
         content=content,
-        image_url=image_url
+        image_url=image_url,
+        applicant_id=applicant_id,
     )
     db.add(message)
     await db.commit()

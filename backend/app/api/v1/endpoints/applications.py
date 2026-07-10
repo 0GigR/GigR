@@ -36,14 +36,17 @@ async def apply(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You have already applied to this job")
     application = await create_application(db, current_user.id, app_data)
 
-    # Auto-message in the job chat so the owner gets an in-app notification
+    # Open the applicant's discussion thread with an intro message so the poster
+    # can reply before deciding. applicant_id = the applicant => a private
+    # pre-assignment thread (not the contract room).
     from ....crud.message import create_message
     from ....services.ws_manager import manager
     msg = application.message or ""
     auto = await create_message(
         db, app_data.job_id, current_user.id,
-        f"📋 {current_user.display_name or 'Someone'} applied for this job."
-        + (f"\n“{msg}”" if msg else "")
+        f"{current_user.display_name or 'Someone'} applied for this job."
+        + (f"\n“{msg}”" if msg else ""),
+        applicant_id=current_user.id,
     )
     await manager.broadcast_new_message(auto)
 
