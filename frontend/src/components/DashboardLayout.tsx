@@ -34,6 +34,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { useGeolocation } from '@/hooks/useGeolocation'
 
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore()
@@ -47,6 +48,17 @@ export default function DashboardLayout() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW()
+
+  const { latitude, longitude } = useGeolocation()
+
+  useEffect(() => {
+    if (user && latitude && longitude) {
+      const timeoutId = setTimeout(() => {
+        api.post('/users/me/location', { latitude, longitude }).catch(() => {})
+      }, 5000)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [user, latitude, longitude])
 
   useEffect(() => {
     const handler = (e: any) => {
