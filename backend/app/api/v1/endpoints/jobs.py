@@ -187,10 +187,12 @@ async def request_service(
     # Background email
     provider = await get_user_by_id(db, service.provider_id)
     if provider and provider.email:
+        from ....core.config import settings
+        frontend_url = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "https://gigrr.vercel.app"
         _send_email_background(
             to_email=provider.email,
             subject=f"New request for {service.title}",
-            html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='https://gigr.app/dashboard/jobs/{job.id}'>View request</a></p>"
+            html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='{frontend_url}/dashboard/jobs/{job.id}'>View request</a></p>"
         )
 
     return job
