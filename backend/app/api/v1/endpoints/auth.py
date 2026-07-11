@@ -61,26 +61,54 @@ async def login(login_in: UserLogin, response: Response, db: AsyncSession = Depe
 
 @router.post("/google")
 async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSession = Depends(get_db)):
+    import httpx as _httpx
     from google.oauth2 import id_token
     from google.auth.transport import requests
 
-    try:
-        idinfo = id_token.verify_oauth2_token(
-            auth_data.token,
-            requests.Request(),
-            settings.GOOGLE_CLIENT_ID
-        )
-    except ValueError as e:
-        logger.warning("Google token verification failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {str(e)}")
+    google_id = email = name = picture = None
+    email_verified = False
 
-    if not idinfo.get("email_verified"):
+    if auth_data.access_token:
+        # Custom button path: exchange the OAuth access token for the user's
+        # profile via Google's userinfo endpoint.
+        try:
+            async with _httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo",
+                    headers={"Authorization": f"Bearer {auth_data.access_token}"},
+                )
+                resp.raise_for_status()
+                info = resp.json()
+        except Exception as e:
+            logger.warning("Google userinfo fetch failed: %s", e)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google access token")
+        google_id = info.get("sub")
+        email = info.get("email")
+        name = info.get("name", email)
+        picture = info.get("picture")
+        # userinfo returns email_verified as bool or string
+        email_verified = str(info.get("email_verified", "false")).lower() == "true"
+    elif auth_data.token:
+        # ID-token path (classic GoogleLogin button)
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                auth_data.token, requests.Request(), settings.GOOGLE_CLIENT_ID
+            )
+        except ValueError as e:
+            logger.warning("Google token verification failed: %s", e)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {str(e)}")
+        google_id = idinfo["sub"]
+        email = idinfo.get("email")
+        name = idinfo.get("name", email)
+        picture = idinfo.get("picture")
+        email_verified = bool(idinfo.get("email_verified"))
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No Google credential provided")
+
+    if not email or not google_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google profile incomplete")
+    if not email_verified:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Google account email is not verified")
-
-    google_id = idinfo["sub"]
-    email = idinfo.get("email")
-    name = idinfo.get("name", email)
-    picture = idinfo.get("picture")
 
     user = await get_user_by_google_id(db, google_id)
     if not user:
