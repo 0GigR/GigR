@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { GoogleLogin } from '@react-oauth/google'
+import GoogleSignInButton from '@/components/GoogleSignInButton'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -24,10 +24,10 @@ export default function LoginPage() {
     }
   }
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  const handleGoogleSuccess = async (accessToken: string) => {
     setError('')
     try {
-      await googleAuth(credentialResponse.credential)
+      await googleAuth({ access_token: accessToken })
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Google sign-in failed')
@@ -61,9 +61,9 @@ export default function LoginPage() {
             {error && <p className="text-sm text-red-500">{error}</p>}
           </form>
           <div className="mt-4">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setError('Google sign-in failed')}
+            <GoogleSignInButton
+              onToken={handleGoogleSuccess}
+              onError={(msg) => setError(msg)}
             />
           </div>
           <p className="mt-4 text-center text-sm">
