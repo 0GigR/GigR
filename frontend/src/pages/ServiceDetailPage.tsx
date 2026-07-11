@@ -113,12 +113,25 @@ export default function ServiceDetailPage() {
     mutationFn: async () => {
       await api.post(`/jobs/request-service/${id}`)
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })
-      toast.success(`Request sent! View it in My Jobs.`)
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['myClientJobs'] })
+      const prev = queryClient.getQueryData<any[]>(['myClientJobs'])
+      if (prev) {
+        queryClient.setQueryData(['myClientJobs'], [...prev, { service_listing_id: id, status: 'requested' }])
+      }
+      return { prev }
     },
-    onError: (err: any) => {
+    onError: (err: any, _vars, context: any) => {
+      if (context?.prev) {
+        queryClient.setQueryData(['myClientJobs'], context.prev)
+      }
       toast.error(err.response?.data?.detail || 'Failed to request service')
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })
+    },
+    onSuccess: () => {
+      toast.success(`Request sent! View it in My Jobs.`)
     }
   })
 
