@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { GoogleLogin } from '@react-oauth/google'
+import GoogleSignInButton from '@/components/GoogleSignInButton'
 import { Logo } from '@/components/Logo'
 import { Mail, Lock, User, Phone } from 'lucide-react'
 
@@ -48,11 +48,11 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
     }
   }
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  const handleGoogleSuccess = async (accessToken: string) => {
     setIsGoogleLoading(true)
     setError('')
     try {
-      await googleAuth(credentialResponse.credential)
+      await googleAuth({ access_token: accessToken })
       onOpenChange(false)
       navigate('/dashboard')
     } catch (err: any) {
@@ -119,8 +119,8 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
           </TabsContent>
         </Tabs>
         {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
-        <div className="mt-4 border-t pt-4 flex justify-center">
-          <GoogleLogin onSuccess={handleGoogleSuccess} onError={() => setError('Google sign-in failed')} />
+        <div className="mt-4 border-t pt-4 flex justify-center w-full px-4">
+          <GoogleSignInButton onToken={handleGoogleSuccess} onError={(msg) => setError(msg)} />
         </div>
       </DialogContent>
     </Dialog>
