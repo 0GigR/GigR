@@ -6,7 +6,7 @@ import L from 'leaflet'
 import api from '@/lib/api'
 import type { components } from '@/types/api'
 import { Badge } from '@/components/ui/badge'
-
+import { useThemeStore } from '@/store/themeStore'
 type Job = components['schemas']['JobOut']
 type Service = components['schemas']['ServiceOut']
 
@@ -144,13 +144,18 @@ export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitud
     enabled: !!latitude && !!longitude && (type === 'services' || type === 'all'),
   })
 
+  const { theme } = useThemeStore()
+  
+  const tileUrl = theme === 'dark' 
+    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+    : 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
+  
+  const attribution = 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0 isolate">
       <MapContainer center={[latitude, longitude]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <TileLayer attribution={attribution} url={tileUrl} />
         <MapUpdater center={[latitude, longitude]} />
 
         {/* User location marker — pulsing blue dot */}
