@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { GoogleLogin } from '@react-oauth/google'
+import GoogleSignInButton from '@/components/GoogleSignInButton'
 import { Mail, Lock, User, Phone } from 'lucide-react'
 
 export default function RegisterPage() {
@@ -31,11 +31,11 @@ export default function RegisterPage() {
     }
   }
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  const handleGoogleSuccess = async (accessToken: string) => {
     setError('')
     setLoading(true)
     try {
-      await googleAuth(credentialResponse.credential)
+      await googleAuth({ access_token: accessToken })
       navigate('/dashboard')
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Google sign-in failed')
@@ -105,10 +105,10 @@ export default function RegisterPage() {
             </Button>
             {error && <p className="text-sm text-red-500">{error}</p>}
           </form>
-          <div className="mt-4 border-t pt-4 flex justify-center">
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setError('Google sign-in failed')}
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <GoogleSignInButton
+              onToken={handleGoogleSuccess}
+              onError={(msg) => setError(msg)}
             />
           </div>
           <p className="mt-4 text-center text-sm text-gray-600">
