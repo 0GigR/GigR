@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { ImageViewer } from '@/components/ImageViewer'
 import { LocationPicker } from '@/components/LocationPicker'
+import { useInView } from 'react-intersection-observer'
 import type { components } from '@/types/api'
 
 // ---------- Types ----------
@@ -199,6 +200,22 @@ export default function ServicesPage() {
     latitude: 0, longitude: 0, radius_km: '5.0',
   })
 
+  useEffect(() => {
+    const draft = localStorage.getItem('serviceFormDraft')
+    if (draft) {
+      try { setFormData(JSON.parse(draft)) } catch {}
+    }
+  }, [])
+
+  useEffect(() => {
+    if (formData.title || formData.description || formData.price) {
+      const timeout = setTimeout(() => {
+        localStorage.setItem('serviceFormDraft', JSON.stringify(formData))
+      }, 1000)
+      return () => clearTimeout(timeout)
+    }
+  }, [formData])
+
   // Fetch categories (not used directly in UI, but needed for seeding)
   useQuery<Category[]>({
     queryKey: ['categories'],
@@ -248,6 +265,13 @@ export default function ServicesPage() {
     },
     enabled: !!latitude && !!longitude,
   })
+
+  const { ref: loadMoreRef, inView } = useInView()
+  useEffect(() => {
+    if (inView && hasMoreNearby && !loadingMoreNearby) {
+      fetchMoreNearby()
+    }
+  }, [inView, hasMoreNearby, loadingMoreNearby, fetchMoreNearby])
   // Exclude the viewer's own services from the public browse list
   const nearbyServices = (Array.isArray(nearbyPages?.pages) ? nearbyPages.pages.flat() : [])
     .filter((s) => s.provider_id !== currentUser?.id)
@@ -303,6 +327,7 @@ export default function ServicesPage() {
       toast.success('Service created')
       setDialogOpen(false)
       resetForm()
+      localStorage.removeItem('serviceFormDraft')
     },
     onError: (err: any) => {
       if (err.response?.status === 409) {
@@ -664,16 +689,12 @@ export default function ServicesPage() {
                   {processedNearby.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
                 </div>
                 {hasMoreNearby && (
-                  <div className="flex justify-center mt-6">
-                    <Button
-                      variant="outline"
-                      onClick={() => fetchMoreNearby()}
-                      disabled={loadingMoreNearby}
-                      className="px-8"
-                    >
-                      {loadingMoreNearby ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                      {loadingMoreNearby ? 'Loading...' : 'Load More Services'}
-                    </Button>
+                  <div ref={loadMoreRef} className="flex justify-center mt-6 py-4">
+                    {loadingMoreNearby ? (
+                      <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+                    ) : (
+                      <div className="w-6 h-6" /> // spacer
+                    )}
                   </div>
                 )}
               </>
