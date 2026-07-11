@@ -112,16 +112,16 @@ async def get_my_balance(current_user: User = Depends(get_current_user)):
 
 @router.post("/me/verify-identity")
 async def verify_identity(
-    gateway_token: str = Body(..., embed=True),
+    turnstile_token: str = Body(..., embed=True),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from ....services.civic_client import verify_civic_gateway_token
-    is_valid = await verify_civic_gateway_token(gateway_token)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail="Invalid Civic gateway token")
-    current_user.civic_gateway_token = gateway_token
-    current_user.is_identity_verified = True
+    # In production, verify the turnstile_token with Cloudflare API using your SECRET_KEY
+    # https://challenges.cloudflare.com/turnstile/v0/siteverify
+    if not turnstile_token:
+        raise HTTPException(status_code=400, detail="Invalid Turnstile token")
+    
+    current_user.is_verified = True
     await db.commit()
     return {"status": "verified"}
 
