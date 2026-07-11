@@ -22,6 +22,7 @@ import {
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
+import ChatMessageContent from '@/components/ChatMessageContent'
 
 type Job = components['schemas']['JobOut']
 type Application = components['schemas']['ApplicationOut']
@@ -766,7 +767,7 @@ export default function JobsPage() {
                   {msg.image_url && (
                     <img src={msg.image_url} className="rounded-lg max-h-40 object-cover mb-2 cursor-pointer" onClick={() => setLightboxSrc(msg.image_url!)} />
                   )}
-                  <p className="text-sm">{msg.content}</p>
+                  <ChatMessageContent content={msg.content} onImageClick={setLightboxSrc} />
                   <span className="text-xs opacity-70">{new Date(msg.created_at).toLocaleTimeString()}</span>
                 </div>
               </div>

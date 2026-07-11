@@ -21,6 +21,7 @@ import {
 import type { components } from '@/types/api'
 import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
 import { ImageViewer } from '@/components/ImageViewer'
+import ChatMessageContent from '@/components/ChatMessageContent'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -448,23 +449,11 @@ export default function MessagesPage() {
                             : 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white rounded-2xl rounded-bl-md'
                         }`}
                       >
-                        {/* If message is an image URL, only the sender sees the image; the receiver sees a placeholder */}
-                        {msg.content.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ? (
-                          msg.sender_id === user?.id ? (
-                            <img
-                              src={msg.content}
-                              alt="sent image"
-                              className="rounded-lg max-w-full max-h-60 object-cover cursor-pointer"
-                              onClick={() => setLightboxSrc(msg.content)}
-                            />
-                          ) : (
-                            <p className="text-sm italic flex items-center gap-1.5">
-                              <ImagePlus className="w-4 h-4" /> Image sent
-                            </p>
-                          )
-                        ) : (
-                          <p className="text-sm">{msg.content}</p>
-                        )}
+                        <ChatMessageContent
+                          content={msg.content}
+                          imageUrl={(msg as any).image_url}
+                          onImageClick={setLightboxSrc}
+                        />
                         <span className="block text-[10px] opacity-60 mt-1 text-right">
                           {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

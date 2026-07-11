@@ -30,6 +30,7 @@ import {
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
+import ChatMessageContent from '@/components/ChatMessageContent'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -641,16 +642,11 @@ export default function ActivityPage() {
                         : 'bg-gray-100 text-black'
                     }`}
                   >
-                    {msg.content.match(/^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i) ? (
-                      <img
-                        src={msg.content}
-                        alt="sent image"
-                        className="rounded-lg max-h-40 object-cover mb-1 cursor-pointer"
-                        onClick={() => setLightboxSrc(msg.content)}
-                      />
-                    ) : (
-                      <p className="text-sm">{msg.content}</p>
-                    )}
+                    <ChatMessageContent
+                      content={msg.content}
+                      imageUrl={(msg as any).image_url}
+                      onImageClick={setLightboxSrc}
+                    />
                     <span className="text-xs opacity-70">
                       {new Date(msg.created_at).toLocaleTimeString()}
                     </span>
