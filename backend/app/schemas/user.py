@@ -14,7 +14,10 @@ class UserLogin(BaseModel):
     password: str
 
 class UserGoogleAuth(BaseModel):
-    token: str  # Google ID token
+    # One of these. `token` = Google ID token (GoogleLogin button).
+    # `access_token` = OAuth access token (useGoogleLogin hook / custom button).
+    token: Optional[str] = None
+    access_token: Optional[str] = None
 
 class UserOut(BaseModel):
     id: UUID
