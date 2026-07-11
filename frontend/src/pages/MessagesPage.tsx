@@ -22,6 +22,7 @@ import type { components } from '@/types/api'
 import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
 import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
+import { EmptyState } from '@/components/EmptyState'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -395,9 +396,12 @@ export default function MessagesPage() {
         {/* Chat area */}
         <div className="md:col-span-2">
           {!selectedJob ? (
-            <div className="text-center py-12 text-gray-500">
-              <MessageCircle className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-              <p>Select a job to open its contract room</p>
+            <div className="mt-8">
+              <EmptyState
+                icon={<MessageCircle className="w-8 h-8" />}
+                title="No chat selected"
+                description="Select a job from the list on the left to open its contract room and start chatting."
+              />
             </div>
           ) : (
             // dvh so the card shrinks when the mobile keyboard opens (keeps input visible)
