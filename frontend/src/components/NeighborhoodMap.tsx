@@ -6,7 +6,6 @@ import L from 'leaflet'
 import api from '@/lib/api'
 import type { components } from '@/types/api'
 import { Badge } from '@/components/ui/badge'
-import { useThemeStore } from '@/store/themeStore'
 type Job = components['schemas']['JobOut']
 type Service = components['schemas']['ServiceOut']
 
@@ -129,7 +128,7 @@ export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitud
   const { data: nearbyJobs } = useQuery<Job[]>({
     queryKey: ['nearbyJobs', latitude, longitude],
     queryFn: async () => {
-      const { data } = await api.get('/jobs/', { params: { lat: latitude, lon: longitude, radius: 10 } })
+      const { data } = await api.get('/jobs/', { params: { lat: latitude, lon: longitude, radius: 100000 } })
       return Array.isArray(data) ? data : []
     },
     enabled: !!latitude && !!longitude && (type === 'jobs' || type === 'all'),
@@ -138,19 +137,14 @@ export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitud
   const { data: nearbyServices } = useQuery<Service[]>({
     queryKey: ['nearbyServices', latitude, longitude],
     queryFn: async () => {
-      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 10 } })
+      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 100000 } })
       return Array.isArray(data) ? data : []
     },
     enabled: !!latitude && !!longitude && (type === 'services' || type === 'all'),
   })
 
-  const { theme } = useThemeStore()
-  
-  const tileUrl = theme === 'dark' 
-    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-    : 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-  
-  const attribution = 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+  const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
   return (
     <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0 isolate">

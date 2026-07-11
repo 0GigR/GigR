@@ -184,7 +184,7 @@ export default function ServicesPage() {
   const [catSearchResults, setCatSearchResults] = useState<Category[]>([])
   const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
   const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
-  const [radius, setRadius] = useState(10) // default 10km radius
+  const [radius] = useState(100000) // global radius
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
@@ -457,19 +457,6 @@ export default function ServicesPage() {
           <p className="text-gray-500">{activeTab === 'browse' ? 'Discover services in your neighborhood' : activeTab === 'map' ? 'See activity around you' : 'Manage your offerings'}</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          {activeTab === 'browse' && (
-            <div className="flex items-center gap-2 mr-2 bg-background px-3 py-1 rounded-md border border-border">
-              <span className="text-sm text-gray-500 whitespace-nowrap">Radius: {radius}km</span>
-              <input 
-                type="range" 
-                min="1" 
-                max="50" 
-                value={radius} 
-                onChange={(e) => setRadius(parseInt(e.target.value))}
-                className="w-24 h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          )}
           {activeTab !== 'map' && (
             <Select value={sortOrder} onValueChange={setSortOrder}>
               <SelectTrigger className="w-[140px] bg-background border-border">

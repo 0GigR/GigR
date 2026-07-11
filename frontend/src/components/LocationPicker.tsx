@@ -2,7 +2,6 @@ import { useState, useRef, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { useThemeStore } from '@/store/themeStore'
 
 // Fix leaflet default icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -51,13 +50,8 @@ function LocationMarker({ position, setPosition }: { position: L.LatLng, setPosi
 
 export function LocationPicker({ latitude, longitude, onChange }: Props) {
   const [position, setPosition] = useState(new L.LatLng(latitude, longitude))
-  const { theme } = useThemeStore()
-
-  const tileUrl = theme === 'dark' 
-    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-    : 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-  
-  const attribution = 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+  const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
   const handlePositionChange = (p: L.LatLng) => {
     setPosition(p)
