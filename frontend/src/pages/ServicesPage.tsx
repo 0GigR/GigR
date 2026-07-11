@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { ImageViewer } from '@/components/ImageViewer'
+import { LocationPicker } from '@/components/LocationPicker'
 import type { components } from '@/types/api'
 
 // ---------- Types ----------
@@ -93,16 +94,17 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           </div>
         )}
         {service.image_url && (
-          <div className="mb-3">
+          <div className="mb-3 block group cursor-pointer" onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: service.image_url }))}>
             <img
               src={service.image_url}
-              className="rounded-lg w-full h-40 object-cover hover:opacity-90 transition-opacity cursor-pointer"
-              onClick={() => window.dispatchEvent(new CustomEvent('open-lightbox', { detail: service.image_url }))}
+              className="rounded-lg w-full h-40 object-cover group-hover:opacity-90 transition-opacity"
             />
           </div>
         )}
         <div className="flex justify-between items-start">
-          <CardTitle className="text-lg font-semibold">{service.title}</CardTitle>
+          <Link to={`/dashboard/services/${service.id}`} className="hover:underline decoration-2 underline-offset-2">
+            <CardTitle className="text-lg font-semibold">{service.title}</CardTitle>
+          </Link>
           <Badge variant={service.is_active ? 'default' : 'secondary'} className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}>
             {service.is_active ? 'Active' : 'Paused'}
           </Badge>
@@ -133,17 +135,22 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
             </Button>
           </>
         ) : (
-          <>
-            {hasRequested && (
-              <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full mr-auto">
-                <Send className="w-3 h-3" /> Requested
-              </span>
-            )}
-            <Button size="sm" variant="default" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
-              {isRequesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
-              {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
-            </Button>
-          </>
+          <div className="flex w-full justify-between items-center">
+            <Link to={`/dashboard/services/${service.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+              View details →
+            </Link>
+            <div className="flex items-center gap-2">
+              {hasRequested && (
+                <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                  <Send className="w-3 h-3" /> Requested
+                </span>
+              )}
+              <Button size="sm" variant="default" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
+                {isRequesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
+                {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
+              </Button>
+            </div>
+          </div>
         )}
       </CardFooter>
     </Card>
@@ -184,6 +191,9 @@ export default function ServicesPage() {
   const [isCreating, setIsCreating] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [useCustomLocation, setUseCustomLocation] = useState(false)
+  const [customLocation, setCustomLocation] = useState<{lat: number, lng: number} | null>(null)
+  
   const [formData, setFormData] = useState({
     category_id: '', title: '', description: '', price: '',
     latitude: 0, longitude: 0, radius_km: '5.0',
@@ -348,8 +358,10 @@ export default function ServicesPage() {
 
   const handleCreateOrUpdate = async () => {
     if (isCreating) return
-    if (!formData.title || !formData.price || !formData.category_id) { toast.error('Title, price, and category required'); return }
-    if (!latitude || !longitude) { toast.error('Location not available'); return }
+    if (!formData.category_id || !formData.title || !formData.price) return toast.error('Fill required fields')
+    const finalLat = useCustomLocation && customLocation ? customLocation.lat : (formData.latitude || latitude)
+    const finalLng = useCustomLocation && customLocation ? customLocation.lng : (formData.longitude || longitude)
+    if (!finalLat || !finalLng) return toast.error('Location is required')
 
     // Duplicate check
     if (!editService && myServices) {
@@ -362,19 +374,19 @@ export default function ServicesPage() {
 
     setIsCreating(true)
     try {
-      let imageUrl: string | undefined
+      let imageUrl = editService?.image_url || null
       if (imageFile) {
-        try { imageUrl = await uploadFile(imageFile) } catch { setIsCreating(false); return }
+        try { imageUrl = await uploadFile(imageFile) } catch { return }
       }
 
-      const payload: ServiceCreate = {
-        title: formData.title,
-        description: formData.description,
-        price: formData.price,
+      const payload = {
         category_id: formData.category_id,
-        latitude,
-        longitude,
-        radius_km: formData.radius_km || '5.0',
+        title: formData.title,
+        description: formData.description || undefined,
+        price: formData.price,
+        latitude: finalLat,
+        longitude: finalLng,
+        radius_km: formData.radius_km,
         image_url: imageUrl,
       }
 
@@ -581,6 +593,30 @@ export default function ServicesPage() {
                     <span className="flex items-center gap-1"><MapPin className="w-4 h-4 inline text-gray-500" /> {address}</span>
                   ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
                 </div>
+
+                <div className="flex items-center gap-2 mt-2">
+                  <input 
+                    type="checkbox" 
+                    id="custom-location-service" 
+                    checked={useCustomLocation} 
+                    onChange={(e) => {
+                      setUseCustomLocation(e.target.checked)
+                      if (e.target.checked && !customLocation && (formData.latitude || latitude) && (formData.longitude || longitude)) {
+                        setCustomLocation({ lat: formData.latitude || latitude!, lng: formData.longitude || longitude! })
+                      }
+                    }} 
+                  />
+                  <label htmlFor="custom-location-service" className="text-sm font-medium">Use custom location (instead of current GPS)</label>
+                </div>
+                {useCustomLocation && customLocation && (
+                  <div className="mt-2">
+                    <LocationPicker 
+                      latitude={customLocation.lat} 
+                      longitude={customLocation.lng} 
+                      onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
+                    />
+                  </div>
+                )}
 
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>

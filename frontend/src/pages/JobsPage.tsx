@@ -75,6 +75,8 @@ async function uploadFile(file: File): Promise<string> {
   return data.secure_url
 }
 
+import { LocationPicker } from '@/components/LocationPicker'
+
 export default function JobsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -90,6 +92,9 @@ export default function JobsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  
+  const [useCustomLocation, setUseCustomLocation] = useState(false)
+  const [customLocation, setCustomLocation] = useState<{lat: number, lng: number} | null>(null)
 
   // Apply dialog state
   const [applyOpen, setApplyOpen] = useState(false)
@@ -397,8 +402,8 @@ export default function JobsPage() {
       max_price: formData.max_price || undefined,
       image_url: imageUrl,
       // Attach the poster's location so the job appears on the neighbourhood map
-      latitude: geo.latitude ?? undefined,
-      longitude: geo.longitude ?? undefined,
+      latitude: useCustomLocation && customLocation ? customLocation.lat : geo.latitude ?? undefined,
+      longitude: useCustomLocation && customLocation ? customLocation.lng : geo.longitude ?? undefined,
     })
   }
 
@@ -683,7 +688,30 @@ export default function JobsPage() {
                 </Button>
               )}
             </div>
-            <Button onClick={handlePostJob} disabled={createMutation.isPending} className="w-full bg-black text-white">
+            <div className="flex items-center gap-2 mt-2">
+              <input 
+                type="checkbox" 
+                id="custom-location-job" 
+                checked={useCustomLocation} 
+                onChange={(e) => {
+                  setUseCustomLocation(e.target.checked)
+                  if (e.target.checked && !customLocation && geo.latitude && geo.longitude) {
+                    setCustomLocation({ lat: geo.latitude, lng: geo.longitude })
+                  }
+                }} 
+              />
+              <label htmlFor="custom-location-job" className="text-sm font-medium">Use custom location (instead of current GPS)</label>
+            </div>
+            {useCustomLocation && customLocation && (
+              <div className="mt-2">
+                <LocationPicker 
+                  latitude={customLocation.lat} 
+                  longitude={customLocation.lng} 
+                  onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
+                />
+              </div>
+            )}
+            <Button onClick={handlePostJob} disabled={createMutation.isPending} className="w-full bg-black text-white mt-4">
               {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
               {createMutation.isPending ? 'Posting...' : 'Post Job'}
             </Button>

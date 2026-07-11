@@ -11,6 +11,7 @@ import DashboardLayout from '@/components/DashboardLayout'
 import HomePage from '@/pages/HomePage'
 import JobsPage from '@/pages/JobsPage'
 import ServicesPage from '@/pages/ServicesPage'
+import ServiceDetailPage from '@/pages/ServiceDetailPage'
 import ActivityPage from '@/pages/ActivityPage'
 import MessagesPage from '@/pages/MessagesPage'
 import DisputesPage from '@/pages/DisputesPage'
@@ -21,7 +22,16 @@ import PublicProfilePage from '@/pages/PublicProfilePage'
 import AISettingsPage from '@/pages/AISettingsPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      networkMode: 'always',
+    },
+    mutations: {
+      networkMode: 'always',
+    },
+  },
+})
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuthStore()
@@ -60,6 +70,7 @@ function App() {
               <Route index element={<HomePage />} />
               <Route path="jobs" element={<JobsPage />} />
               <Route path="services" element={<ServicesPage />} />
+              <Route path="services/:id" element={<ServiceDetailPage />} />
               <Route path="activity" element={<ActivityPage />} />
               <Route path="messages" element={<MessagesPage />} />
               <Route path="disputes" element={<DisputesPage />} />
