@@ -273,7 +273,7 @@ async def raise_dispute(
                         <h2>You've Been Selected as a Juror</h2>
                         <p>A dispute has arisen in your neighbourhood for job <strong>{job.title}</strong>.</p>
                         <p>Please log into Gigr and review the case. Your vote will help decide the outcome.</p>
-                        <p><a href="https://gigr.app/dashboard/disputes/{dispute.id}">View Dispute</a></p>
+                        <p><a href="https://gigrr.vercel.app/dashboard/disputes/{dispute.id}">View Dispute</a></p>
                         """
                     )
                 except Exception:
@@ -434,7 +434,7 @@ async def select_jury(
                 <h2>You've Been Selected as a Juror</h2>
                 <p>A dispute has arisen in your neighbourhood for job <strong>{job.title}</strong>.</p>
                 <p>Please log into Gigr and review the case. Your vote will help decide the outcome.</p>
-                <p><a href="https://gigr.app/disputes/{dispute_id}">View Dispute</a></p>
+                <p><a href="https://gigrr.vercel.app/disputes/{dispute_id}">View Dispute</a></p>
                 """
             )
         except Exception:
