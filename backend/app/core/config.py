@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = Field(default="llama3-8b-8192", env="GROQ_MODEL")
     GROQ_WHISPER_MODEL: str = Field(default="whisper-large-v3-turbo", env="GROQ_WHISPER_MODEL")
 
+    TURNSTILE_SECRET_KEY: str | None = Field(default=None, env="TURNSTILE_SECRET_KEY")
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

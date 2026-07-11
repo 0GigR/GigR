@@ -264,6 +264,8 @@ async def raise_dispute(
             await db.commit()
 
             # Notify each juror by email (non‑blocking)
+            from ....core.config import settings
+            frontend_url = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "https://gigrr.vercel.app"
             for juror in jurors:
                 try:
                     await send_email(
@@ -273,7 +275,7 @@ async def raise_dispute(
                         <h2>You've Been Selected as a Juror</h2>
                         <p>A dispute has arisen in your neighbourhood for job <strong>{job.title}</strong>.</p>
                         <p>Please log into Gigr and review the case. Your vote will help decide the outcome.</p>
-                        <p><a href="https://gigrr.vercel.app/dashboard/disputes/{dispute.id}">View Dispute</a></p>
+                        <p><a href="{frontend_url}/dashboard/disputes/{dispute.id}">View Dispute</a></p>
                         """
                     )
                 except Exception:
