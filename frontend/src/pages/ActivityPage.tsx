@@ -26,11 +26,13 @@ import {
   Loader2,
   Send,
   Flag,
+  Briefcase,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
+import { EmptyState } from '@/components/EmptyState'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -512,9 +514,17 @@ export default function ActivityPage() {
                 ? completedJobs 
                 : cancelledJobs
               ).length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  No jobs here yet.
-                </div>
+                <EmptyState
+                  icon={<Briefcase className="w-8 h-8" />}
+                  title={tab === 'clienting' ? "No requests yet" : tab === 'providing' ? "No active jobs" : "No jobs"}
+                  description={tab === 'clienting' 
+                    ? "You haven't requested any services yet. Go find someone to help you!" 
+                    : tab === 'providing'
+                    ? "You aren't providing any services right now. Apply for a job!"
+                    : "There are no jobs matching this status."}
+                  actionLabel={tab === 'clienting' ? "Browse Services" : tab === 'providing' ? "Browse Jobs" : undefined}
+                  actionHref={tab === 'clienting' ? "/dashboard/services" : tab === 'providing' ? "/dashboard/jobs" : undefined}
+                />
               ) : (
                 <div className="space-y-3">
                   {(tab === 'clienting'
