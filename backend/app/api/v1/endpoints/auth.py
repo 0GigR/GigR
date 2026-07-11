@@ -207,6 +207,8 @@ async def link_google(
         if email_owner and email_owner.id != current_user.id:
             raise HTTPException(status_code=409, detail="Google email is already used by another account")
         current_user.email = google_email
+        
+    current_user.is_verified = True
 
     await db.commit()
     return {"message": "Google account linked"}
