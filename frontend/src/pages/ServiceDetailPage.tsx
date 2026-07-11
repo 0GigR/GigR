@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Send, MapPin, Loader2 } from 'lucide-react'
+import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation } from 'lucide-react'
 import { toast } from 'sonner'
 import api from '@/lib/api'
 import type { components } from '@/types/api'
@@ -9,9 +9,34 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
+import { useGeolocation } from '@/hooks/useGeolocation'
 
 type Service = components['schemas']['ServiceOut']
 type User = components['schemas']['UserOut']
+type RatingOut = {
+  id: string
+  job_id: string
+  rater_id: string
+  ratee_id: string
+  score: number
+  comment?: string | null
+  created_at: string
+  rater_name?: string | null
+  rater_image?: string | null
+  job_title?: string | null
+}
+
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371 // Radius of the earth in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c // Distance in km
+}
 
 // Re-use avatar marker logic or standard Leaflet icon
 const defaultIcon = new L.Icon({
@@ -48,6 +73,31 @@ export default function ServiceDetailPage() {
     },
     enabled: !!service?.provider_id,
   })
+
+  const { latitude, longitude } = useGeolocation()
+
+  const { data: ratings } = useQuery<RatingOut[]>({
+    queryKey: ['ratings', service?.provider_id],
+    queryFn: async () => {
+      const { data } = await api.get(`/ratings/user/${service?.provider_id}`)
+      return data
+    },
+    enabled: !!service?.provider_id,
+  })
+
+  const { data: ratingSummary } = useQuery<any>({
+    queryKey: ['ratingSummary', service?.provider_id],
+    queryFn: async () => {
+      const { data } = await api.get(`/ratings/user/${service?.provider_id}/summary`)
+      return data
+    },
+    enabled: !!service?.provider_id,
+  })
+
+  let distanceKm = null
+  if (latitude && longitude && service?.latitude && service?.longitude) {
+    distanceKm = calculateDistance(latitude, longitude, service.latitude, service.longitude)
+  }
 
   // Services the user has already requested (for the "Requested" indicator)
   const { data: myClientJobs } = useQuery<any[]>({
@@ -149,6 +199,50 @@ export default function ServiceDetailPage() {
                   </div>
                 </div>
               )}
+
+              {/* Reviews & Ratings */}
+              {ratings && ratings.length > 0 && (
+                <div className="border-t border-gray-100 pt-6 mt-6">
+                  <div className="flex items-center gap-3 mb-6">
+                    <h3 className="text-lg font-semibold">Provider Reviews</h3>
+                    {ratingSummary?.average && (
+                      <div className="flex items-center gap-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded-full text-sm font-semibold border border-yellow-200">
+                        <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
+                        {ratingSummary.average} ({ratingSummary.count})
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-6">
+                    {ratings.map(rating => (
+                      <div key={rating.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                        <div className="flex justify-between items-start mb-3">
+                          <Link to={`/dashboard/user/${rating.rater_id}`} className="flex items-center gap-2 group">
+                            {rating.rater_image ? (
+                              <img src={rating.rater_image} className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
+                                {rating.rater_name?.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-semibold text-sm group-hover:underline">{rating.rater_name}</span>
+                              <p className="text-xs text-gray-500">for {rating.job_title}</p>
+                            </div>
+                          </Link>
+                          <div className="flex items-center">
+                            {[...Array(5)].map((_, i) => (
+                              <Star key={i} className={`w-3 h-3 ${i < rating.score ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`} />
+                            ))}
+                          </div>
+                        </div>
+                        {rating.comment && (
+                          <p className="text-sm text-gray-700 italic">"{rating.comment}"</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -183,6 +277,12 @@ export default function ServiceDetailPage() {
                   {service.radius_km}km radius
                 </span>
               </div>
+              {distanceKm !== null && (
+                <div className="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center gap-2">
+                  <Navigation className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm text-blue-800 font-medium">{distanceKm.toFixed(1)} km away from you</span>
+                </div>
+              )}
               <div className="h-48 w-full relative z-0 isolate">
                 <MapContainer center={[service.latitude, service.longitude]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                   <TileLayer attribution={attribution} url={tileUrl} />
