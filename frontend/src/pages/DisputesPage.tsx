@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuthStore } from '@/store/authStore'
 import { Gavel, MessageCircle, Send, AlertTriangle, Sparkles } from 'lucide-react'
+import ChatMessageContent from '@/components/ChatMessageContent'
 
 type JuryDispute = {
   id: string
@@ -296,7 +297,8 @@ export default function DisputesPage() {
               {courtroomMessages?.map((msg: Message) => (
                 <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
-                    <p className="text-sm">{msg.content}</p>
+                    <ChatMessageContent content={msg.content} />
+
                     <span className="text-xs opacity-70">{new Date(msg.created_at).toLocaleTimeString()}</span>
                   </div>
                 </div>

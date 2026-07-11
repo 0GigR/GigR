@@ -33,12 +33,14 @@ import {
 
 import { useQueryClient } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore()
   const { theme, toggle } = useThemeStore()
   const messageUnread = useUnreadStore((s) => s.messageUnread)
   const [showMore, setShowMore] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const queryClient = useQueryClient()
   const {
@@ -126,7 +128,7 @@ export default function DashboardLayout() {
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
-            <Button variant="ghost" size="icon" onClick={logout}>
+            <Button variant="ghost" size="icon" onClick={() => setConfirmLogout(true)}>
               <LogOut className="h-5 w-5" />
             </Button>
           </div>
@@ -278,6 +280,16 @@ export default function DashboardLayout() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmLogout}
+        onOpenChange={setConfirmLogout}
+        title="Log out?"
+        description="You'll need to sign in again to access your dashboard."
+        confirmLabel="Log Out"
+        cancelLabel="Stay"
+        onConfirm={() => { setConfirmLogout(false); logout() }}
+      />
     </div>
   )
 }
