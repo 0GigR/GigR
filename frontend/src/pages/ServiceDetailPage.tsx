@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
-import { useThemeStore } from '@/store/themeStore'
 import L from 'leaflet'
 
 type Service = components['schemas']['ServiceOut']
@@ -29,13 +28,8 @@ export default function ServiceDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { theme } = useThemeStore()
-
-  const tileUrl = theme === 'dark' 
-    ? 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-    : 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'
-  
-  const attribution = 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+  const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
   const { data: service, isLoading: serviceLoading, error: serviceError } = useQuery<Service>({
     queryKey: ['service', id],
