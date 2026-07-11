@@ -193,12 +193,17 @@ export default function JobsPage() {
   })
   const vouchedJobIds = new Set(myVouchJobIds || [])
 
-  // Contract room messages
+  // Which discussion thread is open: null = contract room (post-assignment),
+  // a user id = pre-assignment discussion between poster and that applicant.
+  const [threadApplicantId, setThreadApplicantId] = useState<string | null>(null)
+
+  // Contract room / discussion messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
-    queryKey: ['messages', contractRoomJobId],
+    queryKey: ['messages', contractRoomJobId, threadApplicantId],
     queryFn: async () => {
       if (!contractRoomJobId) return []
-      const { data } = await api.get(`/messages/job/${contractRoomJobId}`)
+      const params = threadApplicantId ? { applicant_id: threadApplicantId } : {}
+      const { data } = await api.get(`/messages/job/${contractRoomJobId}`, { params })
       return data
     },
     enabled: !!contractRoomJobId && contractRoomOpen,
@@ -304,7 +309,12 @@ export default function JobsPage() {
 
   const sendMessageMutation = useMutation({
     mutationFn: async ({ jobId, content, imageUrl }: { jobId: string; content: string; imageUrl?: string | null }) => {
-      await api.post('/messages/', { job_id: jobId, content, image_url: imageUrl })
+      await api.post('/messages/', {
+        job_id: jobId,
+        content,
+        image_url: imageUrl,
+        applicant_id: threadApplicantId || undefined,
+      })
     },
     onSuccess: () => {
       refetchMessages()
@@ -400,6 +410,28 @@ export default function JobsPage() {
   const handleAssign = (jobId: string, providerId: string) => assignMutation.mutate({ jobId, providerId })
 
   const openContractRoom = (job: Job) => {
+    // Determine which thread to open:
+    // - If viewer is the client on an OPEN job, they use the discussion thread
+    //   list (handled by the threads UI) — default to no specific thread.
+    // - If viewer is an applicant (not client, not yet provider) on an open job,
+    //   open THEIR own discussion thread.
+    // - Otherwise (assigned/funded, or you are the provider), open the contract
+    //   room (applicant_id = null).
+    const isOpenJob = job.status === 'open'
+    const iAmClient = job.client_id === user?.id
+    if (isOpenJob && !iAmClient) {
+      setThreadApplicantId(user?.id ?? null)
+    } else {
+      setThreadApplicantId(null)
+    }
+    setContractRoomJobId(job.id)
+    setContractRoomJob(job)
+    setContractRoomOpen(true)
+  }
+
+  // Poster opens a specific applicant's discussion thread
+  const openDiscussionThread = (job: Job, applicantId: string) => {
+    setThreadApplicantId(applicantId)
     setContractRoomJobId(job.id)
     setContractRoomJob(job)
     setContractRoomOpen(true)
@@ -525,6 +557,7 @@ export default function JobsPage() {
                   onVouch={vouchMutation.mutate}
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
+                  onOpenThread={openDiscussionThread}
                   hasApplied={appliedJobIds.has(job.id)}
                   hasVouched={vouchedJobIds.has(job.id)}
                   onImageClick={setLightboxSrc}
@@ -572,6 +605,7 @@ export default function JobsPage() {
                   onVouch={vouchMutation.mutate}
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
+                  onOpenThread={openDiscussionThread}
                   onAccept={handleAccept}
                   onCancel={(jobId, title) => setConfirmAction({ type: 'cancel', jobId, title })}
                   hasApplied={appliedJobIds.has(job.id)}
@@ -673,11 +707,13 @@ export default function JobsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Contract Room Dialog */}
-      <Dialog open={contractRoomOpen} onOpenChange={setContractRoomOpen}>
+      {/* Contract Room / Discussion Dialog */}
+      <Dialog open={contractRoomOpen} onOpenChange={(o) => { setContractRoomOpen(o); if (!o) setThreadApplicantId(null) }}>
         <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[80vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>{contractRoomJob?.title} – Contract Room</DialogTitle>
+            <DialogTitle>
+              {contractRoomJob?.title} – {threadApplicantId ? 'Discussion' : 'Contract Room'}
+            </DialogTitle>
           </DialogHeader>
           {/* Show job details */}
           {contractRoomJob && (
@@ -851,7 +887,7 @@ export default function JobsPage() {
 // ─── JobCard ─────────────────────────────────────────
 function JobCard({
   job, user,
-  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onAccept, onCancel,
+  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onOpenThread, onAccept, onCancel,
   hasApplied, hasVouched, onImageClick,
   applyPending, assignPending, fundPending, releasePending, vouchPending, acceptPending,
 }: {
@@ -864,6 +900,7 @@ function JobCard({
   onVouch: (jobId: string) => void
   onDetail: (job: Job) => void
   onContractRoom: (job: Job) => void
+  onOpenThread: (job: Job, applicantId: string) => void
   onAccept: (jobId: string) => void
   onCancel: (jobId: string, title: string) => void
   hasApplied?: boolean
@@ -959,8 +996,10 @@ function JobCard({
         </div>
       </CardContent>
       <CardFooter className="pt-4 flex gap-2 flex-wrap">
-        {/* Actions based on role and status */}
-        {job.status === 'open' && (
+        {/* On an OPEN job the poster (client) discusses per-applicant via the
+            "View Applicants" list, so only non-clients get the top-level
+            Discuss button (opens their own thread with the poster). */}
+        {job.status === 'open' && !isClient && (
           <Button size="sm" variant="outline" onClick={() => onContractRoom(job)}>
             <MessageCircle className="w-3 h-3 mr-1" /> Discuss
           </Button>
@@ -1003,9 +1042,14 @@ function JobCard({
                           </a>
                         )}
                       </div>
-                      <Button size="sm" onClick={() => onAssign(job.id, app.applicant_id)} disabled={assignPending}>
-                        Hire
-                      </Button>
+                      <div className="flex gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => onOpenThread(job, app.applicant_id)}>
+                          <MessageCircle className="w-3 h-3 mr-1" /> Discuss
+                        </Button>
+                        <Button size="sm" onClick={() => onAssign(job.id, app.applicant_id)} disabled={assignPending}>
+                          Hire
+                        </Button>
+                      </div>
                     </div>
                   ))
                 ) : (
