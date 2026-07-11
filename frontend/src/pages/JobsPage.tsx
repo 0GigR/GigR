@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api from '@/lib/api'
@@ -23,6 +23,7 @@ import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
+import { useInView } from 'react-intersection-observer'
 
 type Job = components['schemas']['JobOut']
 type Application = components['schemas']['ApplicationOut']
@@ -89,6 +90,22 @@ export default function JobsPage() {
     title: '', description: '', price: '',
     min_price: '', max_price: '',
   })
+
+  useEffect(() => {
+    const draft = localStorage.getItem('jobFormDraft')
+    if (draft) {
+      try { setFormData(JSON.parse(draft)) } catch {}
+    }
+  }, [])
+
+  useEffect(() => {
+    if (formData.title || formData.description || formData.price) {
+      const timeout = setTimeout(() => {
+        localStorage.setItem('jobFormDraft', JSON.stringify(formData))
+      }, 1000)
+      return () => clearTimeout(timeout)
+    }
+  }, [formData])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -130,6 +147,9 @@ export default function JobsPage() {
 
   // Paginated open jobs ("Load More" pattern)
   const PAGE_SIZE = 20
+  
+  const { ref: loadMoreRef, inView } = useInView()
+
   const {
     data: openJobsPages,
     isLoading: openLoading,
@@ -147,12 +167,16 @@ export default function JobsPage() {
       // return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
     },
     initialPageParam: 0,
-    getNextPageParam: (lastPage, allPages) => {
-      if (lastPage.length < PAGE_SIZE) return undefined
-      return allPages.flat().length
-    },
+    getNextPageParam: (lastPage, allPages) => lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
     refetchInterval: 10000,
   })
+
+  useEffect(() => {
+    if (inView && hasMoreOpenJobs && !loadingMoreOpenJobs) {
+      fetchMoreOpenJobs()
+    }
+  }, [inView, hasMoreOpenJobs, loadingMoreOpenJobs, fetchMoreOpenJobs])
+
   const openJobs = openJobsPages?.pages.flat() ?? []
 
   const { data: myJobs, isLoading: myLoading } = useQuery<Job[]>({
@@ -239,6 +263,7 @@ export default function JobsPage() {
       toast.success('Job posted')
       setCreateOpen(false)
       setImageFile(null); setImagePreview(null)
+      localStorage.removeItem('jobFormDraft')
     },
     onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to post'),
   })
@@ -252,14 +277,29 @@ export default function JobsPage() {
         portfolio_url: applyData.portfolio_url || undefined,
       })
     },
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['myApplications'] })
+      const prev = queryClient.getQueryData<string[]>(['myApplications'])
+      if (prev && applyJobId) {
+        queryClient.setQueryData(['myApplications'], [...prev, applyJobId])
+      }
+      setApplyOpen(false) // Optimistically close modal
+      return { prev }
+    },
+    onError: (err: any, _vars, context: any) => {
+      if (context?.prev) {
+        queryClient.setQueryData(['myApplications'], context.prev)
+      }
+      toast.error(err.response?.data?.detail || 'Failed to apply')
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       queryClient.invalidateQueries({ queryKey: ['myApplications'] })
       queryClient.invalidateQueries({ queryKey: ['applicationCount', applyJobId] })
-      toast.success('Application sent!')
-      setApplyOpen(false)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to apply'),
+    onSuccess: () => {
+      toast.success('Application sent!')
+    },
   })
 
   const assignMutation = useMutation({
@@ -580,16 +620,12 @@ export default function JobsPage() {
             )}
           </div>
           {hasMoreOpenJobs && (
-            <div className="flex justify-center mt-6">
-              <Button
-                variant="outline"
-                onClick={() => fetchMoreOpenJobs()}
-                disabled={loadingMoreOpenJobs}
-                className="px-8"
-              >
-                {loadingMoreOpenJobs ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {loadingMoreOpenJobs ? 'Loading...' : 'Load More Jobs'}
-              </Button>
+            <div ref={loadMoreRef} className="flex justify-center mt-6 py-4">
+              {loadingMoreOpenJobs ? (
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              ) : (
+                <div className="w-6 h-6" /> // spacer
+              )}
             </div>
           )}
         </TabsContent>
