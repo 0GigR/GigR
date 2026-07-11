@@ -25,7 +25,7 @@ interface AuthState {
     display_name: string
     phone_number?: string
   }) => Promise<void>
-  googleAuth: (token: string) => Promise<void>
+  googleAuth: (cred: string | { token?: string; access_token?: string }) => Promise<void>
   logout: () => Promise<void>
   fetchUser: () => Promise<void>
 }
@@ -67,9 +67,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ user: userRes.data })
   },
 
-  googleAuth: async (token) => {
-    // Backend returns { access_token, token_type } AND sets HttpOnly cookies.
-    const res = await api.post('/auth/google', { token })
+  googleAuth: async (cred) => {
+    // Accepts either an ID token (classic button) or an OAuth access token
+    // (custom useGoogleLogin button). Backend handles both.
+    const body = typeof cred === 'string' ? { token: cred } : cred
+    const res = await api.post('/auth/google', body)
     if (res.data?.access_token) {
       saveToken(res.data.access_token)
     }
