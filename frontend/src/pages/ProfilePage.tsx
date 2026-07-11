@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/store/authStore'
 import { Clock, Coins, RefreshCw } from 'lucide-react'
 import { FundWalletButton } from '@/components/FundWalletButton'
+import { Turnstile } from '@marsidev/react-turnstile'
 
 import {
   Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle
@@ -156,11 +157,6 @@ export default function ProfilePage() {
   }
 
   // Load Google Identity if available
-  const handleVerifyIdentity = async () => {
-    // Placeholder for Civic Pass integration – can be added later
-    toast.info('Identity verification via Civic Pass. Coming soon.')
-  }
-
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
       <div>
@@ -380,22 +376,32 @@ export default function ProfilePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Shield className="w-5 h-5" /> Identity Verification
+            <Shield className="w-5 h-5" /> Human Verification
           </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-gray-600">
           {user?.is_verified ? (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="w-5 h-5" /> Your identity has been verified via zero‑knowledge proof (Civic Pass).
+            <div className="flex items-center gap-2 text-green-700 font-medium bg-green-50 px-4 py-3 rounded-xl border border-green-200">
+              <CheckCircle className="w-5 h-5" /> Human verified.
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-yellow-600">
-                <XCircle className="w-5 h-5" /> Not yet verified.
+              <div className="flex items-center gap-2 text-yellow-700 font-medium bg-yellow-50 px-4 py-3 rounded-xl border border-yellow-200 mb-4">
+                <XCircle className="w-5 h-5" /> Not yet verified. Please verify you are human to unlock all features.
               </div>
-              <Button variant="outline" onClick={handleVerifyIdentity}>
-                <Shield className="w-4 h-4 mr-2" /> Verify with Civic Pass
-              </Button>
+              <Turnstile
+                siteKey="1x00000000000000000000AA" // Cloudflare dummy test key (always passes)
+                onSuccess={async (token) => {
+                  try {
+                    await api.post('/users/me/verify-identity', { turnstile_token: token })
+                    toast.success('Successfully verified!')
+                    queryClient.invalidateQueries({ queryKey: ['auth'] })
+                    await fetchUser()
+                  } catch (err: any) {
+                    toast.error('Verification failed: ' + (err.response?.data?.detail || err.message))
+                  }
+                }}
+              />
             </div>
           )}
         </CardContent>
