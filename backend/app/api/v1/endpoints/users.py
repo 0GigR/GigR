@@ -167,30 +167,41 @@ async def my_full_activity(
 
     # Applications submitted
     apps_res = await db.execute(
-        select(Application).where(Application.applicant_id == current_user.id).order_by(Application.created_at.desc())
+        select(Application, Job.title)
+        .outerjoin(Job, Application.job_id == Job.id)
+        .where(Application.applicant_id == current_user.id)
+        .order_by(Application.created_at.desc())
     )
-    applications = apps_res.scalars().all()
+    applications = apps_res.all()
 
     # Vouches given
     vouches_given_res = await db.execute(
-        select(Vouch).where(Vouch.voucher_id == current_user.id).order_by(Vouch.created_at.desc())
+        select(Vouch, Job.title)
+        .outerjoin(Job, Vouch.job_id == Job.id)
+        .where(Vouch.voucher_id == current_user.id)
+        .order_by(Vouch.created_at.desc())
     )
-    vouches_given = vouches_given_res.scalars().all()
+    vouches_given = vouches_given_res.all()
 
     # Vouches received
     vouches_received_res = await db.execute(
-        select(Vouch).where(Vouch.vouchee_id == current_user.id).order_by(Vouch.created_at.desc())
+        select(Vouch, Job.title)
+        .outerjoin(Job, Vouch.job_id == Job.id)
+        .where(Vouch.vouchee_id == current_user.id)
+        .order_by(Vouch.created_at.desc())
     )
-    vouches_received = vouches_received_res.scalars().all()
+    vouches_received = vouches_received_res.all()
 
     # Disputes involved in
     from sqlalchemy import or_
     disputes_res = await db.execute(
-        select(Dispute).where(
+        select(Dispute, Job.title)
+        .outerjoin(Job, Dispute.job_id == Job.id)
+        .where(
             or_(Dispute.client_id == current_user.id, Dispute.provider_id == current_user.id)
         ).order_by(Dispute.created_at.desc())
     )
-    disputes = disputes_res.scalars().all()
+    disputes = disputes_res.all()
 
     def job_dict(j: Job) -> dict:
         return {
@@ -205,35 +216,35 @@ async def my_full_activity(
         "jobs_as_provider": [job_dict(j) for j in jobs_provider],
         "applications": [
             {
-                "id": str(a.id), "job_id": str(a.job_id),
+                "id": str(a.id), "job_id": str(a.job_id), "job_title": t,
                 "message": a.message, "proposed_price": str(a.proposed_price) if a.proposed_price else None,
                 "created_at": a.created_at.isoformat() if a.created_at else None,
                 "portfolio_url": a.portfolio_url,
             }
-            for a in applications
+            for a, t in applications
         ],
         "vouches_given": [
             {
-                "id": str(v.id), "job_id": str(v.job_id), "vouchee_id": str(v.vouchee_id),
+                "id": str(v.id), "job_id": str(v.job_id), "job_title": t, "vouchee_id": str(v.vouchee_id),
                 "cnf_nft_id": v.cnf_nft_id, "created_at": v.created_at.isoformat() if v.created_at else None,
             }
-            for v in vouches_given
+            for v, t in vouches_given
         ],
         "vouches_received": [
             {
-                "id": str(v.id), "job_id": str(v.job_id), "voucher_id": str(v.voucher_id),
+                "id": str(v.id), "job_id": str(v.job_id), "job_title": t, "voucher_id": str(v.voucher_id),
                 "cnf_nft_id": v.cnf_nft_id, "created_at": v.created_at.isoformat() if v.created_at else None,
             }
-            for v in vouches_received
+            for v, t in vouches_received
         ],
         "disputes": [
             {
-                "id": str(d.id), "job_id": str(d.job_id), "reason": d.reason,
+                "id": str(d.id), "job_id": str(d.job_id), "job_title": t, "reason": d.reason,
                 "status": d.status.value if hasattr(d.status, "value") else str(d.status),
                 "resolution": d.resolution, "raised_by": str(d.raised_by),
                 "created_at": d.created_at.isoformat() if d.created_at else None,
             }
-            for d in disputes
+            for d, t in disputes
         ],
     }
 
