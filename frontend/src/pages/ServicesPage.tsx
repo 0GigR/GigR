@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -334,7 +334,7 @@ export default function ServicesPage() {
       if (err.response?.status === 409) {
         toast.error('You already have a service with this title')
       } else {
-        toast.error(err.response?.data?.detail || 'Failed to create service')
+        toast.error(extractError(err, 'Failed to create service'))
       }
     },
   })
@@ -348,7 +348,7 @@ export default function ServicesPage() {
       setDialogOpen(false)
       resetForm()
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to update service'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to update service')),
   })
 
   const deleteMutation = useMutation({
@@ -358,7 +358,7 @@ export default function ServicesPage() {
       queryClient.invalidateQueries({ queryKey: ['nearbyServices'] })
       toast.success('Service deleted')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to delete service'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to delete service')),
   })
 
   const createCategoryMutation = useMutation({
@@ -370,7 +370,7 @@ export default function ServicesPage() {
       setCatSearchResults([])
       toast.success('Category created')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to create category'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to create category')),
   })
 
   const resetForm = () => {
@@ -452,7 +452,7 @@ export default function ServicesPage() {
       queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })
       toast.success(`Request sent! View it in My Jobs.`)
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Failed to request service')
+      toast.error(extractError(err, 'Failed to request service'))
     } finally {
       setRequestingId(null)
     }

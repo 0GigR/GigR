@@ -1,3 +1,4 @@
+import { extractError } from '@/lib/api'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -20,7 +21,7 @@ export default function LoginPage() {
       await login(email, password)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+      setError(extractError(err, 'Login failed'))
     }
   }
 
@@ -30,7 +31,7 @@ export default function LoginPage() {
       await googleAuth({ access_token: accessToken })
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Google sign-in failed')
+      setError(extractError(err, 'Google sign-in failed'))
     }
   }
 

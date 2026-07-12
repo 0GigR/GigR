@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -271,7 +271,7 @@ export default function JobsPage() {
       setImageFile(null); setImagePreview(null)
       localStorage.removeItem('jobFormDraft')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to post'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to post')),
   })
 
   const applyMutation = useMutation({
@@ -296,7 +296,7 @@ export default function JobsPage() {
       if (context?.prev) {
         queryClient.setQueryData(['myApplications'], context.prev)
       }
-      toast.error(err.response?.data?.detail || 'Failed to apply')
+      toast.error(extractError(err, 'Failed to apply'))
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
@@ -317,7 +317,7 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Job assigned! Other applicants notified.')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Assign failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Assign failed')),
   })
 
   const fundMutation = useMutation({
@@ -328,7 +328,7 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Escrow funded on Solana!')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Funding failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Funding failed')),
   })
 
   const releaseMutation = useMutation({
@@ -339,7 +339,7 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Payment released!')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Release failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Release failed')),
   })
 
   const vouchMutation = useMutation({
@@ -356,7 +356,7 @@ export default function JobsPage() {
         toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
       }, 5000)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Vouch failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Vouch failed')),
   })
 
   const sendMessageMutation = useMutation({
@@ -374,7 +374,7 @@ export default function JobsPage() {
       setMessageImageFile(null)
       setMessageImagePreview(null)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Message failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Message failed')),
   })
 
   const scopeAmendMutation = useMutation({
@@ -406,7 +406,7 @@ export default function JobsPage() {
       setAmendImagePreview(null)
       refetchAmendments()
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Amendment failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Amendment failed')),
   })
 
   const acceptAmendMutation = useMutation({
@@ -419,7 +419,7 @@ export default function JobsPage() {
       refetchAmendments()
       setContractRoomOpen(false)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Action failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Action failed')),
   })
 
   const cancelMutation = useMutation({
@@ -430,7 +430,7 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Job cancelled.')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Cancel failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Cancel failed')),
   })
 
   // Handlers
@@ -507,7 +507,7 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Request accepted! Client can now fund.')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to accept'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to accept')),
   })
   
   const handleAccept = (jobId: string) => acceptMutation.mutate(jobId)

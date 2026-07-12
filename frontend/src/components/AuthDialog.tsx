@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import GoogleSignInButton from '@/components/GoogleSignInButton'
 import { Logo } from '@/components/Logo'
 import { Mail, Lock, User, Phone } from 'lucide-react'
+import { extractError } from '@/lib/api'
 
 interface AuthDialogProps {
   open: boolean
@@ -32,7 +33,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
       onOpenChange(false)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+      setError(extractError(err, 'Login failed'))
     }
   }
 
@@ -44,7 +45,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
       onOpenChange(false)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed')
+      setError(extractError(err, 'Registration failed'))
     }
   }
 
@@ -56,7 +57,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
       onOpenChange(false)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Google sign-in failed')
+      setError(extractError(err, 'Google sign-in failed'))
     } finally {
       setIsGoogleLoading(false)
     }

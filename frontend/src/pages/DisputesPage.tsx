@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -94,7 +94,7 @@ export default function DisputesPage() {
       toast.success('Vote cast — thank you for serving on the jury.')
       queryClient.invalidateQueries({ queryKey: ['my-jury'] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to cast vote'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to cast vote')),
   })
 
   // Withdraw dispute mutation
@@ -107,7 +107,7 @@ export default function DisputesPage() {
       queryClient.invalidateQueries({ queryKey: ['my-disputes'] })
       queryClient.invalidateQueries({ queryKey: ['my-jury'] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to withdraw'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to withdraw')),
   })
 
   // Send message in courtroom
@@ -119,7 +119,7 @@ export default function DisputesPage() {
       refetchMessages()
       setMessageText('')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Message failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Message failed')),
   })
 
   const openCourtroom = (dispute: JuryDispute) => {

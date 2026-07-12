@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -130,7 +130,7 @@ export default function ProfilePage() {
       toast.success('Profile updated')
       setEditing(false)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Update failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Update failed')),
   })
 
   const handleUpdateProfile = async () => {

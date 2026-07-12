@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import UserChip from '@/components/UserChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -257,7 +257,7 @@ export default function MessagesPage() {
       setMessageText('')
     },
     onError: (err: any) =>
-      toast.error(err.response?.data?.detail || 'Message failed'),
+      toast.error(extractError(err, 'Message failed')),
   })
 
   // Send image message
@@ -275,7 +275,7 @@ export default function MessagesPage() {
       toast.success('Image sent')
     },
     onError: (err: any) =>
-      toast.error(err.response?.data?.detail || 'Image send failed'),
+      toast.error(extractError(err, 'Image send failed')),
   })
 
   // Scope amendment
@@ -305,7 +305,7 @@ export default function MessagesPage() {
       setAmendImagePreview(null)
     },
     onError: (err: any) =>
-      toast.error(err.response?.data?.detail || 'Amendment failed'),
+      toast.error(extractError(err, 'Amendment failed')),
   })
 
   const handleSendMessage = () => {

@@ -2,7 +2,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation } from 'lucide-react'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import type { components } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -125,7 +125,7 @@ export default function ServiceDetailPage() {
       if (context?.prev) {
         queryClient.setQueryData(['myClientJobs'], context.prev)
       }
-      toast.error(err.response?.data?.detail || 'Failed to request service')
+      toast.error(extractError(err, 'Failed to request service'))
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })

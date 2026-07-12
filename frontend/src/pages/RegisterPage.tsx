@@ -1,3 +1,4 @@
+import { extractError } from '@/lib/api'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
@@ -25,7 +26,7 @@ export default function RegisterPage() {
       await register({ email, password, display_name: displayName, phone_number: phone || undefined })
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed')
+      setError(extractError(err, 'Registration failed'))
     } finally {
       setLoading(false)
     }
@@ -38,7 +39,7 @@ export default function RegisterPage() {
       await googleAuth({ access_token: accessToken })
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Google sign-in failed')
+      setError(extractError(err, 'Google sign-in failed'))
     } finally {
       setLoading(false)
     }
