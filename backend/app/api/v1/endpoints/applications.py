@@ -65,6 +65,27 @@ async def my_applications(
     return {"job_ids": [str(jid) for jid in result.scalars().all()]}
 
 
+@router.get("/job/{job_id}/mine", response_model=ApplicationOut)
+async def my_application_for_job(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    app = await get_application_by_applicant_and_job(db, current_user.id, job_id)
+    if not app:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    
+    return ApplicationOut(
+        id=app.id,
+        job_id=app.job_id,
+        applicant_id=app.applicant_id,
+        message=app.message,
+        proposed_price=app.proposed_price,
+        created_at=app.created_at,
+        portfolio_url=app.portfolio_url,
+    )
+
+
 @router.get("/job/{job_id}/count")
 async def application_count(
     job_id: uuid.UUID,
@@ -142,3 +163,23 @@ async def withdraw_application(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can only withdraw your own application")
     await delete_application(db, app)
     return None
+
+@router.patch("/{application_id}", response_model=ApplicationOut)
+async def edit_application(
+    application_id: uuid.UUID,
+    app_data: ApplicationCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    app = await get_application_by_id(db, application_id)
+    if not app:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    if app.applicant_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can only edit your own application")
+    
+    app.message = app_data.message
+    app.proposed_price = app_data.proposed_price
+    app.portfolio_url = app_data.portfolio_url
+    await db.commit()
+    await db.refresh(app)
+    return app
