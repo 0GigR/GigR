@@ -121,13 +121,26 @@ async def _notify_matching_providers(job_id: str, poster_name: str):
                 if svc.provider_id in notified:
                     continue
                 notified.add(svc.provider_id)
-                await create_notification(
-                    db,
-                    user_id=svc.provider_id,
-                    title="New job matching your services",
-                    message=f'{poster_name} posted a job: "{job.title}" for ₦{float(job.price):,.0f}. You might be a great fit!',
-                    link="/dashboard/jobs",
-                )
+                
+                provider = await get_user_by_id(db, svc.provider_id)
+                autonomy = provider.ai_settings.get("autonomyLevel") if provider and provider.ai_settings else "off"
+                
+                if autonomy in ["high", "total"]:
+                    from ....models.agent_task import AgentTask
+                    db.add(AgentTask(
+                        user_id=provider.id,
+                        task_type="generic",
+                        command_text=f"select_job:{job_id}",
+                        status="queued"
+                    ))
+                else:
+                    await create_notification(
+                        db,
+                        user_id=svc.provider_id,
+                        title="New job matching your services",
+                        message=f'{poster_name} posted a job: "{job.title}" for ₦{float(job.price):,.0f}. You might be a great fit!',
+                        link="/dashboard/jobs",
+                    )
             if notified:
                 await db.commit()
                 logger.info("[proactive] Notified %d providers about job %s", len(notified), job_id)
