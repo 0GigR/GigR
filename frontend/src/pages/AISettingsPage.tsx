@@ -1,10 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { CheckCircle2, ShieldAlert, Bot, Mic, Trash2, Settings2, Info } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 export default function AISettingsPage() {
   const { aiSettings, updateAISetting, engineInfo, fetchEngineInfo, clearHistory } = useAgentStore()
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
 
   useEffect(() => {
     fetchEngineInfo()
@@ -148,17 +150,25 @@ export default function AISettingsPage() {
             </div>
             <Button 
               variant="destructive"
-              onClick={async () => {
-                if (window.confirm("Are you sure? This will cancel running tasks and clear all logs.")) {
-                  await clearHistory()
-                }
-              }}
+              onClick={() => setShowClearConfirm(true)}
             >
               Clear History
             </Button>
           </div>
         </div>
       </div>
+      
+      <ConfirmDialog
+        open={showClearConfirm}
+        onOpenChange={setShowClearConfirm}
+        title="Clear History?"
+        description="Are you sure you want to clear your AI agent history? This will cancel running tasks and clear all logs."
+        confirmLabel="Clear History"
+        onConfirm={async () => {
+          await clearHistory()
+          setShowClearConfirm(false)
+        }}
+      />
     </div>
   )
 }
