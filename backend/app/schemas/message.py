@@ -18,6 +18,8 @@ class MessageOut(BaseModel):
     content: str
     image_url: Optional[str] = None
     applicant_id: Optional[UUID] = None
+    sender_name: Optional[str] = None
+    sender_image_url: Optional[str] = None
     created_at: datetime
 
     class Config:

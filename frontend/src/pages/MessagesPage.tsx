@@ -6,8 +6,10 @@ import UserChip from '@/components/UserChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { processImageFile } from '@/lib/imageUtils'
+import { motion } from 'framer-motion'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
@@ -439,33 +441,64 @@ export default function MessagesPage() {
                 {msgsLoading ? (
                   <Skeleton className="h-20 w-full" />
                 ) : liveMessages?.length ? (
-                  liveMessages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.sender_id === user?.id
-                          ? 'justify-end'
-                          : 'justify-start'
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[75%] px-3.5 py-2.5 shadow-sm ${
-                          msg.sender_id === user?.id
-                            ? 'bg-black text-white rounded-2xl rounded-br-md'
-                            : 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white rounded-2xl rounded-bl-md'
-                        }`}
+                  liveMessages.map((msg, idx) => {
+                    const isCurrentUser = msg.sender_id === user?.id
+                    const nextMsg = liveMessages[idx + 1]
+                    const prevMsg = liveMessages[idx - 1]
+                    
+                    const isLastInGroup = !nextMsg || nextMsg.sender_id !== msg.sender_id
+                    const isFirstInGroup = !prevMsg || prevMsg.sender_id !== msg.sender_id
+
+                    return (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className={`flex gap-2 mb-1 ${isCurrentUser ? 'justify-end' : 'justify-start'} ${isLastInGroup ? 'mb-4' : ''}`}
                       >
-                        <ChatMessageContent
-                          content={msg.content}
-                          imageUrl={(msg as any).image_url}
-                          onImageClick={setLightboxSrc}
-                        />
-                        <span className="block text-[10px] opacity-60 mt-1 text-right">
-                          {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                        {/* Avatar for received messages */}
+                        {!isCurrentUser && (
+                          <div className="w-8 flex-shrink-0 flex items-end">
+                            {isLastInGroup && (
+                              <Avatar className="w-8 h-8">
+                                <AvatarImage src={msg.sender_image_url || undefined} referrerPolicy="no-referrer" />
+                                <AvatarFallback className="bg-black text-white text-xs">
+                                  {msg.sender_name?.[0]?.toUpperCase() || '?'}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                          {/* Sender name on the first message of a group (for received messages) */}
+                          {!isCurrentUser && isFirstInGroup && msg.sender_name && (
+                            <span className="text-xs text-gray-500 ml-1 mb-1">{msg.sender_name}</span>
+                          )}
+                          
+                          <div
+                            className={`px-3.5 py-2.5 shadow-sm ${
+                              isCurrentUser
+                                ? `bg-black text-white rounded-2xl ${isLastInGroup ? 'rounded-br-sm' : 'rounded-br-md'} ${isFirstInGroup ? 'rounded-tr-2xl' : 'rounded-tr-md'}`
+                                : `bg-gray-100 dark:bg-gray-800 text-black dark:text-white rounded-2xl ${isLastInGroup ? 'rounded-bl-sm' : 'rounded-bl-md'} ${isFirstInGroup ? 'rounded-tl-2xl' : 'rounded-tl-md'}`
+                            }`}
+                          >
+                            <ChatMessageContent
+                              content={msg.content}
+                              imageUrl={msg.image_url}
+                              onImageClick={setLightboxSrc}
+                            />
+                            <div className="flex justify-end items-center gap-1 mt-1">
+                              <span className="block text-[10px] opacity-60">
+                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )
+                  })
                 ) : (
                   <p className="text-center text-gray-500 text-sm">
                     No messages yet. Start the conversation.
