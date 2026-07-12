@@ -13,6 +13,7 @@ import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { processImageFile } from '@/lib/imageUtils'
 
 // Cloudinary image upload
 async function uploadFile(file: File): Promise<string> {
@@ -310,12 +311,13 @@ export default function AdminDashboard() {
                 <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
                   <ImagePlus className="w-4 h-4" />
                 </Button>
-                <input type="file" accept="image/*" ref={fileInputRef} className="hidden"
-                  onChange={e => {
+                <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileInputRef} className="hidden"
+                  onChange={async e => {
                     const file = e.target.files?.[0]
                     if (file) {
-                      setMsgImageFile(file)
-                      setMsgImagePreview(URL.createObjectURL(file))
+                      const processed = await processImageFile(file)
+                      setMsgImageFile(processed)
+                      setMsgImagePreview(URL.createObjectURL(processed))
                     }
                   }}
                 />

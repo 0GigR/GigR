@@ -6,8 +6,10 @@ import UserChip from '@/components/UserChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { processImageFile } from '@/lib/imageUtils'
+import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuthStore } from '@/store/authStore'
 import { useUnreadStore } from '@/store/unreadStore'
@@ -310,10 +312,11 @@ export default function MessagesPage() {
     sendTextMutation.mutate()
   }
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      sendImageMutation.mutate(file)
+      const processed = await processImageFile(file)
+      sendImageMutation.mutate(processed)
     }
   }
 
@@ -497,7 +500,7 @@ export default function MessagesPage() {
                     <ImagePlus className="w-5 h-5 text-gray-500 hover:text-black" />
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*, .heic, .heif, .webp"
                       className="hidden"
                       onChange={handleImageSelect}
                     />
@@ -563,15 +566,14 @@ export default function MessagesPage() {
                     <input
                       id="msgAmendImage"
                       type="file"
-                      accept="image/*"
+                      accept="image/*, .heic, .heif, .webp"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const file = e.target.files?.[0]
                         if (file) {
-                          setAmendImage(file)
-                          setAmendImagePreview(
-                            URL.createObjectURL(file)
-                          )
+                          const processed = await processImageFile(file)
+                          setAmendImage(processed)
+                          setAmendImagePreview(URL.createObjectURL(processed))
                         }
                       }}
                     />

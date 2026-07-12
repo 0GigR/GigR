@@ -18,6 +18,7 @@ import {
   Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle
 } from 'lucide-react'
 import type { components } from '@/types/api'
+import { processImageFile } from '@/lib/imageUtils'
 
 type Vouch = components['schemas']['VouchOut']
 type Job = components['schemas']['JobOut']
@@ -186,13 +187,14 @@ export default function ProfilePage() {
                   <Camera className="w-4 h-4" />
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/*, .heic, .heif, .webp"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        setProfileImageFile(file)
-                        setProfileImagePreview(URL.createObjectURL(file))
+                        const processed = await processImageFile(file)
+                        setProfileImageFile(processed)
+                        setProfileImagePreview(URL.createObjectURL(processed))
                       }
                     }}
                   />

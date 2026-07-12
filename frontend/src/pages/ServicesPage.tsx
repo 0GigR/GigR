@@ -23,6 +23,7 @@ import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { ImageViewer } from '@/components/ImageViewer'
 import { LocationPicker } from '@/components/LocationPicker'
 import { useInView } from 'react-intersection-observer'
+import { processImageFile } from '@/lib/imageUtils'
 import type { components } from '@/types/api'
 
 // ---------- Types ----------
@@ -576,12 +577,13 @@ export default function ServicesPage() {
 
                 {/* Image upload */}
                 <div>
-                  <input type="file" accept="image/*" ref={fileRef} className="hidden"
-                    onChange={e => {
+                  <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
+                    onChange={async e => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        setImageFile(file)
-                        setImagePreview(URL.createObjectURL(file))
+                        const processed = await processImageFile(file)
+                        setImageFile(processed)
+                        setImagePreview(URL.createObjectURL(processed))
                       }
                     }}
                   />
