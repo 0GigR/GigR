@@ -202,7 +202,7 @@ async def raise_dispute(
             from ....core.database import async_session as _session
             import httpx
 
-            if not _s.GROQ_API_KEY:
+            if not _s.groq_keys_list:
                 return
 
             async with _session() as _db:
@@ -223,17 +223,18 @@ async def raise_dispute(
                 "(2) what went wrong according to each party, (3) the key question for the jury to resolve. "
                 "Be factual, balanced, and concise."
             )
+            from ..endpoints.ai import _call_groq_with_fallback
             async with httpx.AsyncClient(timeout=20.0) as client:
-                resp = await client.post(
+                resp = await _call_groq_with_fallback(
+                    client,
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {_s.GROQ_API_KEY}", "Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json"},
                     json={
                         "model": _s.GROQ_MODEL,
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0.3, "max_tokens": 400,
                     }
                 )
-                resp.raise_for_status()
                 summary = resp.json()["choices"][0]["message"]["content"].strip()
 
             # Store summary in its dedicated column (never touch `resolution`,
