@@ -14,6 +14,9 @@ export default defineConfig({
       filename: 'sw.js',
       registerType: 'prompt',
       includeAssets: ['favicon.svg'],
+      injectManifest: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB limit to allow heic2any
+      },
       manifest: {
         name: 'Gigr Local Services',
         short_name: 'Gigrs',
