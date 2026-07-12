@@ -17,7 +17,7 @@ import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus,
-  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List
+  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -144,6 +144,13 @@ export default function JobsPage() {
   // Filters & Sorting
   const [sortOrder, setSortOrder] = useState('newest') // newest, oldest, price_high, price_low
   const [statusFilter, setStatusFilter] = useState('all') // all, open, assigned, in_progress, completed, cancelled
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   // Paginated open jobs ("Load More" pattern)
   const PAGE_SIZE = 20
@@ -157,14 +164,12 @@ export default function JobsPage() {
     hasNextPage: hasMoreOpenJobs,
     isFetchingNextPage: loadingMoreOpenJobs,
   } = useInfiniteQuery<Job[]>({
-    queryKey: ['jobs', 'open'],
+    queryKey: ['jobs', 'open', debouncedSearch],
     queryFn: async ({ pageParam = 0 }) => {
       // const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
-      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
+      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined } })
       const all = Array.isArray(res.data) ? res.data : []
       return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
-      // const all: Job[] = res.data
-      // return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
@@ -534,6 +539,17 @@ export default function JobsPage() {
           <p className="text-gray-500">Find work or get things done</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {activeTab === 'open' && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Input
+                placeholder="Search jobs..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full sm:w-[220px] pl-9 bg-background border-border"
+              />
+            </div>
+          )}
           {activeTab === 'mine' && (
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[140px] bg-background border-border">
