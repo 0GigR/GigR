@@ -16,7 +16,7 @@ import UserChip from '@/components/UserChip'
 import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import {
-  Plus, Send, Shield, CheckCircle, Star, Play, UserPlus,
+  Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
   ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search
 } from 'lucide-react'
 import type { components } from '@/types/api'
@@ -118,9 +118,11 @@ export default function JobsPage() {
   const [applyOpen, setApplyOpen] = useState(false)
   const [applyJobId, setApplyJobId] = useState<string | null>(null)
   const [applyTargetJob, setApplyTargetJob] = useState<Job | null>(null)
-  const [applyData, setApplyData] = useState({
-    message: '', proposed_price: '', portfolio_url: '',
-  })
+  const [applyMessage, setApplyMessage] = useState('')
+  const [applyPrice, setApplyPrice] = useState('')
+  const [applyPortfolioUrl, setApplyPortfolioUrl] = useState('')
+  const [isEditingApplication, setIsEditingApplication] = useState(false)
+  const [editingApplicationId, setEditingApplicationId] = useState<string | null>(null)
 
   // Contract room state
   const [contractRoomOpen, setContractRoomOpen] = useState(false)
@@ -276,12 +278,21 @@ export default function JobsPage() {
 
   const applyMutation = useMutation({
     mutationFn: async () => {
-      await api.post('/applications/', {
-        job_id: applyJobId,
-        message: applyData.message,
-        proposed_price: applyData.proposed_price || undefined,
-        portfolio_url: applyData.portfolio_url || undefined,
-      })
+      if (isEditingApplication && editingApplicationId) {
+        await api.patch(`/applications/${editingApplicationId}`, {
+          job_id: applyJobId,
+          message: applyMessage,
+          proposed_price: applyPrice || undefined,
+          portfolio_url: applyPortfolioUrl || undefined,
+        })
+      } else {
+        await api.post('/applications/', {
+          job_id: applyJobId,
+          message: applyMessage,
+          proposed_price: applyPrice || undefined,
+          portfolio_url: applyPortfolioUrl || undefined,
+        })
+      }
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['myApplications'] })
@@ -453,9 +464,35 @@ export default function JobsPage() {
     })
   }
 
-  const handleApply = (job: Job) => {
+  const handleApply = async (job: Job) => {
     setApplyJobId(job.id)
     setApplyTargetJob(job)
+    
+    // If user has applied, fetch their application to edit
+    if (appliedJobIds.has(job.id)) {
+      try {
+        const { data } = await api.get(`/applications/job/${job.id}/mine`)
+        setApplyMessage(data.message || '')
+        setApplyPrice(data.proposed_price || '')
+        setApplyPortfolioUrl(data.portfolio_url || '')
+        setIsEditingApplication(true)
+        setEditingApplicationId(data.id)
+      } catch (err) {
+        console.error("Failed to fetch application to edit", err)
+        setApplyMessage('')
+        setApplyPrice('')
+        setApplyPortfolioUrl('')
+        setIsEditingApplication(false)
+        setEditingApplicationId(null)
+      }
+    } else {
+      setApplyMessage('')
+      setApplyPrice('')
+      setApplyPortfolioUrl('')
+      setIsEditingApplication(false)
+      setEditingApplicationId(null)
+    }
+    
     setApplyOpen(true)
   }
 
@@ -779,15 +816,15 @@ export default function JobsPage() {
       {/* Apply Dialog */}
       <Dialog open={applyOpen} onOpenChange={setApplyOpen}>
         <DialogContent className="sm:max-w-md bg-background text-foreground">
-          <DialogHeader><DialogTitle>Apply for {applyTargetJob?.title}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{isEditingApplication ? 'Edit Application' : `Apply for ${applyTargetJob?.title}`}</DialogTitle></DialogHeader>
           {applyTargetJob?.image_url && <img src={applyTargetJob.image_url} className="rounded-lg max-h-48 object-cover mb-4" />}
           <div className="space-y-4 py-4">
-            <Textarea placeholder="Why are you a good fit?" value={applyData.message} onChange={e => setApplyData({...applyData, message: e.target.value})} />
-            <Input placeholder="Proposed price (optional)" type="number" value={applyData.proposed_price} onChange={e => setApplyData({...applyData, proposed_price: e.target.value})} />
-            <Input placeholder="Portfolio URL (optional)" value={applyData.portfolio_url} onChange={e => setApplyData({...applyData, portfolio_url: e.target.value})} />
+            <Textarea placeholder="Why are you a good fit?" value={applyMessage} onChange={e => setApplyMessage(e.target.value)} rows={4} />
+            <Input placeholder="Proposed price (optional)" type="number" value={applyPrice} onChange={e => setApplyPrice(e.target.value)} />
+            <Input placeholder="Portfolio URL (optional)" value={applyPortfolioUrl} onChange={e => setApplyPortfolioUrl(e.target.value)} />
             <Button onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} className="w-full bg-black text-white">
               {applyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              {applyMutation.isPending ? 'Sending...' : 'Submit Application'}
+              {applyMutation.isPending ? 'Saving...' : isEditingApplication ? 'Save Changes' : 'Submit Application'}
             </Button>
           </div>
         </DialogContent>
@@ -1011,6 +1048,16 @@ function JobCard({
   const isProvider = user?.id === job.provider_id
   const [showAssign, setShowAssign] = useState(false)
   const [showFullDesc, setShowFullDesc] = useState(false)
+  const [expandedApps, setExpandedApps] = useState<Set<string>>(new Set())
+
+  const toggleAppMessage = (appId: string) => {
+    setExpandedApps(prev => {
+      const next = new Set(prev)
+      if (next.has(appId)) next.delete(appId)
+      else next.add(appId)
+      return next
+    })
+  }
 
   const { data: poster } = useUserInfo(job.client_id)
   const { data: appCount } = useQuery<number>({
@@ -1099,9 +1146,9 @@ function JobCard({
           </Button>
         )}
         {job.status === 'open' && !isClient && (
-          <Button size="sm" onClick={() => onApply(job)} disabled={hasApplied || applyPending} className="bg-black text-white disabled:opacity-60">
-            {applyPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Send className="w-3 h-3 mr-1" />}
-            {hasApplied ? 'Applied' : applyPending ? 'Sending...' : 'Apply'}
+          <Button size="sm" onClick={() => onApply(job)} disabled={applyPending} className={hasApplied ? "bg-white text-black border border-black hover:bg-gray-100 disabled:opacity-60" : "bg-black text-white disabled:opacity-60"}>
+            {applyPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : hasApplied ? <Edit2 className="w-3 h-3 mr-1" /> : <Send className="w-3 h-3 mr-1" />}
+            {hasApplied ? 'Edit Application' : applyPending ? 'Sending...' : 'Apply'}
           </Button>
         )}
         {job.status === 'open' && isClient && (
@@ -1127,13 +1174,24 @@ function JobCard({
                           {app.applicant_vouch_count !== undefined && (
                             <p className="text-xs text-gray-500">{app.applicant_vouch_count} vouch{app.applicant_vouch_count !== 1 ? 'es' : ''}</p>
                           )}
-                          {app.message && <p className="text-xs text-gray-500 mt-1">{app.message}</p>}
-                          {app.proposed_price && <p className="text-xs">Proposed: ₦{app.proposed_price}</p>}
+                          {app.message && (
+                            <div className="mt-1">
+                              <p className={`text-xs text-gray-600 whitespace-pre-wrap ${!expandedApps.has(app.id) ? 'line-clamp-2' : ''}`}>{app.message}</p>
+                              {app.message.length > 80 && (
+                                <button className="text-[10px] text-blue-600 hover:underline" onClick={() => toggleAppMessage(app.id)}>
+                                  {expandedApps.has(app.id) ? 'See less' : 'See more'}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {app.proposed_price && <p className="text-xs font-medium mt-1">Proposed: ₦{parseFloat(app.proposed_price).toLocaleString()}</p>}
                         </div>
                         {app.portfolio_url && (
-                          <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                            <ExternalLink className="w-3 h-3" />
-                          </a>
+                          <div className="ml-2">
+                            <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center text-xs">
+                              <ExternalLink className="w-3 h-3 mr-0.5" /> Portfolio
+                            </a>
+                          </div>
                         )}
                       </div>
                       <div className="flex gap-1.5">
