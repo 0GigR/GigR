@@ -13,15 +13,17 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
 export default function AgentActivityPanel() {
-  const { isPanelOpen, closePanel, tasks, clearHistory, submitCommand } = useAgentStore()
+  const { isPanelOpen, closePanel, tasks, clearHistory, submitCommand, isSubmitting } = useAgentStore()
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   // Track log IDs we've already acted on so navigate doesn't re-fire every poll
@@ -48,25 +50,23 @@ export default function AgentActivityPanel() {
   if (!isPanelOpen) return null
 
   const handleSend = async () => {
-    const text = input.trim()
-    if (!text || sending) return
+    if (!input.trim() || sending || isSubmitting) return
+    const text = input
     setInput('')
     setSending(true)
     await submitCommand(text)
     setSending(false)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
   }
 
-  // Show tasks newest-first in the panel but render each task oldest-first
-  const sortedTasks = [...tasks].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  )
+  // Tasks are returned descending; reverse to show oldest top -> newest bottom
+  const sortedTasks = [...tasks].reverse()
 
   return (
     <>
@@ -90,7 +90,7 @@ export default function AgentActivityPanel() {
           <div className="flex items-center gap-1">
             {tasks.length > 0 && (
               <Button variant="ghost" size="icon" title="Clear history" className="h-8 w-8 text-gray-400 hover:text-red-500"
-                onClick={() => clearHistory()}>
+                onClick={() => setShowClearConfirm(true)}>
                 <Trash2 className="w-4 h-4" />
               </Button>
             )}
@@ -133,15 +133,35 @@ export default function AgentActivityPanel() {
             <Button
               size="icon"
               onClick={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || sending || isSubmitting}
               className="h-8 w-8 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shrink-0 disabled:opacity-40"
             >
-              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {sending || isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
           </div>
           <p className="text-[10px] text-gray-400 text-center mt-1.5">Press Enter to send · Shift+Enter for new line</p>
         </div>
       </div>
+
+      {/* Overlay */}
+      {isPanelOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-sm z-40 lg:hidden"
+          onClick={closePanel}
+        />
+      )}
+
+      <ConfirmDialog
+        open={showClearConfirm}
+        onOpenChange={setShowClearConfirm}
+        title="Clear History?"
+        description="Are you sure you want to clear your AI agent history? This will cancel running tasks and clear all logs."
+        confirmLabel="Clear History"
+        onConfirm={async () => {
+          await clearHistory()
+          setShowClearConfirm(false)
+        }}
+      />
     </>
   )
 }
