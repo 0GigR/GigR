@@ -81,8 +81,8 @@ async def create_message(
             receiver_result = await db.execute(select(User).where(User.id == receiver_id))
             receiver = receiver_result.scalar_one_or_none()
             
-            # Assuming AI setting key is "aiAutoReplyEnabled"
-            if receiver and receiver.ai_settings and receiver.ai_settings.get("aiAutoReplyEnabled") is True:
+            # Assuming AI setting key is "autonomyLevel"
+            if receiver and receiver.ai_settings and receiver.ai_settings.get("autonomyLevel") in ["low", "medium", "high", "total"]:
                 # Spawn an AgentTask for the receiver to auto-reply to this message
                 reply_command = f"Reply to this message: '{content}' (From {job.title})"
                 auto_reply_task = AgentTask(
