@@ -473,15 +473,15 @@ export default function ActivityPage() {
             Track your jobs, escrow, and reputation
           </p>
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto mt-2 md:mt-0">
           <Input 
             placeholder="Search by title..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:w-64 bg-background"
+            className="w-full sm:w-64 bg-background"
           />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px] bg-background">
+            <SelectTrigger className="w-full sm:w-[140px] bg-background">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -498,24 +498,27 @@ export default function ActivityPage() {
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+        className="w-full"
       >
-        <TabsList>
-          <TabsTrigger value="clienting">
-            Clienting ({clientingJobs.length})
-          </TabsTrigger>
-          <TabsTrigger value="providing">
-            Providing ({providingJobs.length})
-          </TabsTrigger>
-          <TabsTrigger value="applications">
-            Applications ({myActivityFull?.applications?.length || 0})
-          </TabsTrigger>
-          <TabsTrigger value="completed">
-            Completed ({completedJobs.length})
-          </TabsTrigger>
-          <TabsTrigger value="cancelled">
-            Cancelled ({cancelledJobs.length})
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-2 -mb-2 no-scrollbar">
+          <TabsList className="inline-flex w-full sm:w-auto justify-start">
+            <TabsTrigger value="clienting" className="whitespace-nowrap shrink-0">
+              Clienting ({clientingJobs.length})
+            </TabsTrigger>
+            <TabsTrigger value="providing" className="whitespace-nowrap shrink-0">
+              Providing ({providingJobs.length})
+            </TabsTrigger>
+            <TabsTrigger value="applications" className="whitespace-nowrap shrink-0">
+              Applications ({myActivityFull?.applications?.length || 0})
+            </TabsTrigger>
+            <TabsTrigger value="completed" className="whitespace-nowrap shrink-0">
+              Completed ({completedJobs.length})
+            </TabsTrigger>
+            <TabsTrigger value="cancelled" className="whitespace-nowrap shrink-0">
+              Cancelled ({cancelledJobs.length})
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {(['clienting', 'providing', 'completed', 'cancelled'] as const).map((tab) => (
           <TabsContent key={tab} value={tab} className="mt-4">
