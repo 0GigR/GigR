@@ -81,20 +81,54 @@ Rules:
 - Return ONLY the JSON, no markdown, no explanation"""
 
 
+async def _call_groq_with_fallback(client: httpx.AsyncClient, url: str, **kwargs):
+    """Wrapper to try multiple Groq API keys if one gets rate limited."""
+    keys = settings.groq_keys_list
+    if not keys:
+        raise ValueError("No GROQ_API_KEYS configured")
+        
+    last_err = None
+    for key in keys:
+        call_kwargs = dict(kwargs)
+        headers = dict(call_kwargs.get("headers", {}))
+        headers["Authorization"] = f"Bearer {key}"
+        call_kwargs["headers"] = headers
+        
+        try:
+            response = await client.post(url, **call_kwargs)
+            if response.status_code == 429:
+                last_err = httpx.HTTPStatusError("Rate limited", request=response.request, response=response)
+                logger.warning("Groq API key rate limited, trying next key...")
+                continue
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as e:
+            last_err = e
+            if e.response.status_code == 429:
+                logger.warning("Groq API key rate limited, trying next key...")
+                continue
+            raise
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Groq API call failed: {e}, trying next key...")
+            continue
+            
+    if last_err:
+        raise last_err
+    raise Exception("All Groq API keys failed")
+
 async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
     """Call Groq Llama-3 to parse the command into structured intent.
     Returns None if Groq is not configured or the call fails."""
-    if not settings.GROQ_API_KEY:
+    if not settings.groq_keys_list:
         return None
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
+            response = await _call_groq_with_fallback(
+                client,
                 "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                    "Content-Type": "application/json",
-                },
+                headers={"Content-Type": "application/json"},
                 json={
                     "model": settings.GROQ_MODEL,
                     "messages": [
@@ -105,7 +139,6 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                     "max_tokens": 300,
                 },
             )
-            response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"].strip()
             # Strip markdown code fences if Groq wrapped in ```json ... ```
             content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
@@ -906,12 +939,10 @@ async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, 
     if settings.GROQ_API_KEY:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
+                response = await _call_groq_with_fallback(
+                    client,
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.GROQ_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
+                    headers={"Content-Type": "application/json"},
                     json={
                         "model": settings.GROQ_MODEL,
                         "messages": [
@@ -922,7 +953,6 @@ async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, 
                         "max_tokens": 150,
                     },
                 )
-                response.raise_for_status()
                 reply_content = response.json()["choices"][0]["message"]["content"].strip()
         except Exception as exc:
             await _log(db, task.id, "warning", f"Failed to generate dynamic AI reply ({exc}), using fallback.")
@@ -1011,9 +1041,10 @@ async def _execute_task(task_id: str):
                     if settings.GROQ_API_KEY:
                         try:
                             async with httpx.AsyncClient(timeout=10.0) as client:
-                                resp = await client.post(
+                                resp = await _call_groq_with_fallback(
+                                    client,
                                     "https://api.groq.com/openai/v1/chat/completions",
-                                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
+                                    headers={"Content-Type": "application/json"},
                                     json={
                                         "model": settings.GROQ_MODEL,
                                         "messages": [
@@ -1023,7 +1054,6 @@ async def _execute_task(task_id: str):
                                         "temperature": 0.7, "max_tokens": 200,
                                     }
                                 )
-                                resp.raise_for_status()
                                 groq_reply = resp.json()["choices"][0]["message"]["content"].strip()
                         except Exception:
                             pass
@@ -1156,9 +1186,10 @@ async def _check_negotiation_reply(task_id: str):
         )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.post(
+                resp = await _call_groq_with_fallback(
+                    client,
                     "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json"},
                     json={
                         "model": settings.GROQ_MODEL,
                         "messages": [
@@ -1168,7 +1199,6 @@ async def _check_negotiation_reply(task_id: str):
                         "temperature": 0.3, "max_tokens": 150,
                     }
                 )
-                resp.raise_for_status()
                 raw = resp.json()["choices"][0]["message"]["content"].strip()
                 raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` ")
                 decision_data = json.loads(raw)
@@ -1469,19 +1499,28 @@ async def respond_to_dialog(
         raise HTTPException(status_code=404, detail="Task not found")
 
     log_result = await db.execute(
-        select(AgentLog).where(AgentLog.task_id == task.id).order_by(AgentLog.created_at.desc()).limit(1)
+        select(AgentLog)
+        .where(AgentLog.task_id == task.id)
+        .order_by(AgentLog.created_at.desc())
+        .limit(20)  # Check up to last 20 logs
     )
-    last_log = log_result.scalar_one_or_none()
+    recent_logs = log_result.scalars().all()
 
-    if not last_log or not last_log.data or "action_payload" not in last_log.data:
+    last_log_with_dialog = None
+    for log in recent_logs:
+        if log.data and "action_payload" in log.data:
+            last_log_with_dialog = log
+            break
+
+    if not last_log_with_dialog:
         raise HTTPException(status_code=400, detail="No pending dialog for this task")
 
-    payload = last_log.data["action_payload"]
+    payload = last_log_with_dialog.data["action_payload"]
 
     # Clear the action_payload so the dialog goes away on next poll
-    new_data = dict(last_log.data)
+    new_data = dict(last_log_with_dialog.data)
     new_data.pop("action_payload", None)
-    last_log.data = new_data
+    last_log_with_dialog.data = new_data
 
     action = response.action
 
