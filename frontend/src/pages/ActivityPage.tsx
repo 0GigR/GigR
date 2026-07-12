@@ -27,6 +27,7 @@ import {
   Send,
   Flag,
   Briefcase,
+  ExternalLink,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -197,7 +198,7 @@ const statusBadge = (status: string) => {
 export default function ActivityPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'clienting' | 'providing' | 'completed' | 'cancelled'>('clienting')
+  const [activeTab, setActiveTab] = useState<'clienting' | 'providing' | 'completed' | 'cancelled' | 'applications'>('clienting')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -248,6 +249,16 @@ export default function ActivityPage() {
       ])
       return [...c.data, ...p.data]
     },
+  })
+
+  // Fetch my applications
+  const { data: myActivityFull, isLoading: activityLoading } = useQuery({
+    queryKey: ['myFullActivity'],
+    queryFn: async () => {
+      const { data } = await api.get('/users/me/activity')
+      return data
+    },
+    enabled: !!user?.id,
   })
 
   // Categorize and filter jobs
@@ -494,6 +505,9 @@ export default function ActivityPage() {
           <TabsTrigger value="providing">
             Providing ({providingJobs.length})
           </TabsTrigger>
+          <TabsTrigger value="applications">
+            Applications ({myActivityFull?.applications?.length || 0})
+          </TabsTrigger>
           <TabsTrigger value="completed">
             Completed ({completedJobs.length})
           </TabsTrigger>
@@ -562,6 +576,41 @@ export default function ActivityPage() {
             )}
           </TabsContent>
         ))}
+
+        <TabsContent value="applications" className="mt-4">
+          {activityLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : !myActivityFull?.applications?.length ? (
+            <EmptyState
+              icon={<Briefcase className="w-8 h-8" />}
+              title="No applications yet"
+              description="You haven't applied to any jobs yet."
+              actionLabel="Browse Jobs"
+              actionHref="/dashboard/jobs"
+            />
+          ) : (
+            <div className="space-y-3">
+              {myActivityFull.applications.map((app: any) => (
+                <div key={app.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                  <div className="flex justify-between items-start">
+                    <h3 className="font-semibold text-lg">{app.job_title}</h3>
+                    <Badge variant="outline">Applied</Badge>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{app.message}</p>
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                    {app.proposed_price && <span className="text-sm font-medium">Proposed: ₦{parseFloat(app.proposed_price).toLocaleString()}</span>}
+                    {app.portfolio_url && (
+                      <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center">
+                        <ExternalLink className="w-3 h-3 mr-1" /> Portfolio
+                      </a>
+                    )}
+                    <span className="text-xs text-gray-400 ml-auto">{new Date(app.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Contract Room Dialog */}
