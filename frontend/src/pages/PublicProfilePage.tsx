@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import api from '@/lib/api'
@@ -32,6 +32,7 @@ interface PublicUser {
 
 interface RatingOut {
   id: string
+  rater_id: string
   rater_name?: string | null
   rater_image?: string | null
   job_title?: string | null
@@ -270,7 +271,7 @@ export default function PublicProfilePage() {
               {ratings.map(r => (
                 <div key={r.id} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <Link to={`/dashboard/user/${r.rater_id}`} className="flex items-center gap-2 min-w-0 group cursor-pointer hover:opacity-80 transition-opacity">
                       {r.rater_image ? (
                         <img src={r.rater_image} alt={r.rater_name || ''} className="w-7 h-7 rounded-full object-cover shrink-0" />
                       ) : (
@@ -279,10 +280,10 @@ export default function PublicProfilePage() {
                         </span>
                       )}
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{r.rater_name || 'Someone'}</p>
+                        <p className="text-sm font-medium truncate group-hover:underline">{r.rater_name || 'Someone'}</p>
                         <p className="text-amber-400 text-xs leading-none">{'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}</p>
                       </div>
-                    </div>
+                    </Link>
                     <span className="text-xs text-gray-400 shrink-0">{new Date(r.created_at).toLocaleDateString()}</span>
                   </div>
                   {r.job_title && (
@@ -311,7 +312,9 @@ export default function PublicProfilePage() {
               {vouches.map(v => (
                 <div key={v.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
                   <div className="text-sm">
-                    <VoucherName voucherId={v.voucher_id} />
+                    <Link to={`/dashboard/user/${v.voucher_id}`} className="hover:underline hover:opacity-80 transition-opacity">
+                      <VoucherName voucherId={v.voucher_id} />
+                    </Link>
                     <span className="text-gray-500"> vouched for completed work</span>
                     {v.cnf_nft_id && (
                       <span className="ml-1.5 text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full border border-purple-200">
