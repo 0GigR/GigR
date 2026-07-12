@@ -74,8 +74,18 @@ class Settings(BaseSettings):
     # Get a free key at https://console.groq.com (no credit card required)
     # Leave blank to use the built-in rule-based NLP fallback instead.
     GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
+    GROQ_API_KEYS: str = Field(default="", env="GROQ_API_KEYS")
     GROQ_MODEL: str = Field(default="llama3-8b-8192", env="GROQ_MODEL")
     GROQ_WHISPER_MODEL: str = Field(default="whisper-large-v3-turbo", env="GROQ_WHISPER_MODEL")
+
+    @property
+    def groq_keys_list(self) -> list[str]:
+        keys = []
+        if self.GROQ_API_KEY:
+            keys.append(self.GROQ_API_KEY)
+        if self.GROQ_API_KEYS:
+            keys.extend([k.strip() for k in self.GROQ_API_KEYS.split(",") if k.strip()])
+        return list(dict.fromkeys(keys))
 
     TURNSTILE_SECRET_KEY: str | None = Field(default=None, env="TURNSTILE_SECRET_KEY")
 
