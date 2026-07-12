@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -299,7 +299,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       toast.success('Escrow funded on Solana!')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Funding failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Funding failed')),
   })
 
   const releaseMutation = useMutation({
@@ -310,7 +310,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       toast.success('Payment released!')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Release failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Release failed')),
   })
 
   const submitWorkMutation = useMutation({
@@ -321,7 +321,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       toast.success('Work submitted — the client has been notified.')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Submit failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Submit failed')),
   })
 
   const vouchMutation = useMutation({
@@ -338,7 +338,7 @@ export default function ActivityPage() {
         toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
       }, 5000)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Vouch failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Vouch failed')),
   })
 
   const sendMessageMutation = useMutation({
@@ -355,7 +355,7 @@ export default function ActivityPage() {
       refetchMessages()
       setMessageText('')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Message failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Message failed')),
   })
 
   const scopeAmendMutation = useMutation({
@@ -384,7 +384,7 @@ export default function ActivityPage() {
       refetchAmendments()
     },
     onError: (err: any) =>
-      toast.error(err.response?.data?.detail || 'Amendment failed'),
+      toast.error(extractError(err, 'Amendment failed')),
   })
 
   const cancelMutation = useMutation({
@@ -395,7 +395,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       toast.success('Job cancelled.')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Cancel failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Cancel failed')),
   })
 
   const acceptAmendMutation = useMutation({
@@ -408,7 +408,7 @@ export default function ActivityPage() {
       refetchAmendments()
       setContractRoomOpen(false)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Action failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Action failed')),
   })
 
   const ratingMutation = useMutation({
@@ -423,7 +423,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       queryClient.invalidateQueries({ queryKey: ['myRatedJobIds'] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Rating failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Rating failed')),
   })
 
   const raiseDisputeMutation = useMutation({
@@ -435,7 +435,7 @@ export default function ActivityPage() {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       setContractRoomOpen(false)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed to raise dispute'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to raise dispute')),
   })
 
   const openContractRoom = (job: Job) => {

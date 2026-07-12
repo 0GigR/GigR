@@ -78,5 +78,28 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
-
 export default api
+
+/**
+ * Extracts a human-readable error message from an API exception.
+ * Intelligently handles network failures and timeouts.
+ */
+export function extractError(err: any, fallback: string): string {
+  if (!err.response) {
+    if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+      return 'Request timed out. Please check your connection and try again.'
+    }
+    return 'Network request failed. Please check your internet connection.'
+  }
+  
+  if (err.response?.data?.detail) {
+    const detail = err.response.data.detail
+    return typeof detail === 'string' ? detail : JSON.stringify(detail)
+  }
+  
+  if (err.response?.data?.error?.message) {
+    return err.response.data.error.message
+  }
+  
+  return fallback
+}

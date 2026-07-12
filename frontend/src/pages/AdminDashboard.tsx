@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import api from '@/lib/api'
+import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -100,7 +100,7 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['admins'] })
       setNewAdminEmail('')
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
 
   const deleteAdminMutation = useMutation({
@@ -111,7 +111,7 @@ export default function AdminDashboard() {
       toast.success('Admin removed')
       queryClient.invalidateQueries({ queryKey: ['admins'] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
 
   const resolveMutation = useMutation({
@@ -122,7 +122,7 @@ export default function AdminDashboard() {
       toast.success('Dispute resolved')
       queryClient.invalidateQueries({ queryKey: ['admin-disputes'] })
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
 
   const sendMessageMutation = useMutation({
@@ -135,7 +135,7 @@ export default function AdminDashboard() {
       setMsgImageFile(null)
       setMsgImagePreview(null)
     },
-    onError: (err: any) => toast.error(err.response?.data?.detail || 'Message failed'),
+    onError: (err: any) => toast.error(extractError(err, 'Message failed')),
   })
 
   const handleSendMessage = async () => {
