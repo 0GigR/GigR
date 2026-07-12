@@ -419,7 +419,8 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
         job = await create_job(db, task.user_id, job_in)
         job.provider_id = service.provider_id
         job.service_listing_id = service.id
-        job.status = "assigned"
+        job.status = "requested"
+        job.contract_job_id = hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
         await db.flush()
 
         msg_content = f"Hi! My AI assistant matched me with your service '{service.title}'. I would like to proceed."
@@ -431,6 +432,32 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
 
         from ....api.v1.endpoints.messages import manager
         await manager.broadcast_new_message(msg)
+
+        # Trigger notification and email to provider
+        from ....crud.user import get_user_by_id
+        from ....crud.notification import create_notification
+        provider = await get_user_by_id(db, service.provider_id)
+        if provider:
+            user_res = await db.execute(select(User).where(User.id == task.user_id))
+            searcher = user_res.scalar_one_or_none()
+            sender_name = searcher.display_name if searcher else "Someone"
+            
+            await create_notification(
+                db,
+                user_id=provider.id,
+                title="New Service Request",
+                message=f"{sender_name} has requested your service '{service.title}'.",
+                link=f"/dashboard/jobs/{job.id}"
+            )
+            
+            if provider.email:
+                from ....api.v1.endpoints.jobs import _send_email_background
+                frontend_url = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "https://gigrr.vercel.app"
+                _send_email_background(
+                    to_email=provider.email,
+                    subject=f"New request for {service.title}",
+                    html_content=f"<p>{sender_name} has requested your service <strong>{service.title}</strong> via AI Agent. <a href='{frontend_url}/dashboard/jobs/{job.id}'>View request</a></p>"
+                )
 
         return f"Successfully requested service and sent a message to the provider. Please check your [Jobs](/dashboard/jobs) or [Activity](/dashboard/activity) page for updates."
     except Exception as exc:
@@ -638,7 +665,7 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
         return {"negotiated": False, "error": "User not found"}
 
     # Check if negotiation is enabled via the user's saved AI settings
-    ai_negotiate = (user.ai_settings or {}).get("aiNegotiateEnabled", False)
+    ai_negotiate = (user.ai_settings or {}).get("autonomyLevel") in ["medium", "high", "total"]
     if not ai_negotiate:
         closest = sorted(services, key=lambda s: float(s.price))[:3]
         names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
