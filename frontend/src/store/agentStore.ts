@@ -40,10 +40,15 @@ export interface AgentTask {
 }
 
 export interface AISettings {
-  /** Allow the agent to send negotiation messages to providers on the user's behalf */
-  aiNegotiateEnabled: boolean
-  /** Allow the agent to automatically reply to incoming messages */
-  aiAutoReplyEnabled: boolean
+  /** 
+   * Global Autonomy Level for the AI Agent:
+   * 'off': No autonomous actions.
+   * 'low': Auto-reply to incoming messages.
+   * 'medium': Auto-reply + Auto-negotiate on behalf.
+   * 'high': Medium + Auto-apply to matching jobs.
+   * 'total': High + Proactively request services for user's needs.
+   */
+  autonomyLevel: 'off' | 'low' | 'medium' | 'high' | 'total'
   /** Whether the mic button is shown on all dashboard pages */
   voiceEnabled: boolean
   /** Speech recognition language code */
@@ -123,8 +128,7 @@ interface AgentState {
 // ─── Default settings ─────────────────────────────────────────────────────────
 
 const DEFAULT_AI_SETTINGS: AISettings = {
-  aiNegotiateEnabled: false,  // must be explicitly turned on by user
-  aiAutoReplyEnabled: false,  // must be explicitly turned on by user
+  autonomyLevel: 'off',
   voiceEnabled: true,
   voiceLanguage: 'en-US',
 }
