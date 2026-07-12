@@ -25,6 +25,7 @@ import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
 import { useInView } from 'react-intersection-observer'
 import { processImageFile } from '@/lib/imageUtils'
+import { motion } from 'framer-motion'
 
 type Job = components['schemas']['JobOut']
 type Application = components['schemas']['ApplicationOut']
@@ -630,14 +631,22 @@ export default function JobsPage() {
         </TabsList>
 
         <TabsContent value="open" className="mt-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <motion.div 
+            className="grid gap-4 md:grid-cols-2"
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: { opacity: 0 },
+              visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+            }}
+          >
             {openLoading ? (
               [1,2].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)
             ) : processedOpenJobs.length ? (
               processedOpenJobs.map(job => (
-                <JobCard
-                  key={job.id}
-                  job={job}
+                <motion.div key={job.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}>
+                  <JobCard
+                    job={job}
                   user={user}
                   onApply={handleApply}
                   onAssign={handleAssign}
@@ -668,11 +677,12 @@ export default function JobsPage() {
                   vouchPending={vouchMutation.isPending}
                   acceptPending={acceptMutation.isPending}
                 />
+                </motion.div>
               ))
             ) : (
               <div className="col-span-2 text-center py-12 text-gray-500">No open jobs nearby.</div>
             )}
-          </div>
+          </motion.div>
           {hasMoreOpenJobs && (
             <div ref={loadMoreRef} className="flex justify-center mt-6 py-4">
               {loadingMoreOpenJobs ? (
@@ -685,12 +695,21 @@ export default function JobsPage() {
         </TabsContent>
 
         <TabsContent value="mine" className="mt-6">
-          <div className="grid gap-4 md:grid-cols-2">
+          <motion.div 
+            className="grid gap-4 md:grid-cols-2"
+            initial="hidden"
+            animate="visible"
+            variants={{
+              hidden: { opacity: 0 },
+              visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+            }}
+          >
             {myLoading ? (
               [1].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)
             ) : processedMyJobs.length ? (
               processedMyJobs.map(job => (
-                <JobCard
+                <motion.div key={job.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}>
+                  <JobCard
                   key={job.id}
                   job={job}
                   user={user}
@@ -714,11 +733,12 @@ export default function JobsPage() {
                   vouchPending={vouchMutation.isPending}
                   acceptPending={acceptMutation.isPending}
                 />
+                </motion.div>
               ))
             ) : (
               <div className="col-span-2 text-center py-12 text-gray-500">No jobs yet.</div>
             )}
-          </div>
+          </motion.div>
         </TabsContent>
 
         {/* Map Tab */}
