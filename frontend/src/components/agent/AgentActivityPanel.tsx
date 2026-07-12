@@ -14,6 +14,7 @@ import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { motion, AnimatePresence } from 'framer-motion'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,8 +48,6 @@ export default function AgentActivityPanel() {
     }
   }, [tasks, navigate, closePanel])
 
-  if (!isPanelOpen) return null
-
   const handleSend = async () => {
     if (!input.trim() || sending || isSubmitting) return
     const text = input
@@ -70,11 +69,26 @@ export default function AgentActivityPanel() {
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40 z-[9998]" onClick={closePanel} />
+      <AnimatePresence>
+      {isPanelOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-black/40 z-[9998]" 
+            onClick={closePanel} 
+          />
 
-      {/* Panel */}
-      <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-950 shadow-2xl z-[9999] flex flex-col border-l border-gray-200 dark:border-gray-800 animate-in slide-in-from-right duration-300">
+          {/* Panel */}
+          <motion.div 
+            initial={{ x: '100%' }} 
+            animate={{ x: 0 }} 
+            exit={{ x: '100%' }} 
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-950 shadow-2xl z-[9999] flex flex-col border-l border-gray-200 dark:border-gray-800"
+          >
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur shrink-0">
@@ -141,27 +155,22 @@ export default function AgentActivityPanel() {
           </div>
           <p className="text-[10px] text-gray-400 text-center mt-1.5">Press Enter to send · Shift+Enter for new line</p>
         </div>
-      </div>
-
-      {/* Overlay */}
-      {isPanelOpen && (
-        <div 
-          className="fixed inset-0 bg-black/20 dark:bg-black/40 backdrop-blur-sm z-40 lg:hidden"
-          onClick={closePanel}
-        />
+          </motion.div>
+        </>
       )}
+    </AnimatePresence>
 
-      <ConfirmDialog
-        open={showClearConfirm}
-        onOpenChange={setShowClearConfirm}
-        title="Clear History?"
-        description="Are you sure you want to clear your AI agent history? This will cancel running tasks and clear all logs."
-        confirmLabel="Clear History"
-        onConfirm={async () => {
-          await clearHistory()
-          setShowClearConfirm(false)
-        }}
-      />
+    <ConfirmDialog
+      open={showClearConfirm}
+      onOpenChange={setShowClearConfirm}
+      title="Clear History?"
+      description="Are you sure you want to clear your AI agent history? This will cancel running tasks and clear all logs."
+      confirmLabel="Clear History"
+      onConfirm={async () => {
+        await clearHistory()
+        setShowClearConfirm(false)
+      }}
+    />
     </>
   )
 }

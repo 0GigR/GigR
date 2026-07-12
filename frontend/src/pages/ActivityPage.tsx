@@ -35,6 +35,7 @@ import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
 import { EmptyState } from '@/components/EmptyState'
 import { processImageFile } from '@/lib/imageUtils'
+import { motion } from 'framer-motion'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -541,7 +542,15 @@ export default function ActivityPage() {
                   actionHref={tab === 'clienting' ? "/dashboard/services" : tab === 'providing' ? "/dashboard/jobs" : undefined}
                 />
               ) : (
-                <div className="space-y-3">
+                <motion.div 
+                  className="space-y-3"
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+                  }}
+                >
                   {(tab === 'clienting'
                     ? clientingJobs
                     : tab === 'providing'
@@ -550,8 +559,9 @@ export default function ActivityPage() {
                     ? completedJobs
                     : cancelledJobs
                   ).map((job) => (
-                    <ActivityJobCard
-                      key={job.id}
+                    <motion.div key={job.id} variants={{ hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 } }}>
+                      <ActivityJobCard
+                        key={job.id}
                       job={job}
                       tab={tab}
                       onOpenContractRoom={openContractRoom}
@@ -570,8 +580,9 @@ export default function ActivityPage() {
                       vouched={vouchedJobIds.has(job.id)}
                       rated={ratedJobIds.has(job.id)}
                     />
+                    </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )
             )}
           </TabsContent>
@@ -589,9 +600,17 @@ export default function ActivityPage() {
               actionHref="/dashboard/jobs"
             />
           ) : (
-            <div className="space-y-3">
+            <motion.div 
+              className="space-y-3"
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+              }}
+            >
               {myActivityFull.applications.map((app: any) => (
-                <div key={app.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                <motion.div key={app.id} variants={{ hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 } }} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
                   <div className="flex justify-between items-start">
                     <h3 className="font-semibold text-lg">{app.job_title}</h3>
                     <Badge variant="outline">Applied</Badge>
@@ -606,9 +625,9 @@ export default function ActivityPage() {
                     )}
                     <span className="text-xs text-gray-400 ml-auto">{new Date(app.created_at).toLocaleDateString()}</span>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
           )}
         </TabsContent>
       </Tabs>

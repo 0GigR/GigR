@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
@@ -48,6 +49,7 @@ export default function DashboardLayout() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW()
+  const location = useLocation()
 
   const { latitude, longitude } = useGeolocation()
 
@@ -193,8 +195,18 @@ export default function DashboardLayout() {
       {/* Main Content Area */}
       {/* pb-24 on mobile keeps page content clear of the fixed bottom nav;
           md:pb-6 restores normal padding on desktop where the nav is hidden */}
-      <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72">
-        <Outlet />
+      <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72 relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Bottom Navigation (mobile) */}
