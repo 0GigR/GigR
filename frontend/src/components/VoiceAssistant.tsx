@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Mic, MicOff, Loader2, X, Sparkles, Send, CheckCircle2 } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { toast } from 'sonner'
+import { motion } from 'framer-motion'
 
 export default function VoiceAssistant() {
   const { aiSettings, submitCommand, isPanelOpen } = useAgentStore()
@@ -131,12 +132,15 @@ export default function VoiceAssistant() {
   return (
     <>
       {/* Floating mic button */}
-      <button
+      <motion.button
+        drag
+        dragMomentum={false}
+        whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
         onClick={handleToggle}
-        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors duration-300 ${
           isListening
-            ? 'bg-red-500 text-white scale-110 animate-pulse shadow-red-500/50'
-            : 'bg-black text-white hover:bg-gray-800 hover:scale-105'
+            ? 'bg-red-500 text-white animate-pulse shadow-red-500/50'
+            : 'bg-black text-white hover:bg-gray-800'
         }`}
         title={isListening ? 'Stop listening' : 'Voice assistant'}
       >
@@ -147,7 +151,7 @@ export default function VoiceAssistant() {
         ) : (
           <MicOff className="w-6 h-6" />
         )}
-      </button>
+      </motion.button>
 
       {/* Assistant Popup Panel */}
       {isOpen && (
