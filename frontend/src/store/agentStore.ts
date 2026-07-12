@@ -55,6 +55,7 @@ interface AgentState {
   tasks: AgentTask[]
   unreadCount: number
   isPanelOpen: boolean
+  isSubmitting: boolean
 
   // AI engine info (fetched from backend)
   engineInfo: {
@@ -136,12 +137,15 @@ export const useAgentStore = create<AgentState>()(
       tasks: [],
       unreadCount: 0,
       isPanelOpen: false,
+      isSubmitting: false,
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
       _pollTimer: null,
       _agentWS: null,
 
       submitCommand: async (text: string) => {
+        if (get().isSubmitting) return null
+        set({ isSubmitting: true })
         try {
           const { data } = await api.post<AgentTask>('/ai/command', { text })
           set((s) => ({
@@ -152,6 +156,8 @@ export const useAgentStore = create<AgentState>()(
         } catch (err: any) {
           console.error('[agentStore] submitCommand error:', err)
           return null
+        } finally {
+          set({ isSubmitting: false })
         }
       },
 
@@ -238,12 +244,15 @@ export const useAgentStore = create<AgentState>()(
       },
 
       respondToDialog: async (taskId: string, action: string) => {
+        if (get().isSubmitting) return
+        set({ isSubmitting: true })
         try {
           await api.post(`/ai/tasks/${taskId}/respond`, { action })
-          // Immediately refresh tasks so the dialog disappears
           await get().fetchTasks()
         } catch (err) {
           console.error('[agentStore] respondToDialog error:', err)
+        } finally {
+          set({ isSubmitting: false })
         }
       },
 
@@ -251,8 +260,12 @@ export const useAgentStore = create<AgentState>()(
         return new Set(
           get().tasks
             .filter((task) => {
-              const lastLog = task.logs?.[task.logs.length - 1]
-              return !!lastLog?.data?.action_payload
+              if (!task.logs) return false
+              // Search backwards for the most recent log with an action_payload
+              for (let i = task.logs.length - 1; i >= 0; i--) {
+                if (task.logs[i].data?.action_payload) return true
+              }
+              return false
             })
             .map((t) => t.id)
         )
