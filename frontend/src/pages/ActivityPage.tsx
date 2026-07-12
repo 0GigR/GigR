@@ -27,12 +27,14 @@ import {
   Send,
   Flag,
   Briefcase,
+  X,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
 import { EmptyState } from '@/components/EmptyState'
+import { processImageFile } from '@/lib/imageUtils'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -673,13 +675,14 @@ export default function ActivityPage() {
                     <ImagePlus className="w-5 h-5 text-gray-500 hover:text-black" />
                     <input
                       type="file"
-                      accept="image/*"
+                      accept="image/*, .heic, .heif, .webp"
                       className="hidden"
                       onChange={async (e) => {
                         const file = e.target.files?.[0]
                         if (file && contractRoomJob?.id) {
                           try {
-                            const url = await uploadFile(file)
+                            const processed = await processImageFile(file)
+                            const url = await uploadFile(processed)
                             await api.post('/messages/', {
                               job_id: contractRoomJob.id,
                               content: url,
@@ -755,15 +758,14 @@ export default function ActivityPage() {
                   <input
                     id="activityAmendImage"
                     type="file"
-                    accept="image/*"
+                    accept="image/*, .heic, .heif, .webp"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0]
                       if (file) {
-                        setAmendImage(file)
-                        setAmendImagePreview(
-                          URL.createObjectURL(file)
-                        )
+                        const processed = await processImageFile(file)
+                        setAmendImage(processed)
+                        setAmendImagePreview(URL.createObjectURL(processed))
                       }
                     }}
                   />

@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
 import ChatMessageContent from '@/components/ChatMessageContent'
 import { useInView } from 'react-intersection-observer'
+import { processImageFile } from '@/lib/imageUtils'
 
 type Job = components['schemas']['JobOut']
 type Application = components['schemas']['ApplicationOut']
@@ -723,10 +724,14 @@ export default function JobsPage() {
             </div>
             {/* Image upload */}
             <div>
-              <input type="file" accept="image/*" ref={fileRef} className="hidden"
-                onChange={e => {
+              <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
+                onChange={async e => {
                   const file = e.target.files?.[0]
-                  if (file) { setImageFile(file); setImagePreview(URL.createObjectURL(file)) }
+                  if (file) { 
+                    const processed = await processImageFile(file)
+                    setImageFile(processed)
+                    setImagePreview(URL.createObjectURL(processed)) 
+                  }
                 }}
               />
               {imagePreview ? (
@@ -866,9 +871,13 @@ export default function JobsPage() {
                 <Button variant="outline" size="sm" onClick={() => document.getElementById('msgImageInput')?.click()}>
                   <ImagePlus className="w-4 h-4" />
                 </Button>
-                <input id="msgImageInput" type="file" accept="image/*" className="hidden" onChange={e => {
+                <input id="msgImageInput" type="file" accept="image/*, .heic, .heif, .webp" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0]
-                  if (file) { setMessageImageFile(file); setMessageImagePreview(URL.createObjectURL(file)) }
+                  if (file) { 
+                    const processed = await processImageFile(file)
+                    setMessageImageFile(processed)
+                    setMessageImagePreview(URL.createObjectURL(processed)) 
+                  }
                 }} />
                 <Input placeholder="Type a message..." value={messageText} onChange={e => setMessageText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} />
                 <Button size="sm" onClick={handleSendMessage} disabled={(!messageText.trim() && !messageImageFile) || sendMessageMutation.isPending} className="bg-black text-white">
@@ -885,9 +894,13 @@ export default function JobsPage() {
                 <Button variant="outline" onClick={() => document.getElementById('amendImageInput')?.click()}>
                   <ImagePlus className="w-4 h-4 mr-1" /> Attach Image
                 </Button>
-                <input id="amendImageInput" type="file" accept="image/*" className="hidden" onChange={e => {
+                <input id="amendImageInput" type="file" accept="image/*, .heic, .heif, .webp" className="hidden" onChange={async e => {
                   const file = e.target.files?.[0]
-                  if (file) { setAmendImage(file); setAmendImagePreview(URL.createObjectURL(file)) }
+                  if (file) { 
+                    const processed = await processImageFile(file)
+                    setAmendImage(processed)
+                    setAmendImagePreview(URL.createObjectURL(processed)) 
+                  }
                 }} />
                 {amendImagePreview && <img src={amendImagePreview} className="w-12 h-12 rounded-lg object-cover" />}
               </div>
