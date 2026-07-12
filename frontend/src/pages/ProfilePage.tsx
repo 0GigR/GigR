@@ -513,19 +513,19 @@ function ActivityHistory({ userId }: { userId?: string }) {
       price: j.price, date: j.created_at, detail: 'Provider'
     }))
     data.applications?.forEach((a: any) => allItems.push({
-      id: a.id, kind: 'applications', title: `Applied: Job ${a.job_id?.slice(0, 8)}`,
+      id: a.id, kind: 'applications', title: `Applied: ${a.job_title || 'Job ' + a.job_id?.slice(0, 8)}`,
       price: a.proposed_price, date: a.created_at, detail: a.message?.slice(0, 60)
     }))
     data.vouches_given?.forEach((v: any) => allItems.push({
-      id: v.id, kind: 'vouches', title: 'Vouch given', date: v.created_at,
+      id: v.id, kind: 'vouches', title: `Vouch given for ${v.job_title || 'Job'}`, date: v.created_at,
       detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
     }))
     data.vouches_received?.forEach((v: any) => allItems.push({
-      id: v.id, kind: 'vouches', title: 'Vouch received', date: v.created_at,
+      id: v.id, kind: 'vouches', title: `Vouch received for ${v.job_title || 'Job'}`, date: v.created_at,
       detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
     }))
     data.disputes?.forEach((d: any) => allItems.push({
-      id: d.id, kind: 'disputes', title: 'Dispute', status: d.status,
+      id: d.id, kind: 'disputes', title: `Dispute on ${d.job_title || 'Job'}`, status: d.status,
       date: d.created_at, detail: d.reason?.slice(0, 60)
     }))
   }
