@@ -112,7 +112,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 overflow-hidden">
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 backdrop-blur-lg bg-white/80 border-b border-gray-200">
+      <nav className="fixed w-full top-0 z-50 backdrop-blur-lg bg-white/80 border-b border-gray-200">
         <div className="flex items-center justify-between px-4 md:px-6 py-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
             <Logo className="w-8 h-8 text-black" />
