@@ -69,48 +69,64 @@ export default function AISettingsPage() {
       </div>
 
       <div className="space-y-6">
-        {/* Toggle: Negotiation */}
-        <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
-          <div className="space-y-1 max-w-[80%]">
+        {/* Autonomy Level */}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-4">
+          <div className="space-y-1">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              Allow AI to negotiate on my behalf
-              {aiSettings.aiNegotiateEnabled && <ShieldAlert className="w-4 h-4 text-amber-500" />}
+              <Bot className="w-5 h-5 text-violet-500" />
+              Agent Autonomy Level
             </h3>
             <p className="text-sm text-gray-500 leading-relaxed">
-              If the agent can't find a service within your budget, it will automatically send a real message to the closest-priced providers asking if they can match your budget.
+              Set how much control the AI has to act on your behalf in the background. 
+              <strong> Higher levels allow the AI to make legally binding agreements and spend funds.</strong>
             </p>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer mt-1">
-            <input 
-              type="checkbox" 
-              className="sr-only peer" 
-              checked={aiSettings.aiNegotiateEnabled}
-              onChange={(e) => updateAISetting('aiNegotiateEnabled', e.target.checked)}
-            />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 dark:peer-focus:ring-violet-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-violet-600"></div>
-          </label>
-        </div>
-        
-        {/* Toggle: Auto-Reply */}
-        <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
-          <div className="space-y-1 max-w-[80%]">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              Allow AI to auto-reply to my messages
-              {aiSettings.aiAutoReplyEnabled && <Bot className="w-4 h-4 text-violet-500" />}
-            </h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
-              When someone messages you about a job or service, the AI assistant will automatically draft and send a reply on your behalf.
-            </p>
+
+          <div className="pt-4">
+            <select
+              value={aiSettings.autonomyLevel}
+              onChange={(e) => updateAISetting('autonomyLevel', e.target.value as any)}
+              className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="off">Off - No background autonomy</option>
+              <option value="low">Low - Auto-reply to messages only</option>
+              <option value="medium">Medium - Auto-reply & negotiate prices</option>
+              <option value="high">High - Medium + Auto-apply to matching jobs</option>
+              <option value="total">Total Control (Beast Mode) - Full proactive hunting</option>
+            </select>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer mt-1">
-            <input 
-              type="checkbox" 
-              className="sr-only peer" 
-              checked={aiSettings.aiAutoReplyEnabled}
-              onChange={(e) => updateAISetting('aiAutoReplyEnabled', e.target.checked)}
-            />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 dark:peer-focus:ring-violet-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-violet-600"></div>
-          </label>
+
+          <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg p-4 mt-4">
+            <div className="flex gap-3">
+              <ShieldAlert className="w-5 h-5 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800 dark:text-amber-200 space-y-1">
+                <p className="font-semibold">Current Level Capabilities:</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  {aiSettings.autonomyLevel === 'off' && <li>The agent will only act when you explicitly command it via the chat panel.</li>}
+                  {aiSettings.autonomyLevel === 'low' && <li>Automatically drafts and sends replies to incoming messages.</li>}
+                  {aiSettings.autonomyLevel === 'medium' && (
+                    <>
+                      <li>Automatically drafts and sends replies to incoming messages.</li>
+                      <li>Negotiates on your behalf to match budgets if needed.</li>
+                    </>
+                  )}
+                  {aiSettings.autonomyLevel === 'high' && (
+                    <>
+                      <li>Auto-replies and negotiates budgets.</li>
+                      <li>Automatically evaluates new jobs and applies to them on your behalf while you sleep.</li>
+                    </>
+                  )}
+                  {aiSettings.autonomyLevel === 'total' && (
+                    <>
+                      <li>Fully autonomous negotiation and job applications.</li>
+                      <li>Actively hunts down services that match your requested tasks and automatically opens job requests with providers.</li>
+                      <li><strong>Warning:</strong> The AI acts as your proxy.</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Toggle: Voice Button */}
