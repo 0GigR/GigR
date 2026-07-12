@@ -27,7 +27,6 @@ import {
   Send,
   Flag,
   Briefcase,
-  X,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
