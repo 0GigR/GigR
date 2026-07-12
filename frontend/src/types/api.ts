@@ -1292,6 +1292,10 @@ export interface components {
             content: string;
             /** Image Url */
             image_url?: string | null;
+            /** Sender Name */
+            sender_name?: string | null;
+            /** Sender Image Url */
+            sender_image_url?: string | null;
             /**
              * Created At
              * Format: date-time

@@ -17,13 +17,18 @@ async def get_messages_for_job(
     limit: int = 50,
     offset: int = 0,
     applicant_id: UUID | None = None,
-) -> List[Message]:
-    query = select(Message).where(Message.job_id == job_id)
+):
+    query = (
+        select(Message, User.display_name.label("sender_name"), User.profile_image_url.label("sender_image_url"))
+        .outerjoin(User, Message.sender_id == User.id)
+        .where(Message.job_id == job_id)
+    )
     # applicant_id None => contract room thread (NULL rows); set => that thread
     query = query.where(Message.applicant_id == applicant_id)
     query = query.order_by(Message.created_at.asc()).limit(limit).offset(offset)
     result = await db.execute(query)
-    return result.scalars().all()
+    # Return mappings so Pydantic can serialize the Message fields + the joined fields
+    return result.mappings().all()
 
 async def get_messages_for_job_since(
     db: AsyncSession,
@@ -31,14 +36,20 @@ async def get_messages_for_job_since(
     since_id: UUID | None = None,
     limit: int = 50,
     applicant_id: UUID | None = None,
-) -> List[Message]:
-    query = select(Message).where(Message.job_id == job_id).where(Message.applicant_id == applicant_id).order_by(Message.created_at.asc())
+):
+    query = (
+        select(Message, User.display_name.label("sender_name"), User.profile_image_url.label("sender_image_url"))
+        .outerjoin(User, Message.sender_id == User.id)
+        .where(Message.job_id == job_id)
+        .where(Message.applicant_id == applicant_id)
+        .order_by(Message.created_at.asc())
+    )
     if since_id:
         # Fetch messages after the given id (simple cursor)
         sub = select(Message.created_at).where(Message.id == since_id).scalar_subquery()
         query = query.where(Message.created_at > sub)
     result = await db.execute(query.limit(limit))
-    return result.scalars().all()
+    return result.mappings().all()
 
 async def create_message(
     db: AsyncSession,
