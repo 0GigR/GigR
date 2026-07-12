@@ -19,7 +19,7 @@ export default defineConfig({
       },
       manifest: {
         name: 'Gigr Local Services',
-        short_name: 'Gigrs',
+        short_name: 'GigR',
         description: 'Verifiable Trust for Local Work',
         theme_color: '#000000',
         background_color: '#ffffff',
