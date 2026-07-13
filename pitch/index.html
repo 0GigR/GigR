@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GIGR Pitch Deck - SuperteamNG Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0A0B10;
+            --bg-secondary: #131520;
+            --accent-primary: #14F195; /* Solana Green */
+            --accent-secondary: #9945FF; /* Solana Purple */
+            --text-primary: #FFFFFF;
+            --text-secondary: #8F9BB3;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --transition-speed: 0.5s;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Slide Container */
+        .presentation-container {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide {
+            position: absolute;
+            width: 85%;
+            max-width: 1100px;
+            height: 80%;
+            opacity: 0;
+            transform: translateX(100px) scale(0.95);
+            transition: all var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 40px;
+            background: linear-gradient(135deg, rgba(19, 21, 32, 0.6) 0%, rgba(10, 11, 16, 0.8) 100%);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+            pointer-events: auto;
+            z-index: 10;
+        }
+
+        .slide.previous {
+            opacity: 0;
+            transform: translateX(-100px) scale(0.95);
+        }
+
+        /* Typography & Layout elements */
+        h1, h2, h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            line-height: 1.1;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Slide Specific Styles */
+        /* Title Slide */
+        .title-slide {
+            align-items: center;
+            text-align: center;
+        }
+
+        .title-logo {
+            font-size: 5rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            letter-spacing: -2px;
+        }
+
+        .tagline {
+            font-size: 1.6rem;
+            color: var(--text-secondary);
+            max-width: 600px;
+            margin-bottom: 40px;
+            font-weight: 400;
+        }
+
+        .badge {
+            background: rgba(20, 241, 149, 0.15);
+            color: var(--accent-primary);
+            border: 1px solid rgba(20, 241, 149, 0.3);
+            padding: 8px 16px;
+            border-radius: 99px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: inline-block;
+        }
+
+        /* Grid layouts */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 24px;
+        }
+
+        .slide-title {
+            font-size: 2.8rem;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .slide-title span {
+            font-size: 1rem;
+            opacity: 0.5;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Cards and interactive components */
+        .info-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            padding: 30px;
+            border-radius: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .info-card:hover {
+            border-color: rgba(20, 241, 149, 0.4);
+            background: rgba(255, 255, 255, 0.04);
+            transform: translateY(-5px);
+        }
+
+        .info-card h3 {
+            color: var(--accent-primary);
+            font-size: 1.5rem;
+            margin-bottom: 12px;
+        }
+
+        .info-card p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        /* Custom Code snippet container */
+        .code-container {
+            background: #05060A;
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 24px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            overflow-x: auto;
+            color: #C5CDD8;
+        }
+
+        .code-keyword { color: #F07178; }
+        .code-type { color: #FFCB6B; }
+        .code-func { color: #82AAFF; }
+        .code-comment { color: #546E7A; font-style: italic; }
+
+        /* Problem bullet list */
+        .problem-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .problem-list li {
+            position: relative;
+            padding-left: 40px;
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .problem-list li::before {
+            content: "✕";
+            position: absolute;
+            left: 0;
+            top: 2px;
+            color: #FF5A5F;
+            font-weight: 900;
+            font-size: 1.3rem;
+        }
+
+        .solution-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .solution-list li {
+            position: relative;
+            padding-left: 40px;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .solution-list li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            top: 2px;
+            color: var(--accent-primary);
+            font-weight: 900;
+            font-size: 1.3rem;
+        }
+
+        /* Controls / Footer */
+        .footer-controls {
+            padding: 20px 40px;
+            background: rgba(10, 11, 16, 0.9);
+            border-top: 1px solid var(--card-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 100;
+        }
+
+        .slide-counter {
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .nav-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-family: 'Space Grotesk', sans-serif;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+        }
+
+        .nav-btn.primary {
+            background: var(--accent-primary);
+            color: var(--bg-primary);
+            border: none;
+        }
+
+        .nav-btn.primary:hover {
+            background: #11d683;
+            color: var(--bg-primary);
+            box-shadow: 0 0 15px rgba(20, 241, 149, 0.4);
+        }
+
+        /* Progress Bar */
+        .progress-bar-container {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            transition: width 0.3s ease;
+        }
+
+        /* Keyboard hint */
+        .kb-hint {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 4px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--card-border);
+        }
+
+        /* Architecture visualization styles */
+        .arch-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .arch-node {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 16px;
+            position: relative;
+        }
+
+        .arch-node.accent {
+            border-color: rgba(153, 69, 255, 0.4);
+            background: rgba(153, 69, 255, 0.02);
+        }
+
+        .arch-node-title {
+            width: 160px;
+            font-weight: 700;
+            color: var(--accent-primary);
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .arch-node.accent .arch-node-title {
+            color: var(--accent-secondary);
+        }
+
+        .arch-node-desc {
+            flex: 1;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .arch-arrow {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.2);
+            font-size: 1.5rem;
+            margin: -5px 0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Slides Presentation Container -->
+    <div class="presentation-container">
+        
+        <!-- SLIDE 1: Title -->
+        <div class="slide active title-slide" id="slide-0">
+            <span class="badge">SuperteamNG Demo Day</span>
+            <h1 class="title-logo"><span class="gradient-text">GIGR</span></h1>
+            <p class="tagline">Providing Web3 Guarantees with absolute Web2 Simplicity to Africa's $200B Informal Economy.</p>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--accent-primary);">
+                Anchor Escrow on Solana Devnet • Compressed NFT Reputation • AI Autonomous Copilot
+            </div>
+        </div>
+
+        <!-- SLIDE 2: The Real Problem -->
+        <div class="slide" id="slide-1">
+            <h2 class="slide-title"><span>01 /</span> The Broken Trust of the Informal Economy</h2>
+            <div class="grid-2">
+                <div>
+                    <ul class="problem-list">
+                        <li><strong>Unverifiable Vouching:</strong> Reputation lives in scattered WhatsApp chats, relies on hearsay, and is easy to fake.</li>
+                        <li><strong>Zero Payment Guarantees:</strong> Service providers fear completed work won't be paid; clients fear upfront cash will be stolened.</li>
+                        <li><strong>The Tech Barrier:</strong> 60% of local service workers cannot use normal crypto/Web3 apps due to UI complexity.</li>
+                    </ul>
+                </div>
+                <div class="info-card" style="border-left: 4px solid #FF5A5F;">
+                    <h3 style="color: #FF5A5F; margin-bottom: 15px;">The Reality</h3>
+                    <p style="font-size: 1.1rem; line-height: 1.7;">
+                        "When your kitchen sink bursts on a Sunday morning, you search random online ads or ask neighbors. You pray the plumber turns up, works honestly, and you don't get scammed. Web2 hasn't solved local market trust."
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 3: The Architecture -->
+        <div class="slide" id="slide-2">
+            <h2 class="slide-title"><span>02 /</span> Under the Hood: Engineering & Solana</h2>
+            <div class="grid-2">
+                <div class="arch-container">
+                    <div class="arch-node">
+                        <div class="arch-node-title">1. Social Vouching</div>
+                        <div class="arch-node-desc">Each successfully finished job mints a <strong>compressed NFT (cNFT)</strong> to the worker's reputation ledger. Cost-effective reputation.</div>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-node accent">
+                        <div class="arch-node-title">2. Solana Escrow</div>
+                        <div class="arch-node-desc">USDC funds lock in a secure Anchor PDA. Only the client can authorize release. No platform backdoors.</div>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-node">
+                        <div class="arch-node-title">3. AI Agent</div>
+                        <div class="arch-node-desc">Llama-3 NLP translates plain text to transaction payloads. Handles matches, budgets, and triggers escrow.</div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <h3 style="margin-bottom: 15px;">Why Solana Wins Here</h3>
+                    <p style="margin-bottom: 10px; line-height: 1.5;"><strong>Sub-cent Fees:</strong> Escrow init + release + cNFT minting costs less than $0.0001 total. Ethereum/L2s are too expensive for ₦2,000 gig jobs.</p>
+                    <p style="line-height: 1.5;"><strong>Sub-second Finality:</strong> A worker finishes a job, the client taps release, and the funds land in their wallet instantly with no clearing delay.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 4: The Anchor Escrow Contract -->
+        <div class="slide" id="slide-3">
+            <h2 class="slide-title"><span>03 /</span> The On-Chain Escrow (Anchor)</h2>
+            <div class="grid-2">
+                <div class="code-container">
+<span class="code-comment">// gigr_escrow: Secure payment rails</span>
+<span class="code-keyword">pub fn</span> <span class="code-func">init_escrow</span>(ctx: Context&lt;InitEscrow&gt;, job_id: <span class="code-type">u64</span>, amount: <span class="code-type">u64</span>) -&gt; Result&lt;()&gt; {
+    <span class="code-keyword">let</span> escrow = &amp;<span class="code-keyword">mut</span> ctx.accounts.escrow;
+    escrow.client = ctx.accounts.client.key();
+    escrow.provider = ctx.accounts.provider.key();
+    escrow.job_id = job_id;
+    escrow.amount = amount;
+    escrow.bump = ctx.bumps.escrow;
+
+    <span class="code-comment">// CPI: Transfer USDC from client to vault ATA</span>
+    <span class="code-keyword">let</span> cpi_ctx = CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        Transfer {
+            from: ctx.accounts.client_ata.to_account_info(),
+            to: ctx.accounts.vault_ata.to_account_info(),
+            authority: ctx.accounts.client.to_account_info(),
+        }
+    );
+    token::transfer(cpi_ctx, amount)?;
+    Ok(())
+}
+                </div>
+                <div>
+                    <h3 style="margin-bottom: 20px; color: var(--accent-secondary);">Escrow Program Integrity</h3>
+                    <ul class="solution-list">
+                        <li><strong>Safe PDA Derivation:</strong> Seeds match <code>[b"escrow", client_pubkey, job_id_bytes]</code>. Escrow address is deterministic and cryptographically unique.</li>
+                        <li><strong>Platform Rent Funding:</strong> The system/escrow PDA rent is paid by the <code>platform</code> key, enabling gasless/rent-free user onboardings.</li>
+                        <li><strong>Automatic Rent Recovery:</strong> On release or cancel, the vault ATA and PDA are closed, refunding the lamport rent back to the <code>platform</code> wallet.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 5: Web2 Simplicity (Invisible Web3) -->
+        <div class="slide" id="slide-4">
+            <h2 class="slide-title"><span>04 /</span> The Invisible Web3 Layer</h2>
+            <div class="grid-3">
+                <div class="info-card">
+                    <h3>Custodial Creation</h3>
+                    <p>On standard Google login, Gigr automatically creates a custodial Solana keypair. The keys are encrypted via AES-128 and managed safely behind API credentials.</p>
+                </div>
+                <div class="info-card" style="border-top: 4px solid var(--accent-secondary);">
+                    <h3>Gasless Signatures</h3>
+                    <p>Platform acts as the transaction fee-payer for every interaction. Users sign operations implicitly through API endpoints without using Phantom or Metamask.</p>
+                </div>
+                <div class="info-card">
+                    <h3>Naira / USDC Ramp</h3>
+                    <p>USDC values are dynamically shown to the local user in Nigerian Naira (₦). A direct fiat on-ramp will execute cash-to-token trades seamlessly in production.</p>
+                </div>
+            </div>
+            <div style="margin-top: 40px; text-align: center; font-size: 1.2rem; font-family: 'Space Grotesk', sans-serif;">
+                "We don't sell blockchain. We sell <strong style="color: var(--accent-primary);">absolute security</strong> that runs silently in the background."
+            </div>
+        </div>
+
+        <!-- SLIDE 6: Interactive Demo Guide -->
+        <div class="slide" id="slide-5">
+            <h2 class="slide-title"><span>05 /</span> Live Flow Demo</h2>
+            <div class="grid-2">
+                <div>
+                    <h3 style="color: var(--accent-primary); margin-bottom: 20px;">What We Will Show</h3>
+                    <ul class="solution-list" style="gap: 15px;">
+                        <li><strong>Proximity Service Map:</strong> Locate providers dynamically near FUTO Owerri or any neighborhood.</li>
+                        <li><strong>AI Copilot Command:</strong> "Find me a plumber for ₦10k and request them." AI reads the budget, matches them, and messages them.</li>
+                        <li><strong>Solana Escrow Lockup:</strong> See the USDC escrow state instantly update to "Funded".</li>
+                        <li><strong>reputation Minting:</strong> Mark job complete. Escrow releases USDC, and a cNFT reputation vouch appears on the provider's profile.</li>
+                    </ul>
+                </div>
+                <div class="info-card" style="display: flex; flex-direction: column; justify-content: center; background: rgba(20, 241, 149, 0.05); border-color: rgba(20, 241, 149, 0.2);">
+                    <h4 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; margin-bottom: 10px; color: var(--accent-primary);">Devnet Address</h4>
+                    <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; word-break: break-all; margin-bottom: 20px; color: var(--text-primary);">
+                        C54m6YWGur2pW7urDWqdU7Em1vrjzCw2tiYFKZHGKpjw
+                    </p>
+                    <span style="font-size: 0.9rem; color: var(--text-secondary);">
+                        Deploy verified and running on Solana Devnet.
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- SLIDE 7: Roadmap & Vision -->
+        <div class="slide" id="slide-6">
+            <h2 class="slide-title"><span>06 /</span> Scale & Why Superteam</h2>
+            <div class="grid-2">
+                <div class="info-card">
+                    <h3 style="color: var(--accent-primary); margin-bottom: 15px;">Target: University Pilot</h3>
+                    <p style="margin-bottom: 15px;">Launching directly in 3 university campuses across Nigeria (FUTO, UNILAG, UNN) where gig transaction density is highest.</p>
+                    <p>Students hire students for design, tutoring, repair, laundry, and delivery. Gigr resolves community trust instantly.</p>
+                </div>
+                <div class="info-card" style="border-left: 4px solid var(--accent-secondary);">
+                    <h3 style="color: var(--accent-secondary); margin-bottom: 15px;">Superteam Partnership</h3>
+                    <p style="margin-bottom: 10px;"><strong>Mainnet Integration:</strong> Need grant/technical support for secure fee-payer key custody and mainnet release.</p>
+                    <p><strong>Ramp Partnerships:</strong> Hooking directly into localized on-ramps to trade Naira to USDC without manual crypto swaps.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Presentation Footer and Navigation -->
+    <footer class="footer-controls">
+        <div class="slide-counter">SLIDE <span id="current-slide-num">1</span> OF <span id="total-slides-num">7</span></div>
+        <div class="kb-hint">USE LEFT / RIGHT ARROWS OR SPACE TO NAVIGATE</div>
+        <div class="nav-buttons">
+            <button class="nav-btn" id="prev-btn">← PREVIOUS</button>
+            <button class="nav-btn primary" id="next-btn">NEXT →</button>
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar"></div>
+        </div>
+    </footer>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const currentSlideNum = document.getElementById('current-slide-num');
+        const totalSlidesNum = document.getElementById('total-slides-num');
+        const progressBar = document.getElementById('progress-bar');
+        
+        let currentSlideIdx = 0;
+        const totalSlides = slides.length;
+        
+        totalSlidesNum.textContent = totalSlides;
+
+        function updateSlides() {
+            slides.forEach((slide, idx) => {
+                slide.classList.remove('active', 'previous');
+                if (idx === currentSlideIdx) {
+                    slide.classList.add('active');
+                } else if (idx < currentSlideIdx) {
+                    slide.classList.add('previous');
+                }
+            });
+
+            currentSlideNum.textContent = currentSlideIdx + 1;
+            const progress = ((currentSlideIdx + 1) / totalSlides) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
+
+        function nextSlide() {
+            if (currentSlideIdx < totalSlides - 1) {
+                currentSlideIdx++;
+                updateSlides();
+            }
+        }
+
+        function prevSlide() {
+            if (currentSlideIdx > 0) {
+                currentSlideIdx--;
+                updateSlides();
+            }
+        }
+
+        nextBtn.addEventListener('click', nextSlide);
+        prevBtn.addEventListener('click', prevSlide);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                prevSlide();
+            }
+        });
+
+        // Initialize
+        updateSlides();
+    </script>
+</body>
+</html>
