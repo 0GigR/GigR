@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import { Bell } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Bell, CheckCircle2, BellOff, Loader2, Smartphone } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { subscribeToPushNotifications } from '@/lib/push'
+import { toast } from 'sonner'
 
 import { formatDistanceToNow } from 'date-fns'
 
@@ -18,10 +19,26 @@ export interface Notification {
   created_at: string
 }
 
+function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios-browser' {
+  // iOS Safari in regular browser doesn't support Web Push at all
+  // Only works when installed as a PWA (home screen app) on iOS 16.4+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  const isStandalone = (window.navigator as any).standalone === true
+  if (isIOS && !isStandalone) return 'ios-browser'
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported'
+  return (Notification.permission as any) || 'default'
+}
+
 export default function NotificationBell() {
   const [open, setOpen] = useState(false)
+  const [pushState, setPushState] = useState<ReturnType<typeof getPushState>>('default')
+  const [subscribing, setSubscribing] = useState(false)
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+
+  useEffect(() => {
+    setPushState(getPushState())
+  }, [open])
 
   // Polling notifications every 15s
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -45,15 +62,81 @@ export default function NotificationBell() {
   })
 
   const handleSubscribe = async () => {
-    const success = await subscribeToPushNotifications()
-    if (success) {
-      alert('Successfully enabled push notifications!')
-    } else {
-      alert('Failed or denied. Check browser settings.')
+    setSubscribing(true)
+    try {
+      const success = await subscribeToPushNotifications()
+      if (success) {
+        setPushState('granted')
+        toast.success('Push notifications enabled!')
+      } else {
+        // Check if it's a permission denial
+        const state = getPushState()
+        setPushState(state)
+        if (state === 'denied') {
+          toast.error('Notifications blocked. Go to your browser/device settings and allow notifications for this site.')
+        } else {
+          toast.error('Could not enable push notifications. Please try again.')
+        }
+      }
+    } finally {
+      setSubscribing(false)
     }
   }
 
   const unreadCount = notifications.filter(n => !n.is_read).length
+
+  const renderPushBanner = () => {
+    if (pushState === 'granted') {
+      return (
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-green-50 dark:bg-green-900/20 flex items-center gap-2 justify-center text-xs text-green-700 dark:text-green-400 shrink-0">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Push notifications are enabled
+        </div>
+      )
+    }
+    if (pushState === 'denied') {
+      return (
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-red-50 dark:bg-red-900/20 shrink-0">
+          <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400 justify-center">
+            <BellOff className="w-3.5 h-3.5 shrink-0" />
+            Notifications blocked. Enable in browser/device settings.
+          </div>
+        </div>
+      )
+    }
+    if (pushState === 'ios-browser') {
+      return (
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-900/20 shrink-0">
+          <div className="flex items-start gap-2 text-xs text-blue-700 dark:text-blue-300">
+            <Smartphone className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+            <span>
+              On iOS, tap <strong>Share → Add to Home Screen</strong> to install the app, then enable notifications inside it.
+            </span>
+          </div>
+        </div>
+      )
+    }
+    if (pushState === 'unsupported') {
+      return (
+        <div className="p-3 border-t text-center text-xs text-gray-400 shrink-0">
+          Push notifications not supported in this browser.
+        </div>
+      )
+    }
+    // default — not yet asked
+    return (
+      <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-center shrink-0">
+        <button
+          onClick={handleSubscribe}
+          disabled={subscribing}
+          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-60"
+        >
+          {subscribing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
+          {subscribing ? 'Enabling...' : 'Enable Push Notifications'}
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="relative">
@@ -131,12 +214,7 @@ export default function NotificationBell() {
               )}
             </div>
             
-            {/* Push notification banner */}
-            <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-center shrink-0">
-              <button onClick={handleSubscribe} className="text-sm text-blue-600 hover:underline font-medium">
-                Enable Push Notifications
-              </button>
-            </div>
+            {renderPushBanner()}
           </div>
         </>
       )}
