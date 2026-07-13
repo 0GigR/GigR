@@ -7,8 +7,12 @@ interface ThemeState {
   toggle: () => void
 }
 
+// Apply theme immediately on module load to prevent flash on refresh
+const _stored = (localStorage.getItem('theme') as Theme) || 'light'
+document.documentElement.classList.toggle('dark', _stored === 'dark')
+
 export const useThemeStore = create<ThemeState>((set) => ({
-  theme: (localStorage.getItem('theme') as Theme) || 'light', // bright by default
+  theme: _stored,
   toggle: () => {
     set((state) => {
       const newTheme = state.theme === 'dark' ? 'light' : 'dark'

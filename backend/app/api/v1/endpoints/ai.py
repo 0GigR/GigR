@@ -872,7 +872,7 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
     """Create a new service offering on behalf of the provider."""
     from ....crud.service import create_service
     from ....schemas.service import ServiceCreate
-    from ....models.service import Category
+    from ....models.category import Category
     from ....crud.user import get_user_by_id as _get_user
 
     params = task.params or {}
