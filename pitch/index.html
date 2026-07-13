@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GIGR Pitch Deck - SuperteamNG Demo</title>
+    <title>GIGR - Pitch Deck</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -16,7 +16,7 @@
             --text-primary: #FFFFFF;
             --text-secondary: #8F9BB3;
             --card-border: rgba(255, 255, 255, 0.08);
-            --transition-speed: 0.5s;
+            --transition-speed: 0.4s;
         }
 
         * {
@@ -29,8 +29,9 @@
             background-color: var(--bg-primary);
             color: var(--text-primary);
             font-family: 'Plus Jakarta Sans', sans-serif;
-            overflow: hidden;
-            height: 100vh;
+            overflow-x: hidden;
+            overflow-y: auto;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -44,38 +45,42 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 20px;
+            min-height: calc(100vh - 100px);
         }
 
         .slide {
             position: absolute;
-            width: 85%;
-            max-width: 1100px;
-            height: 80%;
+            width: 95%;
+            max-width: 1200px;
+            min-height: 520px;
             opacity: 0;
-            transform: translateX(100px) scale(0.95);
+            transform: translateX(100px) scale(0.98);
             transition: all var(--transition-speed) cubic-bezier(0.16, 1, 0.3, 1);
             pointer-events: none;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: space-between;
             padding: 40px;
-            background: linear-gradient(135deg, rgba(19, 21, 32, 0.6) 0%, rgba(10, 11, 16, 0.8) 100%);
+            background: linear-gradient(135deg, rgba(19, 21, 32, 0.7) 0%, rgba(10, 11, 16, 0.95) 100%);
             border: 1px solid var(--card-border);
             border-radius: 24px;
             box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(15px);
+            overflow-y: auto;
         }
 
         .slide.active {
             opacity: 1;
             transform: translateX(0) scale(1);
             pointer-events: auto;
-            z-index: 10;
+            position: relative;
         }
 
         .slide.previous {
             opacity: 0;
-            transform: translateX(-100px) scale(0.95);
+            transform: translateX(-100px) scale(0.98);
+            position: absolute;
         }
 
         /* Typography & Layout elements */
@@ -87,19 +92,20 @@
 
         .gradient-text {
             background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
 
         /* Slide Specific Styles */
-        /* Title Slide */
         .title-slide {
             align-items: center;
             text-align: center;
+            justify-content: center;
         }
 
         .title-logo {
-            font-size: 5rem;
+            font-size: 5.5rem;
             font-weight: 800;
             margin-bottom: 10px;
             letter-spacing: -2px;
@@ -108,9 +114,10 @@
         .tagline {
             font-size: 1.6rem;
             color: var(--text-secondary);
-            max-width: 600px;
+            max-width: 700px;
             margin-bottom: 40px;
             font-weight: 400;
+            line-height: 1.4;
         }
 
         .badge {
@@ -123,27 +130,30 @@
             text-transform: uppercase;
             letter-spacing: 2px;
             font-weight: 700;
-            margin-bottom: 20px;
+            margin-bottom: 25px;
             display: inline-block;
         }
 
         /* Grid layouts */
         .grid-2 {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            align-items: center;
+            grid-template-columns: 1.1fr 0.9fr;
+            gap: 30px;
+            align-items: stretch;
+            flex: 1;
         }
 
         .grid-3 {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 24px;
+            gap: 20px;
+            flex: 1;
+            margin-top: 10px;
         }
 
         .slide-title {
-            font-size: 2.8rem;
-            margin-bottom: 30px;
+            font-size: 2.4rem;
+            margin-bottom: 25px;
             display: flex;
             align-items: center;
             gap: 15px;
@@ -159,26 +169,28 @@
         .info-card {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid var(--card-border);
-            padding: 30px;
+            padding: 24px;
             border-radius: 16px;
             transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
         }
 
         .info-card:hover {
-            border-color: rgba(20, 241, 149, 0.4);
+            border-color: rgba(20, 241, 149, 0.3);
             background: rgba(255, 255, 255, 0.04);
-            transform: translateY(-5px);
         }
 
         .info-card h3 {
             color: var(--accent-primary);
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             margin-bottom: 12px;
         }
 
         .info-card p {
             color: var(--text-secondary);
-            font-size: 1rem;
+            font-size: 0.95rem;
             line-height: 1.6;
         }
 
@@ -187,12 +199,13 @@
             background: #05060A;
             border: 1px solid var(--card-border);
             border-radius: 16px;
-            padding: 24px;
+            padding: 20px;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            line-height: 1.5;
+            font-size: 0.8rem;
+            line-height: 1.4;
             overflow-x: auto;
             color: #C5CDD8;
+            height: 100%;
         }
 
         .code-keyword { color: #F07178; }
@@ -205,13 +218,13 @@
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 18px;
         }
 
         .problem-list li {
             position: relative;
-            padding-left: 40px;
-            font-size: 1.2rem;
+            padding-left: 36px;
+            font-size: 1.1rem;
             color: var(--text-secondary);
             line-height: 1.5;
         }
@@ -223,20 +236,20 @@
             top: 2px;
             color: #FF5A5F;
             font-weight: 900;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
         }
 
         .solution-list {
             list-style: none;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 18px;
         }
 
         .solution-list li {
             position: relative;
-            padding-left: 40px;
-            font-size: 1.2rem;
+            padding-left: 36px;
+            font-size: 1.1rem;
             color: var(--text-primary);
             line-height: 1.5;
         }
@@ -248,18 +261,56 @@
             top: 2px;
             color: var(--accent-primary);
             font-weight: 900;
-            font-size: 1.3rem;
+            font-size: 1.2rem;
+        }
+
+        /* Mockup for screenshots */
+        .screenshot-mockup {
+            background: #181B2A;
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 250px;
+            width: 100%;
+            height: 100%;
+        }
+
+        .screenshot-img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .screenshot-placeholder {
+            text-align: center;
+            color: var(--text-secondary);
+            padding: 20px;
+        }
+
+        .screenshot-placeholder span {
+            display: block;
+            font-size: 0.8rem;
+            margin-top: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            opacity: 0.6;
         }
 
         /* Controls / Footer */
         .footer-controls {
             padding: 20px 40px;
-            background: rgba(10, 11, 16, 0.9);
+            background: rgba(10, 11, 16, 0.95);
             border-top: 1px solid var(--card-border);
             display: flex;
             justify-content: space-between;
             align-items: center;
             z-index: 100;
+            position: relative;
+            width: 100%;
         }
 
         .slide-counter {
@@ -302,7 +353,6 @@
 
         .nav-btn.primary:hover {
             background: #11d683;
-            color: var(--bg-primary);
             box-shadow: 0 0 15px rgba(20, 241, 149, 0.4);
         }
 
@@ -323,7 +373,6 @@
             transition: width 0.3s ease;
         }
 
-        /* Keyboard hint */
         .kb-hint {
             font-size: 0.8rem;
             color: var(--text-secondary);
@@ -332,52 +381,6 @@
             padding: 4px 8px;
             border-radius: 6px;
             border: 1px solid var(--card-border);
-        }
-
-        /* Architecture visualization styles */
-        .arch-container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .arch-node {
-            display: flex;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--card-border);
-            border-radius: 12px;
-            padding: 16px;
-            position: relative;
-        }
-
-        .arch-node.accent {
-            border-color: rgba(153, 69, 255, 0.4);
-            background: rgba(153, 69, 255, 0.02);
-        }
-
-        .arch-node-title {
-            width: 160px;
-            font-weight: 700;
-            color: var(--accent-primary);
-            font-family: 'Space Grotesk', sans-serif;
-        }
-
-        .arch-node.accent .arch-node-title {
-            color: var(--accent-secondary);
-        }
-
-        .arch-node-desc {
-            flex: 1;
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-        }
-
-        .arch-arrow {
-            text-align: center;
-            color: rgba(255, 255, 255, 0.2);
-            font-size: 1.5rem;
-            margin: -5px 0;
         }
     </style>
 </head>
@@ -388,11 +391,11 @@
         
         <!-- SLIDE 1: Title -->
         <div class="slide active title-slide" id="slide-0">
-            <span class="badge">SuperteamNG Demo Day</span>
+            <span class="badge">Decentralized Trust Protocol</span>
             <h1 class="title-logo"><span class="gradient-text">GIGR</span></h1>
-            <p class="tagline">Providing Web3 Guarantees with absolute Web2 Simplicity to Africa's $200B Informal Economy.</p>
-            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--accent-primary);">
-                Anchor Escrow on Solana Devnet • Compressed NFT Reputation • AI Autonomous Copilot
+            <p class="tagline">Find skilled workers your neighbors actually trust. Payment guaranteed.</p>
+            <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--accent-primary);">
+                Web2 Simplicity • On-Chain Smart Escrow • Verified Social Vouching
             </div>
         </div>
 
@@ -402,54 +405,60 @@
             <div class="grid-2">
                 <div>
                     <ul class="problem-list">
-                        <li><strong>Unverifiable Vouching:</strong> Reputation lives in scattered WhatsApp chats, relies on hearsay, and is easy to fake.</li>
-                        <li><strong>Zero Payment Guarantees:</strong> Service providers fear completed work won't be paid; clients fear upfront cash will be stolened.</li>
-                        <li><strong>The Tech Barrier:</strong> 60% of local service workers cannot use normal crypto/Web3 apps due to UI complexity.</li>
+                        <li><strong>Unverifiable Reputation:</strong> Vouching lives in fragmented WhatsApp threads, is easily manipulated, and cannot be cryptographically proven.</li>
+                        <li><strong>Zero Payment Security:</strong> Workers risk completing tasks without getting paid, while clients fear losing upfront deposits.</li>
+                        <li><strong>High Web3 Barriers:</strong> Standard crypto apps require wallet setup, gas management, and complex private keys.</li>
                     </ul>
                 </div>
-                <div class="info-card" style="border-left: 4px solid #FF5A5F;">
-                    <h3 style="color: #FF5A5F; margin-bottom: 15px;">The Reality</h3>
-                    <p style="font-size: 1.1rem; line-height: 1.7;">
-                        "When your kitchen sink bursts on a Sunday morning, you search random online ads or ask neighbors. You pray the plumber turns up, works honestly, and you don't get scammed. Web2 hasn't solved local market trust."
-                    </p>
+                <div class="screenshot-mockup">
+                    <!-- Drop map.png / screenshot of map here -->
+                    <img src="map.png" alt="Local Gigr Map Screenshot" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div class="screenshot-placeholder" style="display: none;">
+                        <svg class="w-12 h-12 mx-auto text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 48px; height: 48px; opacity: 0.5; margin: 0 auto 10px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                        <strong>Local Gigr Map View</strong>
+                        <span>[Place screenshot of map picker / dashboard here]</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- SLIDE 3: The Architecture -->
+        <!-- SLIDE 3: The Insight & Solution -->
         <div class="slide" id="slide-2">
-            <h2 class="slide-title"><span>02 /</span> Under the Hood: Engineering & Solana</h2>
-            <div class="grid-2">
-                <div class="arch-container">
-                    <div class="arch-node">
-                        <div class="arch-node-title">1. Social Vouching</div>
-                        <div class="arch-node-desc">Each successfully finished job mints a <strong>compressed NFT (cNFT)</strong> to the worker's reputation ledger. Cost-effective reputation.</div>
-                    </div>
-                    <div class="arch-arrow">↓</div>
-                    <div class="arch-node accent">
-                        <div class="arch-node-title">2. Solana Escrow</div>
-                        <div class="arch-node-desc">USDC funds lock in a secure Anchor PDA. Only the client can authorize release. No platform backdoors.</div>
-                    </div>
-                    <div class="arch-arrow">↓</div>
-                    <div class="arch-node">
-                        <div class="arch-node-title">3. AI Agent</div>
-                        <div class="arch-node-desc">Llama-3 NLP translates plain text to transaction payloads. Handles matches, budgets, and triggers escrow.</div>
+            <h2 class="slide-title"><span>02 /</span> Reputation Tied to Proof of Work</h2>
+            <div class="grid-3">
+                <div class="info-card" style="border-top: 3px solid var(--accent-primary);">
+                    <h3>Social Vouching (cNFTs)</h3>
+                    <p>Every finished job automatically mints a compressed NFT to the worker's reputation profile. Immutable, portable, and extremely low cost.</p>
+                </div>
+                <div class="info-card" style="border-top: 3px solid var(--accent-secondary);">
+                    <h3>Smart Escrow (Solana)</h3>
+                    <p>Funds lock in a Program Derived Address (PDA) on-chain. Only the client can authorize release. No platform backdoors.</p>
+                </div>
+                <div class="info-card" style="border-top: 3px solid var(--accent-primary);">
+                    <h3>NLP Marketplace Copilot</h3>
+                    <p>Users find providers and jobs via natural language query models. High tech barrier bypassed for local workers.</p>
+                </div>
+            </div>
+            <div class="grid-2" style="margin-top: 25px; align-items: center;">
+                <div class="screenshot-mockup" style="min-height: 180px;">
+                    <!-- Drop agent.png / screenshot of assistant here -->
+                    <img src="agent.png" alt="AI Agent Chat Panel Screenshot" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div class="screenshot-placeholder" style="display: none;">
+                        <strong>NLP Voice Assistant / Chat</strong>
+                        <span>[Place AI chat conversation screenshot here]</span>
                     </div>
                 </div>
-                <div class="info-card">
-                    <h3 style="margin-bottom: 15px;">Why Solana Wins Here</h3>
-                    <p style="margin-bottom: 10px; line-height: 1.5;"><strong>Sub-cent Fees:</strong> Escrow init + release + cNFT minting costs less than $0.0001 total. Ethereum/L2s are too expensive for ₦2,000 gig jobs.</p>
-                    <p style="line-height: 1.5;"><strong>Sub-second Finality:</strong> A worker finishes a job, the client taps release, and the funds land in their wallet instantly with no clearing delay.</p>
-                </div>
+                <p style="color: var(--text-secondary); font-size: 1.05rem; line-height: 1.6;">
+                    Gigr translates natural intent into secure blockchain logic, giving gig workers portable on-chain CVs they own completely.
+                </p>
             </div>
         </div>
 
-        <!-- SLIDE 4: The Anchor Escrow Contract -->
+        <!-- SLIDE 4: Under the Hood: Engineering & Solana -->
         <div class="slide" id="slide-3">
             <h2 class="slide-title"><span>03 /</span> The On-Chain Escrow (Anchor)</h2>
             <div class="grid-2">
                 <div class="code-container">
-<span class="code-comment">// gigr_escrow: Secure payment rails</span>
 <span class="code-keyword">pub fn</span> <span class="code-func">init_escrow</span>(ctx: Context&lt;InitEscrow&gt;, job_id: <span class="code-type">u64</span>, amount: <span class="code-type">u64</span>) -&gt; Result&lt;()&gt; {
     <span class="code-keyword">let</span> escrow = &amp;<span class="code-keyword">mut</span> ctx.accounts.escrow;
     escrow.client = ctx.accounts.client.key();
@@ -458,7 +467,7 @@
     escrow.amount = amount;
     escrow.bump = ctx.bumps.escrow;
 
-    <span class="code-comment">// CPI: Transfer USDC from client to vault ATA</span>
+    <span class="code-comment">// CPI: Transfer USDC to vault ATA</span>
     <span class="code-keyword">let</span> cpi_ctx = CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         Transfer {
@@ -471,77 +480,57 @@
     Ok(())
 }
                 </div>
-                <div>
-                    <h3 style="margin-bottom: 20px; color: var(--accent-secondary);">Escrow Program Integrity</h3>
+                <div style="display: flex; flex-direction: column; justify-content: space-between;">
                     <ul class="solution-list">
-                        <li><strong>Safe PDA Derivation:</strong> Seeds match <code>[b"escrow", client_pubkey, job_id_bytes]</code>. Escrow address is deterministic and cryptographically unique.</li>
-                        <li><strong>Platform Rent Funding:</strong> The system/escrow PDA rent is paid by the <code>platform</code> key, enabling gasless/rent-free user onboardings.</li>
-                        <li><strong>Automatic Rent Recovery:</strong> On release or cancel, the vault ATA and PDA are closed, refunding the lamport rent back to the <code>platform</code> wallet.</li>
+                        <li><strong>Safe PDA Derivation:</strong> Seeds match <code>[b"escrow", client_pubkey, job_id_bytes]</code>. Escrow address is cryptographically locked to the specific transaction.</li>
+                        <li><strong>Platform Rent Funding:</strong> Escrow space rent is funded by the platform fee payer, keeping users free from wallet fees during initialization.</li>
+                        <li><strong>Automatic Rent Recovery:</strong> Escrow is automatically closed on completion/cancellation, returning lamport rent back to the platform.</li>
                     </ul>
                 </div>
             </div>
         </div>
 
-        <!-- SLIDE 5: Web2 Simplicity (Invisible Web3) -->
+        <!-- SLIDE 5: The Invisible Blockchain -->
         <div class="slide" id="slide-4">
-            <h2 class="slide-title"><span>04 /</span> The Invisible Web3 Layer</h2>
-            <div class="grid-3">
-                <div class="info-card">
-                    <h3>Custodial Creation</h3>
-                    <p>On standard Google login, Gigr automatically creates a custodial Solana keypair. The keys are encrypted via AES-128 and managed safely behind API credentials.</p>
-                </div>
-                <div class="info-card" style="border-top: 4px solid var(--accent-secondary);">
-                    <h3>Gasless Signatures</h3>
-                    <p>Platform acts as the transaction fee-payer for every interaction. Users sign operations implicitly through API endpoints without using Phantom or Metamask.</p>
-                </div>
-                <div class="info-card">
-                    <h3>Naira / USDC Ramp</h3>
-                    <p>USDC values are dynamically shown to the local user in Nigerian Naira (₦). A direct fiat on-ramp will execute cash-to-token trades seamlessly in production.</p>
-                </div>
-            </div>
-            <div style="margin-top: 40px; text-align: center; font-size: 1.2rem; font-family: 'Space Grotesk', sans-serif;">
-                "We don't sell blockchain. We sell <strong style="color: var(--accent-primary);">absolute security</strong> that runs silently in the background."
-            </div>
-        </div>
-
-        <!-- SLIDE 6: Interactive Demo Guide -->
-        <div class="slide" id="slide-5">
-            <h2 class="slide-title"><span>05 /</span> Live Flow Demo</h2>
+            <h2 class="slide-title"><span>04 /</span> The Invisible Blockchain Layer</h2>
             <div class="grid-2">
                 <div>
-                    <h3 style="color: var(--accent-primary); margin-bottom: 20px;">What We Will Show</h3>
-                    <ul class="solution-list" style="gap: 15px;">
-                        <li><strong>Proximity Service Map:</strong> Locate providers dynamically near FUTO Owerri or any neighborhood.</li>
-                        <li><strong>AI Copilot Command:</strong> "Find me a plumber for ₦10k and request them." AI reads the budget, matches them, and messages them.</li>
-                        <li><strong>Solana Escrow Lockup:</strong> See the USDC escrow state instantly update to "Funded".</li>
-                        <li><strong>reputation Minting:</strong> Mark job complete. Escrow releases USDC, and a cNFT reputation vouch appears on the provider's profile.</li>
+                    <ul class="solution-list">
+                        <li><strong>Google Custodial Wallets:</strong> Automated creation of a secure keypair on standard email login. Keys remain encrypted with AES-128.</li>
+                        <li><strong>Gasless Transactions:</strong> The platform pays network fees seamlessly behind the scenes.</li>
+                        <li><strong>Dynamic Fiat Display:</strong> Values displayed directly in Naira (₦) with instant backend USDC conversion.</li>
                     </ul>
                 </div>
-                <div class="info-card" style="display: flex; flex-direction: column; justify-content: center; background: rgba(20, 241, 149, 0.05); border-color: rgba(20, 241, 149, 0.2);">
-                    <h4 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.3rem; margin-bottom: 10px; color: var(--accent-primary);">Devnet Address</h4>
-                    <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; word-break: break-all; margin-bottom: 20px; color: var(--text-primary);">
-                        C54m6YWGur2pW7urDWqdU7Em1vrjzCw2tiYFKZHGKpjw
-                    </p>
-                    <span style="font-size: 0.9rem; color: var(--text-secondary);">
-                        Deploy verified and running on Solana Devnet.
-                    </span>
+                <div class="screenshot-mockup">
+                    <!-- Drop escrow.png / screenshot of payment here -->
+                    <img src="escrow.png" alt="Escrow Payment Details Screenshot" class="screenshot-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                    <div class="screenshot-placeholder" style="display: none;">
+                        <strong>Escrow State Details</strong>
+                        <span>[Place screenshot of Escrow funded state / Profile vouch view here]</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- SLIDE 7: Roadmap & Vision -->
-        <div class="slide" id="slide-6">
-            <h2 class="slide-title"><span>06 /</span> Scale & Why Superteam</h2>
+        <!-- SLIDE 6: Business Model -->
+        <div class="slide" id="slide-5">
+            <h2 class="slide-title"><span>05 /</span> Business Model & Incentives</h2>
             <div class="grid-2">
-                <div class="info-card">
-                    <h3 style="color: var(--accent-primary); margin-bottom: 15px;">Target: University Pilot</h3>
-                    <p style="margin-bottom: 15px;">Launching directly in 3 university campuses across Nigeria (FUTO, UNILAG, UNN) where gig transaction density is highest.</p>
-                    <p>Students hire students for design, tutoring, repair, laundry, and delivery. Gigr resolves community trust instantly.</p>
+                <div style="display: flex; flex-direction: column; justify-content: center; gap: 20px;">
+                    <div class="info-card">
+                        <h3>5-12% Transaction Fee</h3>
+                        <p>Charged only on successfully completed and released jobs. If the worker does not get paid, we charge nothing.</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>Aligned Incentives</h3>
+                        <p>We only make money when trust is delivered. This encourages transparent resolutions and active platform usage.</p>
+                    </div>
                 </div>
-                <div class="info-card" style="border-left: 4px solid var(--accent-secondary);">
-                    <h3 style="color: var(--accent-secondary); margin-bottom: 15px;">Superteam Partnership</h3>
-                    <p style="margin-bottom: 10px;"><strong>Mainnet Integration:</strong> Need grant/technical support for secure fee-payer key custody and mainnet release.</p>
-                    <p><strong>Ramp Partnerships:</strong> Hooking directly into localized on-ramps to trade Naira to USDC without manual crypto swaps.</p>
+                <div class="info-card" style="background: rgba(153, 69, 255, 0.05); border-color: rgba(153, 69, 255, 0.2); justify-content: center; text-align: center;">
+                    <h3 style="color: var(--accent-secondary); font-size: 2.2rem; margin-bottom: 10px;">Why it works</h3>
+                    <p style="font-size: 1.2rem; color: var(--text-primary); line-height: 1.6;">
+                        "By removing upfront payment anxiety, we unlock higher conversion rates for local gig work. Verified on-chain credentials keep workers locked into their portable profile value."
+                    </p>
                 </div>
             </div>
         </div>
@@ -550,7 +539,7 @@
 
     <!-- Presentation Footer and Navigation -->
     <footer class="footer-controls">
-        <div class="slide-counter">SLIDE <span id="current-slide-num">1</span> OF <span id="total-slides-num">7</span></div>
+        <div class="slide-counter">SLIDE <span id="current-slide-num">1</span> OF <span id="total-slides-num">6</span></div>
         <div class="kb-hint">USE LEFT / RIGHT ARROWS OR SPACE TO NAVIGATE</div>
         <div class="nav-buttons">
             <button class="nav-btn" id="prev-btn">← PREVIOUS</button>
