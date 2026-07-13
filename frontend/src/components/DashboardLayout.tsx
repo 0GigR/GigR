@@ -44,6 +44,7 @@ export default function DashboardLayout() {
   const [showMore, setShowMore] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const queryClient = useQueryClient()
   const {
     needRefresh: [needRefresh, setNeedRefresh],
@@ -82,6 +83,16 @@ export default function DashboardLayout() {
 
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const aiEnabled = user?.ai_enabled !== false
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await queryClient.invalidateQueries()
+      await queryClient.refetchQueries({ type: 'active' })
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 600)
+    }
+  }
 
   const navItems = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Home', end: true },
@@ -136,8 +147,8 @@ export default function DashboardLayout() {
           <div className="flex items-center gap-2">
             <NotificationBell />
             {aiEnabled && <AgentBell />}
-            <Button variant="ghost" size="icon" onClick={() => queryClient.invalidateQueries()}>
-              <RefreshCw className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh data">
+              <RefreshCw className={`h-5 w-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </Button>
             <Button variant="ghost" size="icon" onClick={toggle}>
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}

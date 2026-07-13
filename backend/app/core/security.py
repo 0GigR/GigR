@@ -67,7 +67,7 @@ async def get_token_from_request(request: Request) -> str:
         detail="Not authenticated",
     )
 
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+REFRESH_TOKEN_EXPIRE_DAYS = 90  # 90 days — PWA should keep users logged in
 
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
