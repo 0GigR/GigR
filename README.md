@@ -38,21 +38,63 @@ pip install -r requirements.txt
 
 **Required Environment Variables (`backend/.env`)**:
 ```env
-# Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5444/gigr
+ADMIN_SECRET=your_admin_secret_here
+#Solana
+GIGR_PROGRAM_ID=your_solana_program_id_here
 
-# Security
-SECRET_KEY=your_super_secret_jwt_key
-WALLET_ENCRYPTION_KEY=a_fernet_encryption_key_base64_encoded
+#Emails
+BREVO_API_KEY=your_brevo_api_key_here
+BREVO_SENDER_EMAIL=your_sender_email@example.com
 
-# Solana & Underdog
-SOLANA_RPC_URL=https://api.devnet.solana.com
-SOLANA_ESCROW_PROGRAM_ID=H3ETmNRWqkfFZmiZio2KsKpuntZ1X3awUwY8QUiGVAqA
-SOLANA_USDC_MINT=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU # Devnet USDC
-UNDERDOG_API_KEY=your_underdog_api_key
+#Object storage
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
 
-# OAuth (Google)
+#Database
+DATABASE_URL=postgresql://user:password@host:port/database
+
+#fromtend origin
+FRONTEND_URL=http://localhost:5173
+
+#OAuth (google)
 GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+
+# Solana
+PLATFORM_KEYPAIR="[your, solana, platform, keypair, array]"
+
+#fastapi
+SECRET_KEY=your_fastapi_secret_key
+SECURE_COOKIES=False
+
+#solana
+SOLANA_RPC_URL="https://api.devnet.solana.com" I used helius tho
+
+#cNFTs
+UNDERDOG_API_KEY=your_underdog_protocol_api_key
+UNDERDOG_API_URL=https://devnet.underdogprotocol.com
+
+#solana
+USDC_MINT_DEVNET=4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+WALLET_ENCRYPTION_KEY="your_base64_wallet_encryption_key="
+
+#Notifications
+VAPID_PUBLIC_KEY=your_vapid_public_key
+VAPID_PRIVATE_KEY=private_key.pem
+VAPID_CLAIM_EMAIL=mailto:admin@example.com
+
+#AI Agent
+GROQ_API_KEYS=your_groq_api_key_1,your_groq_api_key_2
+GROQ_MODEL=llama-3.1-8b-instant
+GROQ_WHISPER_MODEL=whisper-large-v3-turbo
+AI_AGENT_ENABLED=true
+AI_AGENT_POLL_INTERVAL_SECONDS=30
+AI_AGENT_MAX_CONCURRENT_TASKS=5
+AI_AGENT_TASK_TIMEOUT_SECONDS=300
+
+#Human verification
+TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA # Use dummy for testing, real key for production
 ```
 
 **Run Backend Server**:
