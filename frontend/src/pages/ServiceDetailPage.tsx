@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation } from 'lucide-react'
+import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import type { components } from '@/types/api'
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useAuthStore } from '@/store/authStore'
 
 type Service = components['schemas']['ServiceOut']
 type User = components['schemas']['UserOut']
@@ -53,6 +54,7 @@ export default function ServiceDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
   const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 
@@ -134,6 +136,23 @@ export default function ServiceDetailPage() {
       toast.success(`Request sent! View it in My Jobs.`)
     }
   })
+
+  // "Message" button: get-or-create the conversation job for this service (the
+  // request-service endpoint is idempotent), then open its chat. Lets the user talk
+  // to the provider whether or not a chat already exists.
+  const messageMutation = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post(`/jobs/request-service/${id}`)
+      return data as { id: string }
+    },
+    onSuccess: (job) => {
+      queryClient.invalidateQueries({ queryKey: ['myClientJobs'] })
+      navigate(`/dashboard/messages?jobId=${job.id}`)
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Could not open chat')),
+  })
+
+  const isOwnService = !!user && !!service && service.provider_id === user.id
 
   if (serviceLoading || providerLoading) {
     return (
@@ -264,7 +283,7 @@ export default function ServiceDetailPage() {
         <div className="space-y-6">
           <Card className="bg-card text-card-foreground border-border sticky top-6">
             <CardContent className="p-6">
-              <Button 
+              <Button
                 className="w-full h-12 text-lg font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60"
                 onClick={() => requestMutation.mutate()}
                 disabled={hasRequested || requestMutation.isPending || !service.is_active}
@@ -272,6 +291,17 @@ export default function ServiceDetailPage() {
                 {requestMutation.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
                 {!service.is_active ? 'Service Paused' : hasRequested ? 'Already Requested' : 'Request Service'}
               </Button>
+              {!isOwnService && (
+                <Button
+                  variant="outline"
+                  className="w-full h-11 mt-3 font-semibold"
+                  onClick={() => messageMutation.mutate()}
+                  disabled={messageMutation.isPending}
+                >
+                  {messageMutation.isPending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <MessageCircle className="w-5 h-5 mr-2" />}
+                  Message
+                </Button>
+              )}
               <p className="text-xs text-center text-gray-500 mt-3">
                 Payment is securely held in escrow until the job is completed.
               </p>
