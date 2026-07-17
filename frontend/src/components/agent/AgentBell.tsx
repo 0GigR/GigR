@@ -1,6 +1,6 @@
 /**
  * AgentBell.tsx — Zap icon in the header showing AI Agent status.
- * Badge colors: violet=unread, green=pending dialog, blue pulse=running
+ * Badge colors: green=pending dialog, blue pulse=running, red=fresh failure, violet=unread
  */
 import { Zap } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
@@ -14,12 +14,18 @@ export default function AgentBell() {
     const lastLog = task.logs?.[task.logs.length - 1]
     return !!lastLog?.data?.action_payload
   })
+  // Tasks are stored newest-first, so the unread ones are the first `unreadCount`.
+  // Only light up red if one of those fresh, unseen tasks actually failed.
+  const hasFreshFailure =
+    unreadCount > 0 && tasks.slice(0, unreadCount).some((t) => t.status === 'failed')
 
   const showBadge = unreadCount > 0 || hasPendingDialog || isRunning
   const badgeClass = hasPendingDialog
     ? 'bg-green-500 shadow-green-500/40 animate-bounce'
     : isRunning
     ? 'bg-blue-500 shadow-blue-500/40 animate-pulse'
+    : hasFreshFailure
+    ? 'bg-red-500 shadow-red-500/40 animate-bounce'
     : 'bg-violet-600 shadow-violet-500/40 animate-bounce'
 
   return (

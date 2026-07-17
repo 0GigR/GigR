@@ -35,6 +35,16 @@ export default function AgentActivityPanel() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [tasks])
 
+  // Jump straight to the latest message whenever the panel is opened. Runs after
+  // the slide-in animation/content mounts, so use a tick delay + instant scroll.
+  useEffect(() => {
+    if (!isPanelOpen) return
+    const id = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'auto' })
+    }, 120)
+    return () => clearTimeout(id)
+  }, [isPanelOpen])
+
   // Listen for navigate_to in logs and redirect — only once per log entry
   useEffect(() => {
     for (const task of tasks) {

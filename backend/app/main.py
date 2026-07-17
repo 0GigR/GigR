@@ -144,6 +144,9 @@ app.include_router(ws_messages.router)
 from .api.v1.endpoints import ai
 app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
 
+from .api.v1.endpoints import voice
+app.include_router(voice.router, prefix="/api/v1", tags=["voice"])
+
 
 @app.get("/health")
 def health_check():

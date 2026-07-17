@@ -12,6 +12,7 @@ import VoiceAssistant from '@/components/VoiceAssistant'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
 import AgentActivityPanel from '@/components/agent/AgentActivityPanel'
+import CallReminderPrompt from '@/components/agent/CallReminderPrompt'
 import GlobalItemModal from '@/components/GlobalItemModal'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
@@ -135,6 +136,7 @@ export default function DashboardLayout() {
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
       {aiEnabled && <VoiceAssistant />}
       {aiEnabled && <AgentActivityPanel />}
+      {aiEnabled && <CallReminderPrompt />}
       <OnboardingOverlay />
       <GlobalItemModal />
       {/* Top Bar */}
