@@ -45,11 +45,12 @@ else:
         # The agent loop holds a DB connection for a whole task (incl. slow Groq
         # HTTP calls); with up to AI_AGENT_MAX_CONCURRENT_TASKS running at once,
         # too small a pool starved web requests (chat/AI sends) into timeouts.
-        # BUT the Supabase session-mode pooler caps total client connections at 15
-        # (EMAXCONNSESSION), so keep pool_size + max_overflow well under that, with
-        # headroom for any second instance / migrations sharing the same limit.
-        pool_size=8,
-        max_overflow=2,
+        # We run against the Supabase *transaction-mode* pooler (port 6543), which
+        # multiplexes and allows far more client connections than the 15-cap
+        # session-mode pooler — so we can size the pool for real concurrency:
+        # agent tasks (up to MAX_CONCURRENT) + web requests + WS auth + heartbeats.
+        pool_size=20,
+        max_overflow=10,
         pool_timeout=30,
         pool_pre_ping=True,
         pool_recycle=1800,
