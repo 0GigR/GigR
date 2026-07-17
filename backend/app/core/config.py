@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 
 
 class Settings(BaseSettings):
@@ -88,6 +88,56 @@ class Settings(BaseSettings):
         return list(dict.fromkeys(keys))
 
     TURNSTILE_SECRET_KEY: str | None = Field(default=None, env="TURNSTILE_SECRET_KEY")
+
+    # ── Twilio Voice Calls ────────────────────────────────────────────────────
+    # Outbound phone calls from the AI agent (e.g. "your item was found").
+    # Get credentials at https://console.twilio.com. Leave blank to disable calling.
+    TWILIO_ACCOUNT_SID: str = Field(default="", env="TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN: str = Field(default="", env="TWILIO_AUTH_TOKEN")
+    # The Twilio number calls are placed FROM (E.164, e.g. +14787805138).
+    # Use the SAME number for the same user so they can save it as a contact.
+    TWILIO_FROM_NUMBER: str = Field(default="", env="TWILIO_FROM_NUMBER")
+    # Master switch for the calling feature (independent of per-user prefs).
+    TWILIO_VOICE_ENABLED: bool = Field(default=True, env="TWILIO_VOICE_ENABLED")
+    # Validate the X-Twilio-Signature header on public webhook endpoints.
+    # Keep True in production; only disable for local testing without a signature.
+    TWILIO_VALIDATE_SIGNATURE: bool = Field(default=True, env="TWILIO_VALIDATE_SIGNATURE")
+    # Voice used for text-to-speech in the TwiML <Say> verb.
+    TWILIO_VOICE: str = Field(default="Polly.Joanna", env="TWILIO_VOICE")
+
+    # Public base URL of THIS backend, reachable by Twilio's servers, with no
+    # trailing slash (e.g. https://api.gigr.app or an ngrok URL in dev). Twilio
+    # fetches the dynamic TwiML from {PUBLIC_BASE_URL}/api/v1/voice/twiml/{token}.
+    PUBLIC_BASE_URL: str | None = Field(default=None, env="PUBLIC_BASE_URL")
+
+    @field_validator("PUBLIC_BASE_URL")
+    @classmethod
+    def _normalise_public_base_url(cls, v: str | None) -> str | None:
+        """Ensure the URL Twilio receives is absolute.
+
+        Twilio's ``Url`` / ``StatusCallback`` params require a scheme; a value like
+        ``foo.ngrok-free.dev`` (easy to paste from ngrok) silently breaks every call.
+        Prepend ``https://`` when missing and drop any trailing slash.
+        """
+        if not v:
+            return v
+        v = v.strip().rstrip("/")
+        if not v:
+            return None
+        if not v.startswith(("http://", "https://")):
+            v = "https://" + v
+        return v
+
+    @property
+    def twilio_enabled(self) -> bool:
+        """True only when Twilio is fully configured and switched on."""
+        return bool(
+            self.TWILIO_VOICE_ENABLED
+            and self.TWILIO_ACCOUNT_SID
+            and self.TWILIO_AUTH_TOKEN
+            and self.TWILIO_FROM_NUMBER
+            and self.PUBLIC_BASE_URL
+        )
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

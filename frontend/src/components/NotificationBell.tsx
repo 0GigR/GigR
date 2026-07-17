@@ -85,6 +85,25 @@ export default function NotificationBell() {
 
   const unreadCount = notifications.filter(n => !n.is_read).length
 
+  // A notification counts as a "failure" if its text signals something went wrong.
+  // Only these turn the badge red; everything else is a calm purple.
+  const isFailure = (n: Notification) =>
+    /\b(fail(?:ed|ure)?|error|unable|couldn'?t|could not|declined|rejected|cancell?ed)\b/i.test(
+      `${n.title} ${n.message}`
+    )
+  const hasUnreadFailure = notifications.some(n => !n.is_read && isFailure(n))
+
+  // Opening the panel is itself an acknowledgement — clear the badge server-side
+  // so the user doesn't have to press "Mark all read".
+  useEffect(() => {
+    if (open && unreadCount > 0) {
+      api.post('/notifications/read-all')
+        .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+        .catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   const renderPushBanner = () => {
     if (pushState === 'granted') {
       return (
@@ -149,7 +168,7 @@ export default function NotificationBell() {
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center px-1">
+          <span className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full ${hasUnreadFailure ? 'bg-red-500' : 'bg-violet-600'} text-white text-[10px] font-bold flex items-center justify-center px-1`}>
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}

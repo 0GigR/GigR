@@ -13,3 +13,4 @@ from .agent_task import AgentTask
 from .agent_log import AgentLog
 from .notification import Notification
 from app.models.push_subscription import PushSubscription
+from .voice_call import VoiceCall

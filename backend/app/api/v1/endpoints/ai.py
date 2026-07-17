@@ -771,29 +771,102 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
     }
 
 
+# Leading command scaffolding to peel off ("post a job for me, I want someone
+# who can …") — applied repeatedly until the string stabilises. Order-independent;
+# each entry is matched at the very start after prior peels + punctuation are removed.
+_TITLE_LEAD_PATTERNS = [
+    r"please", r"kindly", r"can you", r"could you", r"would you", r"hey", r"hi",
+    r"help me", r"for me",
+    r"(?:post|create|add|make|put(?:\s+up)?|set\s+up|open|list|publish)(?:\s+up)?",
+    r"a", r"an", r"the", r"new", r"another",
+    r"job", r"service", r"posting", r"listing", r"gig", r"task", r"offer", r"ad",
+    r"called", r"titled", r"named", r"for", r"to", r"that", r"which", r"where", r"of",
+    r"i(?:'d)?\s+would\s+like", r"i'd\s+like", r"i\s+want\s+to\s+hire",
+    r"i\s+want\s+to", r"i\s+need\s+to", r"i\s+want", r"i\s+need", r"i'm\s+looking\s+for",
+    r"i\s+can", r"i\s+do", r"i\s+offer", r"i\s+am\s+a", r"i'm\s+a",
+    r"looking\s+for", r"searching\s+for",
+    r"someone", r"somebody", r"a\s+person", r"people", r"a\s+pro", r"a\s+professional",
+    r"who\s+can", r"that\s+can", r"who", r"that", r"can",
+    r"some", r"any",
+]
+_TITLE_LEAD_RE = re.compile(
+    r"^(?:" + "|".join(_TITLE_LEAD_PATTERNS) + r")(?=\b|\s|$)", re.IGNORECASE
+)
+# Trailing price / budget talk ("…, 3k is what I will pay", "for 5000 naira", …).
+_TITLE_TRAILING_PRICE_RE = re.compile(
+    r"[\s,;:.\-]*(?:"
+    r"(?:naira|₦)?\s*\d[\d,]*\s*k?\s*(?:naira|₦)?\s*(?:is\s+what\s+)?i(?:'ll|'d)?\s*(?:will\s+|would\s+)?(?:pay|offer|give|spend)"
+    r"|(?:my\s+)?(?:i(?:'ll|'d)?\s*(?:will\s+|would\s+)?(?:pay|offer|give|spend)|budget(?:\s+is)?|for|under|at\s+most|no\s+more\s+than|max(?:imum)?|willing\s+to\s+pay|price(?:\s+is)?|rate(?:\s+is)?)\s*(?:of\s+)?(?:naira|₦)?\s*\d[\d,]*\s*k?"
+    r"|(?:naira|₦)\s*\d[\d,]*"
+    r").*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_posting_title(raw_text: str) -> str:
+    """Distil a raw command into a concise title without an LLM.
+
+    Peels leading command scaffolding ("post a job for me, I want …") and trailing
+    price talk ("… 3k is what I'll pay"), then trims and capitalises. Used as the
+    rule-based fallback when Groq is unavailable or fails — never returns the raw
+    verb-prefixed sentence.
+    """
+    text = (raw_text or "").strip()
+
+    # Peel leading scaffolding repeatedly until nothing more matches.
+    for _ in range(20):
+        text = text.lstrip(" ,.;:-–—\t")
+        stripped = _TITLE_LEAD_RE.sub("", text, count=1)
+        if stripped == text:
+            break
+        text = stripped
+
+    # Drop trailing price / budget clause.
+    text = _TITLE_TRAILING_PRICE_RE.sub("", text)
+    text = text.strip(" ,.;:-–—\t")
+
+    # If we peeled everything away, fall back to the original trimmed sentence.
+    if not text:
+        text = (raw_text or "").strip().rstrip(".,!?")
+
+    text = text[:60].strip()
+    return (text[0].upper() + text[1:]) if text else (raw_text or "")[:60]
+
+
 async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
     """Use Groq to generate a professional title and description from raw user text.
 
     kind: "job" | "service"
     Returns {"title": ..., "description": ...} or falls back to simple formatting.
     """
-    if not settings.GROQ_API_KEY:
-        # Rule-based fallback: capitalise and trim
-        title = raw_text.strip().rstrip(".,!?")[:60]
-        title = title[0].upper() + title[1:] if title else raw_text[:60]
+    def _fallback() -> Dict[str, str]:
+        title = _clean_posting_title(raw_text)
         desc = f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"
         return {"title": title, "description": desc}
 
+    if not settings.GROQ_API_KEY:
+        return _fallback()
+
     system = (
         "You are a professional copywriter for Gigr, a Nigerian freelance marketplace. "
-        "Given a raw user command, produce a clean job listing. "
+        "Given a raw, messy user command, produce a clean listing. "
         "Return ONLY a JSON object with exactly two fields: "
-        '"title" (max 60 chars, professional, imperative, no filler) and '
-        '"description" (2-3 sentences explaining the work and any stated requirements). '
-        "Do not add prices to the title. Do not invent details not in the input."
+        '"title" and "description".\n'
+        "TITLE RULES: a short, natural noun phrase naming the work itself (max 60 chars). "
+        "STRIP all command scaffolding — words like 'post a job', 'create a service', "
+        "'for me', 'I want', 'I need', 'someone who can', 'please'. "
+        "STRIP any price, budget or pay amount. Fix obvious spelling. Use Title Case. "
+        "NEVER echo the user's sentence verbatim.\n"
+        "DESCRIPTION RULES: 2-3 sentences explaining the work and any stated requirements. "
+        "Do not invent details not in the input. Do not put a price in the title.\n"
+        "Examples (input -> title):\n"
+        '"post a job, I want some pijama makers, 3k is what I will pay" -> "Pyjama Makers Needed"\n'
+        '"Post a job for me, I want someone that can tie my shoelaces" -> "Shoelace Tying Assistant"\n'
+        '"create a service, i can fix generators, my rate is 15000" -> "Generator Repair Service"'
     )
     user_prompt = (
-        f"User wants to {'hire someone for' if kind == 'job' else 'offer a service:'}: {raw_text}"
+        f"User wants to {'hire someone for this' if kind == 'job' else 'offer this service'}: "
+        f"{raw_text}\nReturn the JSON now."
     )
 
     try:
@@ -804,22 +877,122 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
                 json={
                     "model": settings.GROQ_MODEL,
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_prompt}],
-                    "temperature": 0.4,
+                    "temperature": 0.3,
                     "max_tokens": 200,
+                    "response_format": {"type": "json_object"},
                 },
             )
             resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"].strip()
             content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
             parsed = json.loads(content)
-            return {
-                "title": str(parsed.get("title", raw_text))[:60],
-                "description": str(parsed.get("description", raw_text)),
-            }
+            title = str(parsed.get("title") or "").strip()[:60]
+
+            # Guard against the small model echoing the command back: if the title
+            # still looks like a raw instruction, distil it ourselves.
+            if not title or _looks_like_raw_command(title, raw_text):
+                title = _clean_posting_title(raw_text)
+
+            desc = str(parsed.get("description") or "").strip() or _fallback()["description"]
+            return {"title": title, "description": desc}
     except Exception as exc:
-        logger.warning("[agent] Groq posting improvement failed (%s), using raw text", exc)
-        title = raw_text.strip()[:60]
-        return {"title": title, "description": f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"}
+        logger.warning("[agent] Groq posting improvement failed (%s), using rule-based fallback", exc)
+        return _fallback()
+
+
+# Verbs/phrases that should never appear in a good title — their presence means the
+# model just echoed the command instead of naming the work.
+_RAW_COMMAND_MARKERS = re.compile(
+    r"\b(?:post a job|post a service|create a|i want|i need|for me|someone who|"
+    r"someone that|please|i will pay|i'll pay|my rate is|my budget)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_raw_command(title: str, raw_text: str) -> bool:
+    """True if ``title`` looks like the user's raw command rather than a clean name."""
+    if _RAW_COMMAND_MARKERS.search(title):
+        return True
+    # Near-identical to the original input (ignoring case/whitespace) → not distilled.
+    norm = lambda s: re.sub(r"\s+", " ", s.strip().lower())
+    return norm(title) == norm(raw_text)
+
+
+WAIT_FOR_REPLY_TIME = 10  # seconds to wait for a user's price before the AI picks one itself
+
+
+async def _suggest_price(raw_title: str, kind: str) -> float:
+    """Ask Groq for a fair price (naira); fall back to a sensible default."""
+    default = 5000.0
+    if not settings.GROQ_API_KEY:
+        return default
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await _call_groq_with_fallback(
+                client,
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "model": settings.GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": "You price informal services in Nigeria. Reply with ONLY a single integer amount in naira (no text, no symbols)."},
+                        {"role": "user", "content": f"Fair {'budget' if kind == 'job' else 'rate'} in naira for: {raw_title}"},
+                    ],
+                    "temperature": 0.2, "max_tokens": 12,
+                },
+            )
+            text = resp.json()["choices"][0]["message"]["content"]
+            digits = re.sub(r"[^\d]", "", text)
+            return float(digits) if digits else default
+    except Exception:
+        return default
+
+
+async def _auto_price_fallback(task_id: str, kind: str, raw_title: str) -> None:
+    """After WAIT_FOR_REPLY_TIME, if the user hasn't given a price, pick one and post."""
+    await asyncio.sleep(WAIT_FOR_REPLY_TIME)
+    async with async_session() as db:
+        # Is the price dialog still open (i.e. the user hasn't answered)?
+        logs_res = await db.execute(
+            select(AgentLog).where(AgentLog.task_id == uuid.UUID(task_id))
+            .order_by(AgentLog.created_at.desc()).limit(20)
+        )
+        dialog_log = None
+        for lg in logs_res.scalars().all():
+            if lg.data and (lg.data.get("action_payload") or {}).get("type") == "provide_price":
+                dialog_log = lg
+                break
+        if not dialog_log:
+            return  # user already responded (payload cleared) — nothing to do
+
+        task_res = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
+        task = task_res.scalar_one_or_none()
+        if not task:
+            return
+
+        # Close the dialog so the user can't also submit a price now.
+        new_data = dict(dialog_log.data)
+        new_data.pop("action_payload", None)
+        dialog_log.data = new_data
+
+        price = await _suggest_price(raw_title, kind)
+        logger.info("[agent] Task %s: no price in %ds — AI chose ₦%.0f", task_id, WAIT_FOR_REPLY_TIME, price)
+
+        child = AgentTask(
+            user_id=task.user_id,
+            command_text=task.command_text,
+            task_type="post_job" if kind == "job" else "post_service",
+            params={"title": raw_title, "price": price},
+            status="queued",
+        )
+        db.add(child)
+        await _log(db, task.id, "info",
+                   f"No budget given in {WAIT_FOR_REPLY_TIME}s — I'll go with ₦{price:,.0f} and post it for you.")
+        await db.commit()
+        try:
+            await _ws_manager.notify_user(str(task.user_id), {"type": "agent_task_update", "task_id": task_id})
+        except Exception:
+            pass
 
 
 async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
@@ -846,6 +1019,9 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
+        # If the user doesn't answer within WAIT_FOR_REPLY_TIME, the AI picks a
+        # price itself and proceeds (see _auto_price_fallback).
+        asyncio.create_task(_auto_price_fallback(str(task.id), "job", raw_title))
         return {"created": False, "waiting_for_price": True}
 
     await _log(db, task.id, "action", "Writing a professional job listing...")
@@ -858,6 +1034,19 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         job_in = JobCreate(title=title, description=desc, price=price)
         job = await create_job(db, task.user_id, job_in)
         await db.commit()
+        # Notify the user in-app that their job is live (call, if enabled, fires
+        # separately from _maybe_trigger_call once this task completes).
+        try:
+            from ....crud.notification import create_notification
+            await create_notification(
+                db, task.user_id,
+                title="Job posted",
+                message=f"Your job '{title}' is live for ₦{price:,.0f}. Providers can now apply.",
+                link="/dashboard/activity",
+            )
+            await db.commit()
+        except Exception as ne:
+            logger.warning("[agent] job-posted notification failed: %s", ne)
         await _log(db, task.id, "success",
                    f"Job **'{title}'** posted for ₦{price:,.0f}. "
                    f"Providers can now apply. [View in Activity](/dashboard/activity)")
@@ -893,6 +1082,7 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
+        asyncio.create_task(_auto_price_fallback(str(task.id), "service", raw_title))
         return {"created": False, "waiting_for_price": True}
 
     # Try to match a category from the title
@@ -921,6 +1111,17 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         )
         service = await create_service(db, task.user_id, service_in)
         await db.commit()
+        try:
+            from ....crud.notification import create_notification
+            await create_notification(
+                db, task.user_id,
+                title="Service listed",
+                message=f"Your service '{title}' is live for ₦{price:,.0f}. Clients can now request it.",
+                link="/dashboard/services",
+            )
+            await db.commit()
+        except Exception as ne:
+            logger.warning("[agent] service-listed notification failed: %s", ne)
         await _log(db, task.id, "success",
                    f"Service **'{title}'** listed for ₦{price:,.0f}. "
                    f"Clients can now find and request it. [View in Services](/dashboard/services)")
@@ -995,21 +1196,133 @@ async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, 
 _running_tasks: set[str] = set()  # tracks currently executing task IDs
 
 
+def _build_call_message(
+    display_name: str,
+    task_type: str,
+    task_status: str,
+    command_text: str,
+    result: Optional[Dict[str, Any]],
+    params: Optional[Dict[str, Any]],
+) -> tuple[Optional[str], Optional[str]]:
+    """Map a finished task to a (trigger, spoken_message) pair, or (None, None) to skip."""
+    result = result or {}
+    params = params or {}
+    name = display_name or "there"
+    query = params.get("query") or ""
+
+    # Failures fire the "task_failed" trigger regardless of type.
+    if task_status == "failed":
+        return "task_failed", (
+            f"Hi {name}, this is your Gigr assistant. I wasn't able to finish your request"
+            f"{f' to {command_text}' if command_text else ''}. Please open the app to take a look."
+        )
+
+    if task_status != "completed":
+        return None, None
+
+    if task_type == "find_service" and result.get("found") and result.get("count"):
+        count = result["count"]
+        return "item_found", (
+            f"Good news {name}, this is your Gigr assistant. I found {count} "
+            f"{'option' if count == 1 else 'options'}{f' for {query}' if query else ''}. "
+            "Open the app to review and book."
+        )
+
+    if task_type == "negotiate":
+        if result.get("negotiated") or result.get("found_within_budget"):
+            return "negotiation_done", (
+                f"Hi {name}, this is your Gigr assistant. I've finished negotiating"
+                f"{f' for {query}' if query else ''}. Open the app to see the result and confirm."
+            )
+        return None, None
+
+    if task_type == "post_job" and result.get("created"):
+        title = result.get("title") or "your job"
+        return "job_posted", (
+            f"Hi {name}, this is your Gigr assistant. Your job {title} is now posted on Gigr. "
+            "I'll let you know when providers respond."
+        )
+
+    return None, None
+
+
+async def _maybe_trigger_call(
+    *,
+    task_id: str,
+    user_id,
+    task_type: str,
+    task_status: str,
+    command_text: str,
+    result: Optional[Dict[str, Any]],
+    params: Optional[Dict[str, Any]],
+) -> None:
+    """Decide whether to phone the user about a finished task, and do it if so."""
+    from ....services import twilio_client
+
+    if not settings.twilio_enabled:
+        return
+
+    async with async_session() as db:
+        user_res = await db.execute(select(User).where(User.id == user_id))
+        user = user_res.scalar_one_or_none()
+        if not user:
+            return
+
+        trigger, message = _build_call_message(
+            user.display_name, task_type, task_status, command_text, result, params
+        )
+        if not trigger or not message:
+            return
+
+        logger.info("[agent] Task %s → call trigger '%s' (phone=%s, enabled=%s)",
+                    task_id, trigger, bool(user.phone_number),
+                    (user.ai_settings or {}).get("call", {}).get("enabled"))
+        call = await twilio_client.maybe_call_user(
+            db, user, trigger=trigger, message=message, task_id=uuid.UUID(task_id)
+        )
+        await db.commit()
+        if call is not None:
+            logger.info("[agent] 📞 Placed %s call to %s for task %s (status=%s)",
+                        trigger, call.to_number, task_id, call.status)
+            try:
+                await _log(db, uuid.UUID(task_id), "action",
+                           f"📞 Called you ({call.to_number}) about this task.",
+                           data={"call_status": call.status, "trigger": trigger})
+                await db.commit()
+            except Exception:
+                pass
+
+
 async def _execute_task(task_id: str):
     """Execute a single agent task in its own DB session."""
     _running_tasks.add(task_id)
     try:
         async with async_session() as db:
-            # Re-fetch task inside this session
+            # Atomically claim the task: flip queued → running in a single UPDATE
+            # and COMMIT immediately. This makes the "running" state visible to
+            # every other loop iteration/worker at once, so the same task can
+            # never be picked up and executed twice.
+            from sqlalchemy import update as sa_update
+            claim = await db.execute(
+                sa_update(AgentTask)
+                .where(and_(AgentTask.id == uuid.UUID(task_id), AgentTask.status == "queued"))
+                .values(status="running", updated_at=datetime.now(timezone.utc))
+                .returning(AgentTask.id)
+            )
+            if claim.first() is None:
+                # Already claimed by someone else (or not queued) — nothing to do.
+                logger.info("[agent] Task %s already claimed, skipping", task_id)
+                return
+            await db.commit()
+
+            # Load the freshly-claimed task for processing.
             result = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
             task = result.scalar_one_or_none()
-            if not task or task.status != "queued":
+            if not task:
                 return
 
-            # Mark as running
-            task.status = "running"
-            task.updated_at = datetime.now(timezone.utc)
-            await db.flush()
+            logger.info("[agent] ▶ Executing task %s (type=%s): %r",
+                        task_id, task.task_type, task.command_text)
 
             # Load user's memory context and inject into params
             memory = await _load_memory(db, task.user_id)
@@ -1019,18 +1332,19 @@ async def _execute_task(task_id: str):
                 task.params = {"_memory": memory}
 
             await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
-            
+
             # --- NLP Parsing moved to background loop to avoid blocking the UI ---
             if task.task_type == "pending":
                 await _log(db, task.id, "info", "Parsing command intent...")
                 parsed = await parse_command(task.command_text, memory=memory)
                 task.task_type = parsed.get("task_type", "generic")
-                
+
                 # Merge original params (like ai_negotiate_enabled) with parsed params
                 orig_params = task.params or {}
                 new_params = parsed.get("params", {})
                 task.params = {**orig_params, **new_params}
-                
+
+                logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
                 await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
                 await db.flush()
 
@@ -1090,6 +1404,7 @@ async def _execute_task(task_id: str):
 
                 task.status = "completed"
                 task.completed_at = datetime.now(timezone.utc)
+                logger.info("[agent] ✓ Task %s completed (type=%s)", task_id, task.task_type)
                 # Avoid redundant "Task completed" log if the specific handler already logged its outcome or a dialog
                 if task.task_type not in ["find_service", "find_job", "post_job", "post_service"]:
                     await _log(db, task.id, "success", "Task completed")
@@ -1133,6 +1448,20 @@ async def _execute_task(task_id: str):
                 })
             except Exception:
                 pass  # WS push is best-effort
+
+            # Optionally call the user on the phone about this result (best-effort).
+            try:
+                await _maybe_trigger_call(
+                    task_id=task_id,
+                    user_id=task.user_id,
+                    task_type=task.task_type,
+                    task_status=task.status,
+                    command_text=task.command_text,
+                    result=task.result,
+                    params=task.params,
+                )
+            except Exception as exc:  # never let calling break the task
+                logger.warning("[agent] call trigger skipped for task %s: %s", task_id, exc)
 
     except Exception as exc:
         logger.error("[agent] Unexpected error in task %s: %s", task_id, exc, exc_info=True)
@@ -1190,6 +1519,7 @@ async def _check_negotiation_reply(task_id: str):
         # There's a reply — call Groq to analyse it
         provider_reply = new_msgs[-1].content
         if not settings.GROQ_API_KEY or round_num >= 3:
+            print("No GROK KEY FOUND (or max rounds reached?", round_num, ">=3)", settings.GROQ_API_KEY)
             # Max rounds reached or no Groq — log outcome and close
             async with async_session() as db2:
                 t = (await db2.execute(select(AgentTask).where(AgentTask.id == task.id))).scalar_one_or_none()
@@ -1346,6 +1676,9 @@ async def agent_loop():
                 tasks_to_run = queued.scalars().all()
 
             # Dispatch each task as a separate asyncio task
+            if tasks_to_run:
+                logger.info("[agent] Dispatching %d queued task(s): %s",
+                            len(tasks_to_run), [str(t.id) for t in tasks_to_run])
             for t in tasks_to_run:
                 if str(t.id) not in _running_tasks:
                     asyncio.create_task(_execute_task(str(t.id)))

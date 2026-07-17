@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from ....core.dependencies import get_db, get_current_user
 from ....core.security import create_access_token, verify_password, decode_access_token, create_refresh_token, REFRESH_TOKEN_EXPIRE_DAYS
 from ....core.config import settings
@@ -89,9 +90,14 @@ async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSe
         # userinfo returns email_verified as bool or string
         email_verified = str(info.get("email_verified", "false")).lower() == "true"
     elif auth_data.token:
-        # ID-token path (classic GoogleLogin button)
+        # ID-token path (classic GoogleLogin button).
+        # verify_oauth2_token makes a BLOCKING network call (fetches Google's
+        # signing certs). Running it directly on the event loop stalls every
+        # other request and can make the dev proxy return 502. Offload it.
+        import asyncio
         try:
-            idinfo = id_token.verify_oauth2_token(
+            idinfo = await asyncio.to_thread(
+                id_token.verify_oauth2_token,
                 auth_data.token, requests.Request(), settings.GOOGLE_CLIENT_ID
             )
         except ValueError as e:
@@ -119,7 +125,16 @@ async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSe
                 user.profile_image_url = picture
             await db.commit()
         else:
-            user = await create_user_from_google(db, email, google_id, name, picture)
+            try:
+                user = await create_user_from_google(db, email, google_id, name, picture)
+            except IntegrityError:
+                # Two google-auth requests raced to create the same user
+                # (e.g. a double-click). Roll back and fetch the winner.
+                await db.rollback()
+                user = await get_user_by_google_id(db, google_id) or await get_user_by_email(db, email)
+                if not user:
+                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                        detail="Could not create account, please retry.")
 
     token = create_access_token(data={"sub": str(user.id)})
 
