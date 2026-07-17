@@ -84,15 +84,13 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
     <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {provider && !isOwner && (
-          <div className="mb-3 hover:opacity-80 transition-opacity w-fit">
-            <Link to={`/dashboard/user/${service.provider_id}`}>
-              <UserChip
-                userId={service.provider_id}
-                name={provider.display_name}
-                avatarUrl={provider.profile_image_url}
-                lastSeenAt={(provider as any)?.last_seen_at}
-              />
-            </Link>
+          <div className="mb-3 w-fit">
+            <UserChip
+              userId={service.provider_id}
+              name={provider.display_name}
+              avatarUrl={provider.profile_image_url}
+              lastSeenAt={(provider as any)?.last_seen_at}
+            />
           </div>
         )}
         {service.image_url && (

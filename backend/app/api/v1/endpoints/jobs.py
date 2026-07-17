@@ -197,6 +197,17 @@ async def request_service(
     )
     await manager.broadcast_new_message(auto)
 
+    # Notify the provider so both the message-nav badge AND the bell light up.
+    # (Only reached for a freshly-created job — the redundancy guard returns early.)
+    await create_notification(
+        db,
+        user_id=service.provider_id,
+        title=f"New request from {current_user.display_name or 'Someone'}",
+        message=f"Someone requested your service “{service.title}”.",
+        link=f"/dashboard/messages?jobId={job.id}",
+    )
+    await db.commit()
+
     # Background email
     provider = await get_user_by_id(db, service.provider_id)
     if provider and provider.email:

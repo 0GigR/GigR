@@ -11,6 +11,27 @@ async def get_message_by_id(db: AsyncSession, message_id: UUID) -> Message | Non
     result = await db.execute(select(Message).where(Message.id == message_id))
     return result.scalar_one_or_none()
 
+
+def _flatten_message_row(row) -> dict:
+    """Flatten a (Message, sender_name, sender_image_url) result row into a single
+    dict so MessageOut sees id/job_id/sender_id/content/created_at at the top level,
+    alongside the joined sender fields. Without this, ``.mappings()`` nests the ORM
+    object under a "Message" key and Pydantic reports those fields as missing.
+    """
+    msg: Message = row["Message"]
+    return {
+        "id": msg.id,
+        "job_id": msg.job_id,
+        "sender_id": msg.sender_id,
+        "content": msg.content,
+        "image_url": msg.image_url,
+        "applicant_id": msg.applicant_id,
+        "created_at": msg.created_at,
+        "sender_name": row["sender_name"],
+        "sender_image_url": row["sender_image_url"],
+    }
+
+
 async def get_messages_for_job(
     db: AsyncSession,
     job_id: UUID,
@@ -27,8 +48,8 @@ async def get_messages_for_job(
     query = query.where(Message.applicant_id == applicant_id)
     query = query.order_by(Message.created_at.asc()).limit(limit).offset(offset)
     result = await db.execute(query)
-    # Return mappings so Pydantic can serialize the Message fields + the joined fields
-    return result.mappings().all()
+    # Flatten each row so Pydantic sees the Message fields + joined sender fields.
+    return [_flatten_message_row(r) for r in result.mappings().all()]
 
 async def get_messages_for_job_since(
     db: AsyncSession,
@@ -49,7 +70,7 @@ async def get_messages_for_job_since(
         sub = select(Message.created_at).where(Message.id == since_id).scalar_subquery()
         query = query.where(Message.created_at > sub)
     result = await db.execute(query.limit(limit))
-    return result.mappings().all()
+    return [_flatten_message_row(r) for r in result.mappings().all()]
 
 async def create_message(
     db: AsyncSession,
