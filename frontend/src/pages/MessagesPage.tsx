@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
@@ -134,6 +135,32 @@ export default function MessagesPage() {
 
   // Also store a ref to know which job the user last had selected
   const lastSelectedJobIdRef = useRef<string | null>(null)
+
+  // Deep link: /dashboard/messages?jobId=X opens that conversation directly (used by
+  // the "Message" buttons on the service/job detail pages). Fetch the job if it isn't
+  // in the conversation list yet (e.g. a freshly-created service request).
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinkJobId = searchParams.get('jobId')
+  const deepLinkHandledRef = useRef(false)
+  useEffect(() => {
+    if (!deepLinkJobId || deepLinkHandledRef.current || !myJobs) return
+    deepLinkHandledRef.current = true
+    const clearParam = () => {
+      searchParams.delete('jobId')
+      setSearchParams(searchParams, { replace: true })
+    }
+    const found = myJobs.find((j) => j.id === deepLinkJobId)
+    if (found) {
+      setSelectedJob(found)
+      setShowScopeAmend(false)
+      clearParam()
+    } else {
+      api.get(`/jobs/${deepLinkJobId}`)
+        .then(({ data }) => { setSelectedJob(data); setShowScopeAmend(false) })
+        .catch(() => {})
+        .finally(clearParam)
+    }
+  }, [deepLinkJobId, myJobs, searchParams, setSearchParams])
 
   // Update selectedJobId ref whenever it changes
   useEffect(() => {

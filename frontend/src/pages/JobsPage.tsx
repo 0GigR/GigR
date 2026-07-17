@@ -1157,12 +1157,19 @@ function JobCard({
         </div>
       </CardContent>
       <CardFooter className="pt-4 flex gap-2 flex-wrap">
+        {/* Participants on an active job get a direct Message button into the
+            contract room. Open jobs are handled by the Message/Apply pair below. */}
+        {job.status !== 'open' && (isClient || isProvider) && (
+          <Button size="sm" variant="outline" onClick={() => onContractRoom(job)}>
+            <MessageCircle className="w-3 h-3 mr-1" /> Message
+          </Button>
+        )}
         {/* On an OPEN job the poster (client) discusses per-applicant via the
             "View Applicants" list, so only non-clients get the top-level
-            Discuss button (opens their own thread with the poster). */}
+            Message button (opens their own thread with the poster). */}
         {job.status === 'open' && !isClient && (
           <Button size="sm" variant="outline" onClick={() => onContractRoom(job)}>
-            <MessageCircle className="w-3 h-3 mr-1" /> Discuss
+            <MessageCircle className="w-3 h-3 mr-1" /> Message
           </Button>
         )}
         {job.status === 'open' && !isClient && (

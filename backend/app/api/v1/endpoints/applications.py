@@ -10,6 +10,7 @@ from ....crud.application import (
     get_application_by_applicant_and_job,
 )
 from ....crud.job import get_job_by_id
+from ....crud.notification import create_notification
 from ....schemas.application import ApplicationCreate, ApplicationOut
 from ....models.user import User
 import uuid
@@ -49,6 +50,18 @@ async def apply(
         applicant_id=current_user.id,
     )
     await manager.broadcast_new_message(auto)
+
+    # Notify the job poster so both the message-nav badge AND the bell light up.
+    if job.client_id:
+        await create_notification(
+            db,
+            user_id=job.client_id,
+            title=f"New applicant: {current_user.display_name or 'Someone'}",
+            message=(msg[:100] + ("..." if len(msg) > 100 else "")) if msg
+                    else f"Someone applied to “{job.title}”.",
+            link=f"/dashboard/messages?jobId={job.id}",
+        )
+        await db.commit()
 
     return application
 
