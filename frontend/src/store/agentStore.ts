@@ -55,6 +55,43 @@ export interface AISettings {
   voiceLanguage: string
 }
 
+// ─── Voice-call settings (server state: ai_settings.call + user.phone_number) ───
+
+export interface CallTriggers {
+  /** Call when the agent finds a matching service/provider */
+  item_found: boolean
+  /** Call when the agent finishes negotiating */
+  negotiation_done: boolean
+  /** Call when the agent posts a job for you */
+  job_posted: boolean
+  /** Call when a task fails */
+  task_failed: boolean
+}
+
+export interface CallPrefs {
+  enabled: boolean
+  triggers: CallTriggers
+  reminderDismissed: boolean
+}
+
+export interface VoiceSettings {
+  phone_number: string | null
+  call: CallPrefs
+  /** True when the server has Twilio credentials + a public URL configured */
+  twilio_configured: boolean
+  /** The number calls come from (so users can save it as a contact) */
+  from_number: string | null
+  triggers_available: string[]
+}
+
+/** Partial patch accepted by PATCH /voice/settings */
+export interface VoiceSettingsPatch {
+  phone_number?: string
+  enabled?: boolean
+  triggers?: Partial<CallTriggers>
+  reminderDismissed?: boolean
+}
+
 interface AgentState {
   // Task data
   tasks: AgentTask[]
@@ -72,6 +109,9 @@ interface AgentState {
 
   // User AI settings (persisted in localStorage)
   aiSettings: AISettings
+
+  // Voice-call settings fetched from the backend (null until fetched)
+  voiceSettings: VoiceSettings | null
 
   // Polling control
   _pollTimer: ReturnType<typeof setInterval> | null
@@ -100,6 +140,15 @@ interface AgentState {
 
   /** Update a single AI setting */
   updateAISetting: <K extends keyof AISettings>(key: K, value: AISettings[K]) => void
+
+  /** Fetch the user's voice-call settings (phone + triggers) from the backend */
+  fetchVoiceSettings: () => Promise<void>
+
+  /** Patch voice-call settings (phone number and/or call preferences) */
+  updateVoiceSettings: (patch: VoiceSettingsPatch) => Promise<VoiceSettings | null>
+
+  /** Place a one-off test call to the user's saved number */
+  placeTestCall: (message?: string) => Promise<{ status: string } | null>
 
   /** Clear all task history for the user */
   clearHistory: () => Promise<void>
@@ -144,6 +193,7 @@ export const useAgentStore = create<AgentState>()(
       isSubmitting: false,
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
+      voiceSettings: null,
       _pollTimer: null,
       _agentWS: null,
 
@@ -151,7 +201,10 @@ export const useAgentStore = create<AgentState>()(
         if (get().isSubmitting) return null
         set({ isSubmitting: true })
         try {
-          const { data } = await api.post<AgentTask>('/ai/command', { text })
+          // /ai/command just queues a task (parsing happens in the background loop),
+          // but the DB round-trip can occasionally spike past the default 15s under
+          // load, so give it more headroom.
+          const { data } = await api.post<AgentTask>('/ai/command', { text }, { timeout: 30000 })
           set((s) => ({
             tasks: [data, ...s.tasks],
             unreadCount: s.unreadCount + 1,
@@ -159,6 +212,11 @@ export const useAgentStore = create<AgentState>()(
           return data
         } catch (err: any) {
           console.error('[agentStore] submitCommand error:', err)
+          // A client-side timeout does NOT mean the server failed — it usually
+          // created the task anyway. Reconcile from the server so it still appears.
+          if (err?.code === 'ECONNABORTED') {
+            setTimeout(() => { get().fetchTasks() }, 1500)
+          }
           return null
         } finally {
           set({ isSubmitting: false })
@@ -236,6 +294,36 @@ export const useAgentStore = create<AgentState>()(
           })
           return { aiSettings: newSettings }
         })
+      },
+
+      fetchVoiceSettings: async () => {
+        try {
+          const { data } = await api.get<VoiceSettings>('/voice/settings')
+          set({ voiceSettings: data })
+        } catch (err) {
+          // User might not be logged in, or endpoint unavailable — fail quietly
+        }
+      },
+
+      updateVoiceSettings: async (patch) => {
+        try {
+          const { data } = await api.patch<VoiceSettings>('/voice/settings', patch)
+          set({ voiceSettings: data })
+          return data
+        } catch (err) {
+          console.error('[agentStore] updateVoiceSettings error:', err)
+          return null
+        }
+      },
+
+      placeTestCall: async (message?: string) => {
+        try {
+          const { data } = await api.post<{ status: string }>('/voice/call', { message })
+          return data
+        } catch (err: any) {
+          console.error('[agentStore] placeTestCall error:', err)
+          throw err
+        }
       },
 
       clearHistory: async () => {

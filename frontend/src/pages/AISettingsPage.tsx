@@ -3,6 +3,7 @@ import { CheckCircle2, ShieldAlert, Bot, Mic, Trash2, Settings2, Info } from 'lu
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import CallSettingsCard from '@/components/agent/CallSettingsCard'
 
 export default function AISettingsPage() {
   const { aiSettings, updateAISetting, engineInfo, fetchEngineInfo, clearHistory } = useAgentStore()
@@ -128,6 +129,9 @@ export default function AISettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Phone Call Alerts */}
+        <CallSettingsCard />
 
         {/* Toggle: Voice Button */}
         <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">

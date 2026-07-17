@@ -74,7 +74,7 @@ function usePollingMessages({
       const params: Record<string, string> = {}
       if (sinceId) params.since_id = sinceId
 
-      const { data } = await api.get<Message[]>(`/messages/${jobId}`, { params })
+      const { data } = await api.get<Message[]>(`/messages/job/${jobId}`, { params })
 
       if (data && data.length > 0) {
         // Update the cursor to the latest message
