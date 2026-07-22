@@ -25,6 +25,7 @@ import {
   Shield,
   Gavel,
   User,
+  Bot,
   Sun,
   Moon,
   LogOut,
@@ -103,6 +104,7 @@ export default function DashboardLayout() {
     { to: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
     { to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' },
     { to: '/dashboard/profile', icon: User, label: 'Profile' },
+    ...(aiEnabled ? [{ to: '/dashboard/ai-settings', icon: Bot, label: 'AI Settings' }] : []),
     ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),
   ]
 
