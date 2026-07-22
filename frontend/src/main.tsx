@@ -7,7 +7,7 @@ import App from './App.tsx'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
 // Wake up the backend (useful for serverless cold starts on Vercel hobby tier)
-const apiUrl = import.meta.env.VITE_API_URL || 'https://gig-r.vercel.app/api/v1'
+const apiUrl = import.meta.env.VITE_API_URL || 'https://wispy-lilly-ksschkw-ee52198c.koyeb.app/api/v1'
 const docsUrl = apiUrl.replace(/\/api\/v1\/?$/, '/docs')
 fetch(docsUrl, { mode: 'no-cors' }).catch(() => {})
 
