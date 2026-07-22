@@ -4,7 +4,7 @@ Gigr is a hyper-local services marketplace with a cryptographically secured trus
 - **Clients** hold money securely in an on-chain escrow until the job is completed to satisfaction.
 - **Providers** get guaranteed payment without risk of non-payment, and build permanent, verifiable reputation.
 
-All blockchain interactions are hidden from the user, providing a Web2-like seamless experience (via mobile or PWA) while maintaining Web3 guarantees.
+All blockchain interactions are hidden from the user, providing a Web2-like seamless experience (via mobile or PWA) while maintaining Web3 guarantees.  
 
 ---
 
