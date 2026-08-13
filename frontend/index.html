@@ -5,14 +5,79 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#000000" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- Primary SEO -->
+    <title>Gigr — Trusted Local Services Marketplace | Hire Nearby Pros</title>
+    <meta name="description" content="Gigr is the first neighborhood marketplace where reputation is real and payments are guaranteed. Hire trusted local providers or find work near you — with smart-contract escrow protecting every transaction." />
+    <meta name="keywords" content="local services, neighborhood marketplace, hire local pros, find work near me, trusted providers, gig economy, escrow payments, services near me, vetted professionals" />
+    <meta name="author" content="Gigr" />
+    <meta name="robots" content="index, follow" />
+    <meta name="application-name" content="Gigr" />
+    <link rel="canonical" href="https://gigrr.vercel.app/" />
+
+    <!-- PWA / Mobile -->
+    <link rel="apple-touch-icon" href="/icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gigr" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- OpenGraph (Facebook, WhatsApp, iMessage, Slack…) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Gigr" />
+    <meta property="og:title" content="Gigr — Trusted Local Services Marketplace" />
+    <meta property="og:description" content="Hire trusted local providers or find work near you. Reputation is real, payments are guaranteed — no blockchain knowledge needed." />
+    <meta property="og:url" content="https://gigrr.vercel.app/" />
+    <meta property="og:image" content="https://gigrr.vercel.app/icon.png" />
+    <meta property="og:image:width" content="1024" />
+    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:alt" content="Gigr logo — Verifiable Trust for Local Work" />
+    <meta property="og:locale" content="en_US" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Gigr — Trusted Local Services Marketplace" />
+    <meta name="twitter:description" content="Hire trusted local providers or find work near you. Reputation is real, payments are guaranteed." />
+    <meta name="twitter:image" content="https://gigrr.vercel.app/icon.png" />
+    <meta name="twitter:image:alt" content="Gigr logo — Verifiable Trust for Local Work" />
+
+    <!-- Structured data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": "https://gigrr.vercel.app/#website",
+          "url": "https://gigrr.vercel.app/",
+          "name": "Gigr",
+          "alternateName": "GigR",
+          "description": "Verifiable Trust for Local Work — a hyper-local services marketplace with smart-contract escrow and on-chain reputation.",
+          "inLanguage": "en-US"
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://gigrr.vercel.app/#organization",
+          "name": "Gigr",
+          "url": "https://gigrr.vercel.app/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://gigrr.vercel.app/icon.png",
+            "width": 1024,
+            "height": 1024
+          },
+          "description": "Gigr is a hyper-local services marketplace connecting clients and providers with guaranteed escrow payments and verifiable reputation."
+        }
+      ]
+    }
+    </script>
+
     <!-- Speed up Google Identity script load on slow networks so the Sign-in
          button shows reliably. preconnect opens the TLS connection early;
          preload starts fetching the GSI client script before React mounts. -->
     <link rel="preconnect" href="https://accounts.google.com" crossorigin />
     <link rel="dns-prefetch" href="https://accounts.google.com" />
     <link rel="preload" as="script" href="https://accounts.google.com/gsi/client" crossorigin />
-    <title>Gigr</title>
   </head>
   <body>
     <div id="root"></div>
