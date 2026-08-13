@@ -1,9 +1,10 @@
 from uuid import UUID
 import uuid
 from typing import List, Optional
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
+from ..core.text_search import tokenize_query, relevance_score
 from ..models.job import Job
 from ..schemas.job import JobCreate
 
@@ -157,7 +158,20 @@ async def get_jobs_filtered(
         )
 
     if search_text:
-        conditions.append(Job.title.ilike(f"%{search_text}%"))
+        # Fuzzy any-word matching across title AND description (same as services
+        # search): 'samsung repair' matches a job titled "Samsung screen repair".
+        tokens = tokenize_query(search_text)
+        if tokens:
+            text_conds = []
+            for t in tokens:
+                text_conds.append(Job.title.ilike(f"%{t}%"))
+                text_conds.append(Job.description.ilike(f"%{t}%"))
+            conditions.append(or_(*text_conds))
+        else:
+            conditions.append(or_(
+                Job.title.ilike(f"%{search_text}%"),
+                Job.description.ilike(f"%{search_text}%"),
+            ))
 
     if conditions:
         query = query.where(and_(*conditions))
@@ -179,6 +193,19 @@ async def get_jobs_filtered(
         )
     else:
         query = query.order_by(Job.created_at.desc())
+
+    if search_text:
+        # Relevance-ranking must happen before pagination: fetch the whole
+        # filtered set, rank by how many query words match, then slice.
+        result = await db.execute(query)
+        jobs = list(result.scalars().all())
+        tokens = tokenize_query(search_text)
+        if tokens:
+            jobs.sort(
+                key=lambda j: relevance_score(tokens, j.title, j.description),
+                reverse=True,
+            )
+        return jobs[offset:offset + limit]
 
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)

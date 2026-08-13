@@ -85,6 +85,53 @@ async def test_job_create_list_get_cancel(client):
     assert cancelled.json()["status"] == "cancelled"
 
 
+async def test_jobs_search_filters(client):
+    """Jobs search must filter by both the `q` param (frontend) and `search`
+    (backend alias), and match words across title AND description, fuzzily.
+
+    Regression: the frontend sends ?q=... but the endpoint only read ?search=...
+    (FastAPI alias), so the search bar silently did nothing.
+    """
+    client_user = await register_user(client, role="client")
+    headers = auth_headers(client_user["token"])
+
+    def make(title: str, desc: str) -> dict:
+        return {
+            "title": title,
+            "description": desc,
+            "price": 4000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        }
+
+    a = (await client.post("/api/v1/jobs/", headers=headers, json=make(
+        f"Smoke search A {RUN_ID}", "Samsung phone screen repair"))).json()
+    b = (await client.post("/api/v1/jobs/", headers=headers, json=make(
+        f"Smoke search B {RUN_ID}", "Dog walking in the park"))).json()
+
+    # --- the actual frontend call: ?q= must filter ---
+    q = await client.get("/api/v1/jobs/", headers=headers,
+                         params={"status": "open,requested", "q": "samsung"})
+    assert q.status_code == 200, q.text
+    q_ids = [j["id"] for j in q.json()]
+    assert a["id"] in q_ids, "?q=samsung should match the Samsung job"
+    assert b["id"] not in q_ids, "?q=samsung must NOT return the dog job"
+
+    # --- legacy alias still works ---
+    legacy = await client.get("/api/v1/jobs/", headers=headers,
+                              params={"search": "dog walking"})
+    legacy_ids = [j["id"] for j in legacy.json()]
+    assert b["id"] in legacy_ids, "?search=dog walking should match the dog job"
+    assert a["id"] not in legacy_ids
+
+    # --- fuzzy: words split across title + description, out of order ---
+    fuzzy = await client.get("/api/v1/jobs/", headers=headers,
+                             params={"q": "cracked samsung"})
+    fuzzy_ids = [j["id"] for j in fuzzy.json()]
+    assert a["id"] in fuzzy_ids, "fuzzy words across title/description must match"
+    assert b["id"] not in fuzzy_ids
+
+
 async def test_service_create_and_list(client):
     provider = await register_user(client, role="provider")
     headers = auth_headers(provider["token"])
