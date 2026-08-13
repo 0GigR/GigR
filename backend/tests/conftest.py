@@ -38,8 +38,14 @@ def make_email(role: str = "user") -> str:
 
 @pytest.fixture(scope="session")
 async def db_ready() -> None:
-    """Skip the whole suite if the configured database is unreachable."""
+    """Make sure the database is reachable and initialised, then proceed.
+
+    Runs init_db() so the suite works against a *fresh* PostGIS database
+    (CI containers), not just the dev database that already has tables.
+    """
     try:
+        from app.core.database import init_db
+        await init_db()
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as exc:  # pragma: no cover - depends on env
