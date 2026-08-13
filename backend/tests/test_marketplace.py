@@ -282,6 +282,20 @@ async def test_nudge_loop(client):
     assert sum(1 for n in again_p if n["title"] == "Your application is waiting") == 1
 
 
+async def test_public_profile_vouch_count(client):
+    """The public profile endpoint carries vouches_received_count (0 for a
+    fresh user) so service cards and profiles can show vouch badges."""
+    user = await register_user(client, role="provider")
+    got = await client.get(f"/api/v1/users/{user['user_id']}")
+    assert got.status_code == 200, got.text
+    body = got.json()
+    assert "vouches_received_count" in body
+    assert body["vouches_received_count"] == 0
+    # No private fields leak through the public profile.
+    assert "email" not in body
+    assert "phone_number" not in body
+
+
 async def test_service_create_and_list(client):
     provider = await register_user(client, role="provider")
     headers = auth_headers(provider["token"])
