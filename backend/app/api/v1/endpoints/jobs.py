@@ -84,12 +84,12 @@ async def create_job_route(
 async def _notify_matching_providers(job_id: str, poster_name: str):
     """Find providers with matching services and send them a proactive notification."""
     try:
-        from ..core.database import engine
+        from ....core.database import engine
         from sqlalchemy.ext.asyncio import AsyncSession
-        from ..crud.job import get_job_by_id as _get_job
-        from ..crud.notification import create_notification
-        from ..models.service import ServiceListing
-        from ..models.user import User as _User
+        from ....crud.job import get_job_by_id as _get_job
+        from ....crud.notification import create_notification
+        from ....models.service import ServiceListing
+        from ....models.user import User as _User
         import re as _re
         
 
