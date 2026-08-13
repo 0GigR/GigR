@@ -1,10 +1,14 @@
 from uuid import UUID
+from datetime import datetime, timezone
 from typing import List
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
 from ..models.service import ServiceListing
 from ..schemas.service import ServiceCreate, ServiceUpdate
+
+# Vouched providers are treated as this many km closer in nearby rankings.
+SERVICE_VOUCH_DISTANCE_BOOST_KM = 3.0
 
 async def get_service_by_id(db: AsyncSession, service_id: UUID) -> ServiceListing | None:
     result = await db.execute(select(ServiceListing).where(ServiceListing.id == service_id))
@@ -28,31 +32,49 @@ async def get_services_nearby(
     limit: int = 20,
     offset: int = 0
 ) -> List[ServiceListing]:
-    # Distance calculation in meters using PostGIS
+    """Nearby services, ranked for the marketplace browse list.
+
+    Distance is the primary signal (as before), but a provider with at least
+    one verifiable vouch gets a distance boost — treated as if they were
+    ``SERVICE_VOUCH_DISTANCE_BOOST_KM`` closer — so verified pros surface
+    above unvouched ones at similar range. Listings tie-break by recency.
+    """
+    from ..models.vouch import Vouch
+
+    # Distance in meters using PostGIS
     point = f"SRID=4326;POINT({longitude} {latitude})"
-    # distance_col = geo_func.ST_DistanceSphere(ServiceListing.location, point).label("distance")
     distance_col = geo_func.ST_Distance(
         ServiceListing.location,
         func.ST_GeogFromText(point)
     ).label("distance")
 
-    query = select(ServiceListing, distance_col).where(
-        # geo_func.ST_DWithin(
-        #     ServiceListing.location, point, radius_km * 1000  # convert km to meters
-        # )
+    vouch_counts = (
+        select(Vouch.vouchee_id, func.count(Vouch.id).label("cnt"))
+        .group_by(Vouch.vouchee_id)
+        .subquery()
+    )
+
+    query = select(ServiceListing, distance_col, vouch_counts.c.cnt).where(
         geo_func.ST_DWithin(
             ServiceListing.location,
             func.ST_GeogFromText(point),
             radius_km * 1000
         )
     )
+    query = query.outerjoin(vouch_counts, vouch_counts.c.vouchee_id == ServiceListing.provider_id)
 
     if category_id:
         query = query.where(ServiceListing.category_id == category_id)
 
-    query = query.order_by(distance_col).limit(limit).offset(offset)
-    result = await db.execute(query)
-    return [row[0] for row in result.all()]
+    rows = (await db.execute(query)).all()
+    ranked = []
+    for svc, dist_m, vouch_count in rows:
+        dist_km = (dist_m or 0) / 1000
+        effective_km = dist_km + (SERVICE_VOUCH_DISTANCE_BOOST_KM if (vouch_count or 0) == 0 else 0)
+        created = svc.created_at.replace(tzinfo=timezone.utc) if svc.created_at and svc.created_at.tzinfo is None else svc.created_at
+        ranked.append((effective_km, created, svc))
+    ranked.sort(key=lambda t: (t[0], -(t[1].timestamp() if t[1] else 0)))
+    return [svc for _, _, svc in ranked][offset:offset + limit]
 
 async def create_service(db: AsyncSession, provider_id: UUID, service_in: ServiceCreate) -> ServiceListing:
     service = ServiceListing(

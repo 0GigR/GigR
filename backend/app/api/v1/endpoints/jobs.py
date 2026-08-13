@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from typing import Optional
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
 from ....crud.job import (
@@ -308,6 +309,7 @@ async def get_job_route(
     job = await get_job_by_id(db, job_id)
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    await _attach_application_counts(db, [job])
     return job
 
 
@@ -352,7 +354,27 @@ async def list_jobs(
         limit=limit,
         offset=offset,
     )
+    # The hotness path already attached counts; fill them in for the others
+    # (search, geo, "my") so the client always gets the applicant badge.
+    if any(getattr(j, "applications_count", None) is None for j in result):
+        await _attach_application_counts(db, result)
     return result
+
+
+async def _attach_application_counts(db: AsyncSession, jobs: list) -> None:
+    """Set ``applications_count`` on each job in one aggregate query."""
+    from sqlalchemy import func as _func
+    from ....models.application import Application
+    if not jobs:
+        return
+    rows = (await db.execute(
+        select(Application.job_id, _func.count(Application.id))
+        .where(Application.job_id.in_([j.id for j in jobs]))
+        .group_by(Application.job_id)
+    )).all()
+    counts = dict(rows)
+    for j in jobs:
+        j.applications_count = counts.get(j.id, 0)
 
 
 @router.post("/{job_id}/assign", response_model=JobOut)

@@ -33,6 +33,9 @@ class JobOut(BaseModel):
     image_url: Optional[str] = None
     work_submitted_at: Optional[datetime] = None
     auto_release_at: Optional[datetime] = None
+    # Engagement signal (set by list/detail endpoints): how many providers
+    # applied. Drives the marketplace ranking and the card's applicant badge.
+    applications_count: Optional[int] = None
 
     class Config:
         from_attributes = True
