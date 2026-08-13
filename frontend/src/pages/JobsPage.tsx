@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -17,7 +19,8 @@ import { NeighborhoodMap } from '@/components/NeighborhoodMap'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
-  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search
+  ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search,
+  Flame, Clock
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -140,6 +143,22 @@ export default function JobsPage() {
 
   // Detail modal
   const [detailJob, setDetailJob] = useState<Job | null>(null)
+
+  // Deep link: /dashboard/jobs?jobId=X (e.g. from a notification) opens that
+  // job's detail modal directly, then cleans the query param.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const jobId = searchParams.get('jobId')
+    if (!jobId) return
+    api.get(`/jobs/${jobId}`)
+      .then(({ data }) => setDetailJob(data as Job))
+      .catch(() => {})
+      .finally(() => {
+        searchParams.delete('jobId')
+        setSearchParams(searchParams, { replace: true })
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Confirmation dialogs
   const [confirmAction, setConfirmAction] = useState<{ type: string; jobId: string; title: string } | null>(null)
@@ -1080,13 +1099,12 @@ function JobCard({
   }
 
   const { data: poster } = useUserInfo(job.client_id)
-  const { data: appCount } = useQuery<number>({
-    queryKey: ['applicationCount', job.id],
-    queryFn: async () => {
-      const { data } = await api.get(`/applications/job/${job.id}/count`)
-      return data.count as number
-    },
-  })
+  // Applicant count comes from the list endpoint (applications_count) — avoids
+  // a per-card request for every job on the page.
+  const appCount = job.applications_count ?? undefined
+  // "Hot" = engaged AND fresh (3+ applicants within the last 3 days).
+  const isHot = appCount !== undefined && appCount >= 3
+    && (Date.now() - new Date(job.created_at).getTime()) < 3 * 24 * 3600 * 1000
   const { data: applicants, isLoading: appsLoading } = useQuery<Application[]>({
     queryKey: ['applicants', job.id],
     queryFn: async () => {
@@ -1144,6 +1162,11 @@ function JobCard({
         </div>
         {/* Indicators */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {isHot && (
+            <span className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+              <Flame className="w-3 h-3" /> Hot
+            </span>
+          )}
           {appCount !== undefined && (
             <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
               <UserPlus className="w-3 h-3" /> {appCount} application{appCount !== 1 ? 's' : ''}
@@ -1154,6 +1177,9 @@ function JobCard({
               <CheckCircle className="w-3 h-3" /> You applied
             </span>
           )}
+          <span className="inline-flex items-center gap-1 text-xs text-gray-400 px-1">
+            <Clock className="w-3 h-3" /> {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+          </span>
         </div>
       </CardContent>
       <CardFooter className="pt-4 flex gap-2 flex-wrap">
