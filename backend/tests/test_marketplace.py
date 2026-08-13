@@ -228,6 +228,60 @@ async def test_jobs_category_filter(client):
     assert untagged["id"] not in ids, "job without category must be excluded"
 
 
+async def test_nudge_loop(client):
+    """Unanswered applications trigger one follow-up nudge to each side:
+    the client (providers are waiting) and the applicant (no reply yet)."""
+    from sqlalchemy import text
+    from app.services.nudge_loop import run_nudges
+    from app.core.database import async_session as _async_session
+
+    client_user = await register_user(client, role="client")
+    provider_user = await register_user(client, role="provider")
+    ch = auth_headers(client_user["token"])
+    ph = auth_headers(provider_user["token"])
+
+    job = (await client.post("/api/v1/jobs/", headers=ch, json={
+        "title": f"Nudge job {RUN_ID}",
+        "description": "Nudge smoke job",
+        "price": 7000,
+        "latitude": 6.5244,
+        "longitude": 3.3792,
+    })).json()
+
+    applied = await client.post(
+        "/api/v1/applications/",
+        headers=ph,
+        json={"job_id": job["id"], "message": "I can do this"},
+    )
+    assert applied.status_code == 201, applied.text
+
+    # Backdate the application past NUDGE_AFTER_HOURS (default 12h) so the
+    # nudge qualifies without touching env config.
+    async with _async_session() as db:
+        await db.execute(
+            text("UPDATE applications SET created_at = now() - interval '2 days' WHERE job_id = :jid"),
+            {"jid": job["id"]},
+        )
+        await db.commit()
+
+    await run_nudges()
+
+    client_notifs = (await client.get("/api/v1/notifications/", headers=ch)).json()
+    client_titles = [n["title"] for n in client_notifs]
+    assert "Providers are waiting" in client_titles
+
+    provider_notifs = (await client.get("/api/v1/notifications/", headers=ph)).json()
+    provider_titles = [n["title"] for n in provider_notifs]
+    assert "Your application is waiting" in provider_titles
+
+    # Dedupe: a second scan must not re-send the same nudges.
+    await run_nudges()
+    again = (await client.get("/api/v1/notifications/", headers=ch)).json()
+    assert sum(1 for n in again if n["title"] == "Providers are waiting") == 1
+    again_p = (await client.get("/api/v1/notifications/", headers=ph)).json()
+    assert sum(1 for n in again_p if n["title"] == "Your application is waiting") == 1
+
+
 async def test_service_create_and_list(client):
     provider = await register_user(client, role="provider")
     headers = auth_headers(provider["token"])

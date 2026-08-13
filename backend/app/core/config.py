@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = Field(default="", env="VAPID_PRIVATE_KEY")
     VAPID_CLAIM_EMAIL: str = Field(default="", env="VAPID_CLAIM_EMAIL")
 
+    # ── Follow-up nudges (unanswered applications) ─────────────────────────────
+    # Background loop reminds clients that providers are waiting and reminds
+    # applicants their application hasn't been replied to.
+    NUDGE_ENABLED: bool = Field(default=True, env="NUDGE_ENABLED")
+    NUDGE_INTERVAL_SECONDS: int = Field(default=1800, env="NUDGE_INTERVAL_SECONDS")
+    # Fire only after an application has sat this long with no client reply.
+    NUDGE_AFTER_HOURS: int = Field(default=12, env="NUDGE_AFTER_HOURS")
+    # Don't re-send the same nudge for this long (per user + job).
+    NUDGE_COOLDOWN_HOURS: int = Field(default=72, env="NUDGE_COOLDOWN_HOURS")
+
     # ── Groq (free LLM + Whisper) ─────────────────────────────────────────────
     # Get a free key at https://console.groq.com (no credit card required)
     # Leave blank to use the built-in rule-based NLP fallback instead.
