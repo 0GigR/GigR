@@ -13,12 +13,14 @@ class JobCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     image_url: Optional[str] = None
+    category_id: Optional[UUID] = None
 
 class JobOut(BaseModel):
     id: UUID
     client_id: UUID
     provider_id: Optional[UUID] = None
     service_listing_id: Optional[UUID] = None
+    category_id: Optional[UUID] = None
     title: str
     description: str
     status: str

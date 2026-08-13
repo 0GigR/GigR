@@ -1210,6 +1210,8 @@ export interface components {
             longitude?: number | null;
             /** Image Url */
             image_url?: string | null;
+            /** Category Id */
+            category_id?: string | null;
         };
         /** JobOut */
         JobOut: {
@@ -1227,6 +1229,8 @@ export interface components {
             provider_id?: string | null;
             /** Service Listing Id */
             service_listing_id?: string | null;
+            /** Category Id */
+            category_id?: string | null;
             /** Title */
             title: string;
             /** Description */

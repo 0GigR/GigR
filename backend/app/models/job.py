@@ -14,6 +14,9 @@ class Job(Base):
     client_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     provider_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     service_listing_id = Column(UUID(as_uuid=True), ForeignKey("service_listings.id"), nullable=True)
+    # Category for directly-posted jobs (service-request jobs can also carry it,
+    # inherited from the requested listing). Used by the jobs browse filter.
+    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=False)
     status = Column(String(50), nullable=False, default="open")

@@ -184,6 +184,7 @@ async def request_service(
         price=service.price,
         status="requested",
         service_listing_id=service.id,
+        category_id=service.category_id,
         contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
     )
     db.add(job)

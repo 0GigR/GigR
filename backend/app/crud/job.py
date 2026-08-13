@@ -85,6 +85,7 @@ async def create_job(db: AsyncSession, client_id: UUID, job_in: JobCreate) -> Jo
         min_price=job_in.min_price,
         max_price=job_in.max_price,
         image_url=job_in.image_url,
+        category_id=job_in.category_id,
         status="open",
         contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
     )
@@ -163,8 +164,13 @@ async def get_jobs_filtered(
         statuses = [s.strip() for s in status.split(",")]
         conditions.append(Job.status.in_(statuses))
     if category_id:
-        query = query.join(ServiceListing, Job.service_listing_id == ServiceListing.id)
-        conditions.append(ServiceListing.category_id == category_id)
+        # Match both directly-posted jobs (own category_id) and service-request
+        # jobs (category inherited via the requested listing) without forcing a
+        # join that would drop direct posts.
+        conditions.append(or_(
+            Job.category_id == category_id,
+            Job.service_listing.has(ServiceListing.category_id == category_id),
+        ))
     if min_price is not None:
         conditions.append(Job.price >= min_price)
     if max_price is not None:
