@@ -1,21 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
-import OnboardingOverlay from '@/components/OnboardingOverlay'
 import { useThemeStore } from '@/store/themeStore'
 import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
-import VoiceAssistant from '@/components/VoiceAssistant'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
-import AgentActivityPanel from '@/components/agent/AgentActivityPanel'
-import CallReminderPrompt from '@/components/agent/CallReminderPrompt'
-import GlobalItemModal from '@/components/GlobalItemModal'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
+
+// Heavy/framer-motion widgets are lazy-loaded so they don't ship in the initial
+// bundle (the dashboard shell must stay light for fast first paint after login).
+const VoiceAssistant = lazy(() => import('@/components/VoiceAssistant'))
+const OnboardingOverlay = lazy(() => import('@/components/OnboardingOverlay'))
+const AgentActivityPanel = lazy(() => import('@/components/agent/AgentActivityPanel'))
+const CallReminderPrompt = lazy(() => import('@/components/agent/CallReminderPrompt'))
+const GlobalItemModal = lazy(() => import('@/components/GlobalItemModal'))
 import {
   LayoutDashboard,
   Briefcase,
@@ -136,11 +138,13 @@ export default function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
-      {aiEnabled && <VoiceAssistant />}
-      {aiEnabled && <AgentActivityPanel />}
-      {aiEnabled && <CallReminderPrompt />}
-      <OnboardingOverlay />
-      <GlobalItemModal />
+      <Suspense fallback={null}>
+        {aiEnabled && <VoiceAssistant />}
+        {aiEnabled && <AgentActivityPanel />}
+        {aiEnabled && <CallReminderPrompt />}
+        <OnboardingOverlay />
+        <GlobalItemModal />
+      </Suspense>
       {/* Top Bar */}
       <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
@@ -211,17 +215,11 @@ export default function DashboardLayout() {
       {/* pb-24 on mobile keeps page content clear of the fixed bottom nav;
           md:pb-6 restores normal padding on desktop where the nav is hidden */}
       <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72 relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={location.pathname}
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            transition={{ duration: 0.3, ease: 'easeInOut' }}
-          >
-            <Outlet />
-          </motion.div>
-        </AnimatePresence>
+        {/* Route transition — CSS-based (tw-animate-css) instead of framer-motion
+            so the shell doesn't pull framer-motion into the initial bundle. */}
+        <div key={location.pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <Outlet />
+        </div>
       </main>
 
       {/* Bottom Navigation (mobile) */}
