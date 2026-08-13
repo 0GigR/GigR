@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from .api.v1.endpoints import auth, users, services, jobs, applications, vouches, disputes, messages, categories, location, ai, notifications, push
 from .core.database import init_db, engine, Base
+from .core.config import settings
 
 
 app = FastAPI(title="Gigr API", version="1.0.0")
@@ -65,10 +66,13 @@ async def on_startup():
     from .api.v1.endpoints.ai import agent_loop
 
     await init_db()
-    try:
-        await _dedup_duplicate_jobs()
-    except Exception as e:  # never block startup on cleanup
-        logger.warning("[dedup] skipped: %s", e)
+    if settings.RUN_STARTUP_CLEANUP:
+        try:
+            await _dedup_duplicate_jobs()
+        except Exception as e:  # never block startup on cleanup
+            logger.warning("[dedup] skipped: %s", e)
+    else:
+        logger.info("[dedup] Skipping duplicate-job cleanup (RUN_STARTUP_CLEANUP not enabled).")
 
     # Background scanner that auto-releases escrow after the client review window.
     asyncio.create_task(auto_release_loop())

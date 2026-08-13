@@ -140,8 +140,12 @@ async def init_db() -> None:
         await conn.run_sync(add_missing_columns)
 
         # ---- One-time cleanup: remove duplicate applications / service requests ----
-        # If the same user applies to the same job (or requests the same service)
-        # multiple times within 60 seconds, keep only the earliest record.
+        # Heuristic (DISTINCT ON title/price/description) — can delete legitimate
+        # records, so it only runs when RUN_STARTUP_CLEANUP=true (default OFF).
+        if not settings.RUN_STARTUP_CLEANUP:
+            logger.info("[init_db] Skipping duplicate cleanup (RUN_STARTUP_CLEANUP not enabled).")
+            return
+
         try:
             # ===================================================================
             # GLOBAL DUPLICATE CLEANUP (omnipotent version)

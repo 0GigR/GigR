@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Defaults to 1 hour. Lower it (e.g. 120) to demo the scanner on devnet.
     AUTO_RELEASE_SECONDS: int = Field(default=3600, env="AUTO_RELEASE_SECONDS")
 
+    # Startup duplicate-cleanup is heuristic (DISTINCT ON title/price/description)
+    # and can DELETE legitimate records — opt-in, OFF by default.
+    RUN_STARTUP_CLEANUP: bool = Field(default=False, env="RUN_STARTUP_CLEANUP")
+
     # ── AI Agent ──────────────────────────────────────────────────────────────
     # Master switch — set to false to disable background agent task runner
     AI_AGENT_ENABLED: bool = Field(default=True, env="AI_AGENT_ENABLED")
