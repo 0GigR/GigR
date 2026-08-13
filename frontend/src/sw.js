@@ -1,4 +1,4 @@
-// sw.js — Gigr Service Worker v3 (force-update + cache clear)
+// sw.js — Gigr Service Worker v4 (force-update + cache clear + rich push)
 
 // ── Immediate activation on install ──────────────────────
 self.addEventListener('install', () => {
@@ -27,6 +27,10 @@ self.addEventListener('message', (event) => {
   }
 })
 
+// Resolve app-relative asset paths against the SW origin so
+// icons/badges work on every platform (Android, iOS, desktop).
+const resolveAsset = (path) => new URL(path || '/icon.png', self.location.origin).href
+
 // ── Push notifications ───────────────────────────────────
 self.addEventListener('push', (event) => {
   if (!event.data) return
@@ -38,13 +42,32 @@ self.addEventListener('push', (event) => {
     data = { title: 'New Notification', body: event.data.text() }
   }
 
+  const type = data.type || 'system'
+  const vibrate = Array.isArray(data.vibrate) ? data.vibrate : [100, 50, 100]
+
   const options = {
     body: data.body || 'You have a new update.',
-    icon: '/favicon.svg',
-    badge: '/favicon.svg',
+    icon: resolveAsset(data.icon),
+    badge: resolveAsset(data.badge),
+    vibrate,
+    timestamp: data.timestamp || Date.now(),
+    renotify: !!data.renotify,
     data: {
-      url: data.url || '/'
-    }
+      url: data.url || '/',
+      type,
+    },
+  }
+
+  // tag ⇒ new notifications of the same tag replace the old one
+  // (one toast per chat instead of a stack), with renotify so it still alerts.
+  if (data.tag) options.tag = data.tag
+
+  // Sticky notifications for things that need a decision (hired, funded, work submitted).
+  if (data.requireInteraction) options.requireInteraction = true
+
+  // Action buttons (rendered on Android/desktop; ignored elsewhere).
+  if (Array.isArray(data.actions) && data.actions.length) {
+    options.actions = data.actions.slice(0, 2)
   }
 
   event.waitUntil(
@@ -55,7 +78,12 @@ self.addEventListener('push', (event) => {
 // ── Notification click handler ───────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const urlToOpen = new URL(event.notification.data.url, self.location.origin).href
+
+  // Action buttons route the same place the main body does (Open chat, etc.).
+  const urlToOpen = new URL(
+    (event.notification.data && event.notification.data.url) || '/',
+    self.location.origin
+  ).href
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {

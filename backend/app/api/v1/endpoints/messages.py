@@ -118,7 +118,9 @@ async def send_message(
             user_id=recipient_id,
             title=f"New message from {sender_name}",
             message=msg.content[:100] + ("..." if len(msg.content) > 100 else ""),
-            link=f"/dashboard/messages?jobId={job.id}"
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="message",
+            tag=f"chat:{job.id}",
         )
     await db.commit()
 

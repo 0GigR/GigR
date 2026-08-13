@@ -140,6 +140,7 @@ async def _notify_matching_providers(job_id: str, poster_name: str):
                         title="New job matching your services",
                         message=f'{poster_name} posted a job: "{job.title}" for ₦{float(job.price):,.0f}. You might be a great fit!',
                         link="/dashboard/jobs",
+                        type="job",
                     )
             if notified:
                 await db.commit()
@@ -205,6 +206,7 @@ async def request_service(
         title=f"New request from {current_user.display_name or 'Someone'}",
         message=f"Someone requested your service “{service.title}”.",
         link=f"/dashboard/messages?jobId={job.id}",
+        type="request",
     )
     await db.commit()
 
@@ -255,7 +257,8 @@ async def accept_request(
         user_id=job.client_id,
         title="Request Accepted",
         message=f"{current_user.display_name or 'A provider'} accepted your request for \"{job.title}\". You can now fund the escrow.",
-        link=f"/dashboard/activity"
+        link=f"/dashboard/activity",
+        type="accepted",
     )
 
     # Background email
@@ -387,7 +390,8 @@ async def assign_job_route(
         user_id=assign_data.provider_id,
         title="You're Hired!",
         message=f"{current_user.display_name or 'The client'} assigned you to \"{job.title}\".",
-        link=f"/dashboard/activity"
+        link=f"/dashboard/activity",
+        type="accepted",
     )
 
     # Background emails to rejected applicants
@@ -459,6 +463,7 @@ async def fund_job_route(
             title="Escrow Funded",
             message=f'The client has funded the escrow for "{job_title}". You can begin working!',
             link="/dashboard/activity",
+            type="payment",
         )
         await db.commit()
         await db.refresh(job)
@@ -571,6 +576,7 @@ async def release_job_route(
             title="Payment Released",
             message=f'The payment for "{job_title}" has been released to your wallet.',
             link="/dashboard/activity",
+            type="payment",
         )
         await db.commit()
         await db.refresh(job)
@@ -652,7 +658,8 @@ async def submit_work_route(
         user_id=job.client_id,
         title="Work Submitted",
         message=f"{current_user.display_name or 'The provider'} submitted work for \"{job.title}\". Please review it.",
-        link=f"/dashboard/activity"
+        link=f"/dashboard/activity",
+        type="work",
     )
 
     # from ....services.brevo_client import send_email
@@ -693,7 +700,8 @@ async def cancel_job_route(
                 user_id=other_party_id,
                 title="Job Cancelled",
                 message=f"\"{job.title}\" was cancelled by {current_user.display_name or 'the other party'}.",
-                link=f"/dashboard/activity"
+                link=f"/dashboard/activity",
+                type="cancelled",
             )
 
         await db.commit()

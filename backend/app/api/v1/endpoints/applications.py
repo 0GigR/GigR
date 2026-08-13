@@ -60,6 +60,7 @@ async def apply(
             message=(msg[:100] + ("..." if len(msg) > 100 else "")) if msg
                     else f"Someone applied to “{job.title}”.",
             link=f"/dashboard/messages?jobId={job.id}",
+            type="application",
         )
         await db.commit()
 

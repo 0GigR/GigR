@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react'
-import { Bell, CheckCircle2, BellOff, Loader2, Smartphone } from 'lucide-react'
+import {
+  Bell, CheckCircle2, BellOff, Loader2, Smartphone,
+  MessageSquare, Briefcase, UserPlus, Wallet, ClipboardCheck,
+  XCircle, Bot,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
-import { subscribeToPushNotifications } from '@/lib/push'
+import { subscribeToPushNotifications, syncPushSubscription } from '@/lib/push'
 import { toast } from 'sonner'
 
 import { formatDistanceToNow } from 'date-fns'
@@ -17,6 +22,26 @@ export interface Notification {
   link?: string
   is_read: boolean
   created_at: string
+  type?: string
+}
+
+// Per-type presentation: which icon and color each kind of notification gets
+// in the bell. Unknown types fall back to the system (bell) style.
+const TYPE_META: Record<string, { icon: LucideIcon; color: string; label: string }> = {
+  message:     { icon: MessageSquare,  color: 'text-blue-600 dark:text-blue-400',     label: 'Message' },
+  job:         { icon: Briefcase,      color: 'text-violet-600 dark:text-violet-400', label: 'Job' },
+  request:     { icon: UserPlus,       color: 'text-indigo-600 dark:text-indigo-400', label: 'Request' },
+  application: { icon: UserPlus,       color: 'text-indigo-600 dark:text-indigo-400', label: 'Application' },
+  accepted:    { icon: CheckCircle2,   color: 'text-emerald-600 dark:text-emerald-400', label: 'Accepted' },
+  payment:     { icon: Wallet,         color: 'text-green-600 dark:text-green-400',   label: 'Payment' },
+  work:        { icon: ClipboardCheck, color: 'text-amber-600 dark:text-amber-400',   label: 'Work' },
+  cancelled:   { icon: XCircle,        color: 'text-red-500 dark:text-red-400',       label: 'Cancelled' },
+  agent:       { icon: Bot,            color: 'text-cyan-600 dark:text-cyan-400',     label: 'Agent' },
+  system:      { icon: Bell,           color: 'text-gray-500 dark:text-gray-400',     label: 'System' },
+}
+
+function getTypeMeta(type?: string) {
+  return TYPE_META[type || 'system'] || TYPE_META.system
 }
 
 function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios-browser' {
@@ -39,6 +64,20 @@ export default function NotificationBell() {
   useEffect(() => {
     setPushState(getPushState())
   }, [open])
+
+  // Silent heal: if push is already granted, re-sync the subscription on load
+  // so a backend-side expiry (410) or cleared site data doesn't silently kill
+  // notifications until the user manually re-enables them.
+  useEffect(() => {
+    if (!user) return
+    if (getPushState() !== 'granted') return
+    let cancelled = false
+    syncPushSubscription().then((ok) => {
+      if (!cancelled && ok) setPushState('granted')
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   // Polling notifications every 15s
   const { data: notifications = [] } = useQuery<Notification[]>({
@@ -204,31 +243,40 @@ export default function NotificationBell() {
                 </div>
               ) : (
                 <div className="flex flex-col divide-y divide-gray-50 dark:divide-gray-800/50">
-                  {notifications.map(n => (
-                    <div
-                      key={n.id}
-                      className={`p-4 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-900/50 ${
-                        n.is_read ? 'bg-transparent opacity-80' : 'bg-blue-50/50 dark:bg-blue-900/10'
-                      }`}
-                    >
-                      <Link
-                        to={n.link || '#'}
-                        onClick={() => setOpen(false)}
-                        className="block"
+                  {notifications.map(n => {
+                    const meta = getTypeMeta(n.type)
+                    const TypeIcon = meta.icon
+                    return (
+                      <div
+                        key={n.id}
+                        className={`p-4 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-900/50 ${
+                          n.is_read ? 'bg-transparent opacity-80' : 'bg-blue-50/50 dark:bg-blue-900/10'
+                        }`}
                       >
-                        <p className="font-semibold mb-1 flex items-center gap-2">
-                          {n.title}
-                          {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-600" />}
-                        </p>
-                        <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
-                          {n.message}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-2 font-medium">
-                          {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                        </p>
-                      </Link>
-                    </div>
-                  ))}
+                        <Link
+                          to={n.link || '#'}
+                          onClick={() => setOpen(false)}
+                          className="block"
+                        >
+                          <p className="font-semibold mb-1 flex items-start gap-2">
+                            <span className={`mt-0.5 shrink-0 ${meta.color}`} title={meta.label}>
+                              <TypeIcon className="w-4 h-4" />
+                            </span>
+                            <span className="flex items-center gap-2">
+                              {n.title}
+                              {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
+                            </span>
+                          </p>
+                          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed pl-6">
+                            {n.message}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-2 font-medium pl-6">
+                            {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                          </p>
+                        </Link>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>

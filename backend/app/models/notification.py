@@ -12,6 +12,10 @@ class Notification(Base):
     title = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
     link = Column(String(500), nullable=True)
+    # Category of notification: message | job | request | application | accepted |
+    # payment | work | cancelled | agent | system. Drives the bell's icon/color and
+    # the web-push presentation (grouping, priority, action buttons).
+    type = Column(String(32), nullable=False, default="system", index=True)
     is_read = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -7,6 +7,7 @@ class NotificationBase(BaseModel):
     title: str
     message: str
     link: Optional[str] = None
+    type: str = "system"
 
 class NotificationCreate(NotificationBase):
     user_id: UUID

@@ -5,6 +5,7 @@ from typing import List
 import json
 import asyncio
 import logging
+import time
 from pywebpush import webpush, WebPushException
 
 logger = logging.getLogger(__name__)
@@ -22,30 +23,49 @@ async def get_user_notifications(db: AsyncSession, user_id: UUID, limit: int = 5
     )
     return result.scalars().all()
 
+# Per-type web-push presentation: icon/badge are app PNGs (resolved by the
+# service worker), and the rest tweak grouping, priority and actions.
+TYPE_PUSH_OPTIONS: dict[str, dict] = {
+    "message": {
+        "renotify": True,          # replace the previous message toast but still alert
+        "actions": [{"action": "open", "title": "Open chat"}],
+    },
+    "accepted": {"requireInteraction": True},  # "You're hired" — don't auto-dismiss
+    "payment": {"requireInteraction": True},   # escrow funded / payment released
+    "work": {"requireInteraction": True},      # work submitted, needs review
+    "cancelled": {"vibrate": [200, 80, 200]},
+}
+
+# Types that should group/coalesce per conversation instead of stacking.
+TAGGED_TYPES = {"message"}
+
 async def create_notification(
     db: AsyncSession,
     user_id: UUID,
     title: str,
     message: str,
-    link: str | None = None
+    link: str | None = None,
+    type: str = "system",
+    tag: str | None = None
 ) -> Notification:
     notif = Notification(
         user_id=user_id,
         title=title,
         message=message,
-        link=link
+        link=link,
+        type=type
     )
     db.add(notif)
     
     # Fire off web push in the background (uses its own DB session — the request
     # session is closed by the time the background task runs)
     if settings.VAPID_PRIVATE_KEY and settings.VAPID_CLAIM_EMAIL:
-        asyncio.create_task(_send_web_push(user_id, title, message, link))
+        asyncio.create_task(_send_web_push(user_id, title, message, link, type, tag))
         
     # Don't flush here, let the caller commit it along with the action
     return notif
 
-async def _send_web_push(user_id: UUID, title: str, message: str, link: str | None):
+async def _send_web_push(user_id: UUID, title: str, message: str, link: str | None, type: str = "system", tag: str | None = None):
     """Send web pushes using a fresh DB session.
 
     This runs as a background task, after the request that created the
@@ -63,11 +83,26 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
             if not subs:
                 return
 
-            payload = json.dumps({
+            opts = TYPE_PUSH_OPTIONS.get(type, {})
+            push_tag = tag
+            if push_tag is None and type in TAGGED_TYPES:
+                push_tag = "chat"  # safety net — message pushes should always group
+
+            payload = {
                 "title": title,
                 "body": message,
-                "url": link or "/"
-            })
+                "url": link or "/",
+                "type": type,
+                "icon": "/icon.png",
+                "badge": "/icon.png",
+                "vibrate": [100, 50, 100],
+                "timestamp": int(time.time() * 1000),
+            }
+            payload.update(opts)
+            if push_tag:
+                payload["tag"] = push_tag
+
+            payload_json = json.dumps(payload)
 
             for sub in subs:
                 sub_info = {
@@ -79,7 +114,7 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
                     await asyncio.to_thread(
                         webpush,
                         subscription_info=sub_info,
-                        data=payload,
+                        data=payload_json,
                         vapid_private_key=settings.VAPID_PRIVATE_KEY,
                         vapid_claims={"sub": settings.VAPID_CLAIM_EMAIL}
                     )
