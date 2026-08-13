@@ -56,6 +56,8 @@ class PublicUserOut(BaseModel):
     # Computed from ratings table — injected by the endpoint, not from the model
     avg_rating: Optional[float] = None
     rating_count: Optional[int] = None
+    # Computed — number of verified vouches this user has received
+    vouches_received_count: Optional[int] = None
 
     class Config:
         from_attributes = True

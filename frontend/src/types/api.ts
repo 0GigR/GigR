@@ -1517,6 +1517,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Vouches Received Count */
+            vouches_received_count?: number | null;
         };
         /** UserUpdate */
         UserUpdate: {

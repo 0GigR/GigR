@@ -16,7 +16,7 @@ import { useAuthStore } from '@/store/authStore'
 import UserChip from '@/components/UserChip'
 import { Link } from 'react-router-dom'
 import {
-  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2
+  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { NeighborhoodMap } from '@/components/NeighborhoodMap'
@@ -84,13 +84,19 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
     <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
         {provider && !isOwner && (
-          <div className="mb-3 w-fit">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <UserChip
               userId={service.provider_id}
               name={provider.display_name}
               avatarUrl={provider.profile_image_url}
               lastSeenAt={(provider as any)?.last_seen_at}
             />
+            {!!(provider as any)?.vouches_received_count && (provider as any).vouches_received_count > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+                <BadgeCheck className="w-3 h-3" />
+                {(provider as any).vouches_received_count} vouch{(provider as any).vouches_received_count !== 1 ? 'es' : ''}
+              </span>
+            )}
           </div>
         )}
         {service.image_url && (

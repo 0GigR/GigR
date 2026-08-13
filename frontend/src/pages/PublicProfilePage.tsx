@@ -7,7 +7,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { Star, Briefcase, Calendar, ArrowLeft, MapPin, Navigation } from 'lucide-react'
+import { Star, Briefcase, Calendar, ArrowLeft, MapPin, Navigation, BadgeCheck } from 'lucide-react'
 import OnlineIndicator from '@/components/OnlineIndicator'
 import type { components } from '@/types/api'
 
@@ -28,6 +28,7 @@ interface PublicUser {
   skills?: string[] | null
   avg_rating?: number | null
   rating_count?: number | null
+  vouches_received_count?: number | null
 }
 
 interface RatingOut {
@@ -132,6 +133,12 @@ export default function PublicProfilePage() {
                 <h1 className="text-2xl font-bold truncate">{profile.display_name}</h1>
                 {profile.is_verified && (
                   <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-xs">Verified</Badge>
+                )}
+                {!!profile.vouches_received_count && profile.vouches_received_count > 0 && (
+                  <Badge className="bg-green-50 text-green-700 border-green-200 text-xs">
+                    <BadgeCheck className="w-3 h-3 mr-1" />
+                    {profile.vouches_received_count} vouch{profile.vouches_received_count !== 1 ? 'es' : ''}
+                  </Badge>
                 )}
                 {profile.role === 'admin' || profile.role === 'superadmin' ? (
                   <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">Admin</Badge>
