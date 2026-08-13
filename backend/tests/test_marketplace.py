@@ -1,0 +1,266 @@
+"""Smoke tests: categories, jobs, services, applications, messages, notifications.
+
+These exercise the read + create flows against the real app. Solana-backed
+flows (fund/release/vouch minting) are intentionally NOT covered here — they
+need a funded devnet wallet — but the pre-funding lifecycle (create → apply →
+assign → cancel) is fully covered off-chain.
+"""
+
+from conftest import RUN_ID, auth_headers, register_user
+
+
+async def _make_category(client, name: str) -> dict:
+    resp = await client.post(
+        "/api/v1/categories/", json={"name": name}
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+async def test_categories_list_and_create(client):
+    # List (public).
+    resp = await client.get("/api/v1/categories/")
+    assert resp.status_code == 200
+    assert isinstance(resp.json(), list)
+
+    # Create.
+    cat = await _make_category(client, f"smoke-{RUN_ID}-plumbing")
+    assert cat["name"] == f"smoke-{RUN_ID}-plumbing"
+    assert "id" in cat
+
+    # Duplicate -> 409.
+    dup = await client.post(
+        "/api/v1/categories/", json={"name": f"smoke-{RUN_ID}-plumbing"}
+    )
+    assert dup.status_code == 409, dup.text
+
+    # The new category shows up in the list.
+    listed = await client.get("/api/v1/categories/")
+    names = [c["name"] for c in listed.json()]
+    assert f"smoke-{RUN_ID}-plumbing" in names
+
+
+async def test_job_create_list_get_cancel(client):
+    client_user = await register_user(client, role="client")
+    headers = auth_headers(client_user["token"])
+
+    created = await client.post(
+        "/api/v1/jobs/",
+        headers=headers,
+        json={
+            "title": f"Smoke job {RUN_ID}",
+            "description": "Fix a leaking kitchen tap",
+            "price": 5000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        },
+    )
+    assert created.status_code == 201, created.text
+    job = created.json()
+    assert job["status"] == "open"
+    assert job["title"] == f"Smoke job {RUN_ID}"
+
+    job_id = job["id"]
+
+    # Fetch single job.
+    got = await client.get(f"/api/v1/jobs/{job_id}", headers=headers)
+    assert got.status_code == 200
+    assert got.json()["id"] == job_id
+
+    # My jobs (as client) include it.
+    mine = await client.get("/api/v1/jobs/?my=client", headers=headers)
+    assert mine.status_code == 200
+    ids = [j["id"] for j in mine.json()]
+    assert job_id in ids
+
+    # Unauthenticated list is rejected.
+    anon = await client.get("/api/v1/jobs/")
+    assert anon.status_code == 401
+
+    # Pre-funding cancel (off-chain) works for either party.
+    cancelled = await client.post(
+        f"/api/v1/jobs/{job_id}/cancel", headers=headers
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+
+
+async def test_service_create_and_list(client):
+    provider = await register_user(client, role="provider")
+    headers = auth_headers(provider["token"])
+
+    cat = await _make_category(client, f"smoke-{RUN_ID}-cleaning")
+
+    created = await client.post(
+        "/api/v1/services/",
+        headers=headers,
+        json={
+            "category_id": cat["id"],
+            "title": f"Smoke cleaning service {RUN_ID}",
+            "description": "Deep home cleaning",
+            "price": 15000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+            "radius_km": 10,
+        },
+    )
+    assert created.status_code == 201, created.text
+    service = created.json()
+    assert service["title"] == f"Smoke cleaning service {RUN_ID}"
+    service_id = service["id"]
+
+    # My services.
+    mine = await client.get("/api/v1/services/", headers=headers)
+    assert mine.status_code == 200
+    ids = [s["id"] for s in mine.json()]
+    assert service_id in ids
+
+    # Nearby search (public) finds it.
+    nearby = await client.get(
+        "/api/v1/services/search/nearby",
+        params={"lat": 6.5244, "lon": 3.3792, "radius": 20},
+    )
+    assert nearby.status_code == 200
+    nearby_ids = [s["id"] for s in nearby.json()]
+    assert service_id in nearby_ids
+
+
+async def test_application_flow(client):
+    client_user = await register_user(client, role="client")
+    provider_user = await register_user(client, role="provider")
+    client_headers = auth_headers(client_user["token"])
+    provider_headers = auth_headers(provider_user["token"])
+
+    job = await client.post(
+        "/api/v1/jobs/",
+        headers=client_headers,
+        json={
+            "title": f"Smoke app job {RUN_ID}",
+            "description": "Assemble an office chair",
+            "price": 8000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        },
+    )
+    assert job.status_code == 201, job.text
+    job_id = job.json()["id"]
+
+    # Provider applies.
+    app_resp = await client.post(
+        "/api/v1/applications/",
+        headers=provider_headers,
+        json={"job_id": job_id, "message": "I can do this!", "proposed_price": 7500},
+    )
+    assert app_resp.status_code == 201, app_resp.text
+    application = app_resp.json()
+    assert application["job_id"] == job_id
+    assert application["applicant_id"] == provider_user["user_id"]
+
+    # Duplicate application -> 400.
+    dup = await client.post(
+        "/api/v1/applications/",
+        headers=provider_headers,
+        json={"job_id": job_id, "message": "again"},
+    )
+    assert dup.status_code == 400, dup.text
+
+    # Client sees the application with applicant enrichment.
+    apps = await client.get(
+        f"/api/v1/applications/job/{job_id}", headers=client_headers
+    )
+    assert apps.status_code == 200, apps.text
+    assert len(apps.json()) == 1
+    assert apps.json()[0]["applicant_id"] == provider_user["user_id"]
+
+    # Provider's "mine" endpoint lists it.
+    mine = await client.get("/api/v1/applications/mine", headers=provider_headers)
+    assert mine.status_code == 200
+    assert job_id in mine.json()["job_ids"]
+
+    # Client assigns the provider (off-chain).
+    assigned = await client.post(
+        f"/api/v1/jobs/{job_id}/assign",
+        headers=client_headers,
+        json={"provider_id": provider_user["user_id"]},
+    )
+    assert assigned.status_code == 200, assigned.text
+    assert assigned.json()["status"] == "assigned"
+    assert assigned.json()["provider_id"] == provider_user["user_id"]
+
+
+async def test_messages_flow(client):
+    client_user = await register_user(client, role="client")
+    provider_user = await register_user(client, role="provider")
+    client_headers = auth_headers(client_user["token"])
+    provider_headers = auth_headers(provider_user["token"])
+
+    job = await client.post(
+        "/api/v1/jobs/",
+        headers=client_headers,
+        json={
+            "title": f"Smoke msg job {RUN_ID}",
+            "description": "Paint a fence",
+            "price": 12000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        },
+    )
+    job_id = job.json()["id"]
+
+    # Assign so the provider becomes a participant.
+    await client.post(
+        f"/api/v1/jobs/{job_id}/assign",
+        headers=client_headers,
+        json={"provider_id": provider_user["user_id"]},
+    )
+
+    sent = await client.post(
+        "/api/v1/messages/",
+        headers=client_headers,
+        json={"job_id": job_id, "content": f"Hi! Smoke message {RUN_ID}"},
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["content"] == f"Hi! Smoke message {RUN_ID}"
+
+    # Provider can read the thread; client can too.
+    for h in (client_headers, provider_headers):
+        thread = await client.get(f"/api/v1/messages/job/{job_id}", headers=h)
+        assert thread.status_code == 200, thread.text
+        contents = [m["content"] for m in thread.json()]
+        assert f"Hi! Smoke message {RUN_ID}" in contents
+
+
+async def test_notifications_flow(client):
+    client_user = await register_user(client, role="client")
+    provider_user = await register_user(client, role="provider")
+    client_headers = auth_headers(client_user["token"])
+    provider_headers = auth_headers(provider_user["token"])
+
+    job = await client.post(
+        "/api/v1/jobs/",
+        headers=client_headers,
+        json={
+            "title": f"Smoke notif job {RUN_ID}",
+            "description": "Install a ceiling fan",
+            "price": 10000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        },
+    )
+    job_id = job.json()["id"]
+
+    # Applying creates a notification for the job poster.
+    await client.post(
+        "/api/v1/applications/",
+        headers=provider_headers,
+        json={"job_id": job_id, "message": "applying"},
+    )
+
+    notifs = await client.get("/api/v1/notifications/", headers=client_headers)
+    assert notifs.status_code == 200, notifs.text
+    assert len(notifs.json()) >= 1
+
+    # Mark all read.
+    read = await client.post("/api/v1/notifications/read-all", headers=client_headers)
+    assert read.status_code == 200
+    assert read.json()["status"] == "ok"

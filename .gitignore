@@ -52,6 +52,9 @@ Thumbs.db
 htmlcov/
 .coverage
 
+# Pytest
+.pytest_cache/
+
 gigr_platform.json
 
 prd/
