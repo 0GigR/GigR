@@ -132,6 +132,50 @@ async def test_jobs_search_filters(client):
     assert b["id"] not in fuzzy_ids
 
 
+async def test_jobs_ranked_by_hotness(client):
+    """Open jobs default to hotness ranking (freshness + demand) and every job
+    in the list carries its applications_count for the card badge."""
+    client_user = await register_user(client, role="client")
+    provider_user = await register_user(client, role="provider")
+    client_headers = auth_headers(client_user["token"])
+    provider_headers = auth_headers(provider_user["token"])
+
+    def make(title: str) -> dict:
+        return {
+            "title": title,
+            "description": "Ranking smoke job",
+            "price": 6000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        }
+
+    engaged = (await client.post("/api/v1/jobs/", headers=client_headers,
+                                 json=make(f"Hotness engaged {RUN_ID}"))).json()
+    fresh = (await client.post("/api/v1/jobs/", headers=client_headers,
+                               json=make(f"Hotness fresh {RUN_ID}"))).json()
+
+    # One application to the "engaged" job (both jobs are equally fresh, so
+    # demand is the tiebreaker that must push it above the untouched job).
+    applied = await client.post(
+        "/api/v1/applications/",
+        headers=provider_headers,
+        json={"job_id": engaged["id"], "message": "I can handle this"},
+    )
+    assert applied.status_code == 201, applied.text
+
+    lst = await client.get("/api/v1/jobs/", headers=client_headers,
+                           params={"status": "open,requested"})
+    assert lst.status_code == 200, lst.text
+    ids = [j["id"] for j in lst.json()]
+    assert engaged["id"] in ids and fresh["id"] in ids
+    assert ids.index(engaged["id"]) < ids.index(fresh["id"]), \
+        "engaged job (1 applicant) must rank above untouched fresh job"
+
+    by_id = {j["id"]: j for j in lst.json()}
+    assert by_id[engaged["id"]]["applications_count"] == 1
+    assert by_id[fresh["id"]]["applications_count"] == 0
+
+
 async def test_service_create_and_list(client):
     provider = await register_user(client, role="provider")
     headers = auth_headers(provider["token"])

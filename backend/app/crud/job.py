@@ -1,12 +1,37 @@
 from uuid import UUID
 import uuid
+import math
+from datetime import datetime, timezone
 from typing import List, Optional
-from sqlalchemy import select, update, or_
+from sqlalchemy import select, update, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
 from ..core.text_search import tokenize_query, relevance_score
 from ..models.job import Job
 from ..schemas.job import JobCreate
+
+# ── Default browse ranking: "hotness" ────────────────────────────────────────
+# Pure newest-first is a poor default: a 3-day-old job with five applicants is
+# far more interesting than a fresh one nobody has touched. Hotness blends
+# freshness (exponential decay) with demand (capped application count).
+#   hotness = 0.6 * exp(-age_hours / 72) + 0.4 * min(apps, 5) / 5
+# A job is "half as fresh" after ~2 days; demand caps at 5 applications so a
+# single early applicant doesn't dominate. Applies to the open browse list
+# only — search uses relevance, geo uses distance, "my" lists stay newest-first.
+HOTNESS_FRESHNESS_HALFLIFE_HOURS = 72
+HOTNESS_DEMAND_CAP = 5
+HOTNESS_FRESHNESS_WEIGHT = 0.6
+HOTNESS_DEMAND_WEIGHT = 0.4
+
+
+def hotness_score(job: Job, app_count: int, now: datetime | None = None) -> float:
+    now = now or datetime.now(timezone.utc)
+    if job.created_at is None:
+        return 0.0
+    age_hours = max((now - job.created_at).total_seconds() / 3600, 0)
+    freshness = math.exp(-age_hours / HOTNESS_FRESHNESS_HALFLIFE_HOURS)
+    demand = min(app_count or 0, HOTNESS_DEMAND_CAP) / HOTNESS_DEMAND_CAP
+    return HOTNESS_FRESHNESS_WEIGHT * freshness + HOTNESS_DEMAND_WEIGHT * demand
 
 async def get_job_by_id(db: AsyncSession, job_id: UUID) -> Job | None:
     result = await db.execute(select(Job).where(Job.id == job_id))
@@ -173,6 +198,28 @@ async def get_jobs_filtered(
                 Job.description.ilike(f"%{search_text}%"),
             ))
 
+    # Default browse list (no search / geo / "my" filters): rank by hotness,
+    # which needs per-job application counts before pagination.
+    use_hotness = (
+        search_text is None
+        and latitude is None
+        and client_id is None
+        and provider_id is None
+    )
+
+    if use_hotness:
+        from ..models.application import Application
+        app_counts = (
+            select(Application.job_id, func.count(Application.id).label("cnt"))
+            .group_by(Application.job_id)
+            .subquery()
+        )
+        # Select the count alongside each job (a plain outerjoin would not add
+        # the column to the result rows).
+        query = select(Job, app_counts.c.cnt).outerjoin(
+            app_counts, app_counts.c.job_id == Job.id
+        )
+
     if conditions:
         query = query.where(and_(*conditions))
 
@@ -205,6 +252,21 @@ async def get_jobs_filtered(
                 key=lambda j: relevance_score(tokens, j.title, j.description),
                 reverse=True,
             )
+        return jobs[offset:offset + limit]
+
+    if use_hotness:
+        # Fetch the whole filtered set, rank by hotness, attach the count to
+        # each job (so list endpoints can expose it), then slice for pagination.
+        rows = (await db.execute(query)).all()
+        counts = {job.id: cnt for job, cnt in rows}
+        jobs = [job for job, _ in rows]
+        now = datetime.now(timezone.utc)
+        jobs.sort(
+            key=lambda j: hotness_score(j, counts.get(j.id, 0), now),
+            reverse=True,
+        )
+        for j in jobs:
+            j.applications_count = counts.get(j.id, 0)
         return jobs[offset:offset + limit]
 
     query = query.limit(limit).offset(offset)

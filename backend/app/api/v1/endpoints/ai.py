@@ -447,7 +447,7 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
                 user_id=provider.id,
                 title="New Service Request",
                 message=f"{sender_name} has requested your service '{service.title}'.",
-                link=f"/dashboard/jobs/{job.id}",
+                link=f"/dashboard/jobs?jobId={job.id}",
                 type="request",
             )
             
