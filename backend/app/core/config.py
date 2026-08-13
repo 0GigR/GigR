@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     # Leave blank to use the built-in rule-based NLP fallback instead.
     GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
     GROQ_API_KEYS: str = Field(default="", env="GROQ_API_KEYS")
-    GROQ_MODEL: str = Field(default="llama3-8b-8192", env="GROQ_MODEL")
+    GROQ_MODEL: str = Field(default="llama-3.1-8b-instant", env="GROQ_MODEL")  # llama3-8b-8192 was decommissioned by Groq
     GROQ_WHISPER_MODEL: str = Field(default="whisper-large-v3-turbo", env="GROQ_WHISPER_MODEL")
 
     @property
