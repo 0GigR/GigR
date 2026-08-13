@@ -63,6 +63,7 @@ async def on_startup():
     import asyncio
     from .services.auto_release import auto_release_loop
     from .services.vouch_retry import retry_pending_vouches_loop
+    from .services.nudge_loop import nudge_loop
     from .api.v1.endpoints.ai import agent_loop
 
     await init_db()
@@ -82,6 +83,9 @@ async def on_startup():
 
     # Retry loop that heals vouch cNFT mints stuck on 'pending'
     asyncio.create_task(retry_pending_vouches_loop())
+
+    # Follow-up nudges: providers are waiting / your application is unanswered
+    asyncio.create_task(nudge_loop())
 
 # CORS
 # app.add_middleware(
