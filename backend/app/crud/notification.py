@@ -37,50 +37,58 @@ async def create_notification(
     )
     db.add(notif)
     
-    # Fire off web push in the background
+    # Fire off web push in the background (uses its own DB session — the request
+    # session is closed by the time the background task runs)
     if settings.VAPID_PRIVATE_KEY and settings.VAPID_CLAIM_EMAIL:
-        asyncio.create_task(_send_web_push(db, user_id, title, message, link))
+        asyncio.create_task(_send_web_push(user_id, title, message, link))
         
     # Don't flush here, let the caller commit it along with the action
     return notif
 
-async def _send_web_push(db: AsyncSession, user_id: UUID, title: str, message: str, link: str | None):
+async def _send_web_push(user_id: UUID, title: str, message: str, link: str | None):
+    """Send web pushes using a fresh DB session.
+
+    This runs as a background task, after the request that created the
+    notification has finished and closed its session — so we must not reuse
+    that request's session here.
+    """
+    from ..core.database import async_session
+
     try:
-        # We need a new session context if db is not committed yet, 
-        # or we just read subscriptions using the current one.
-        result = await db.execute(
-            select(PushSubscription).where(PushSubscription.user_id == user_id)
-        )
-        subs = result.scalars().all()
-        if not subs:
-            return
+        async with async_session() as db:
+            result = await db.execute(
+                select(PushSubscription).where(PushSubscription.user_id == user_id)
+            )
+            subs = result.scalars().all()
+            if not subs:
+                return
 
-        payload = json.dumps({
-            "title": title,
-            "body": message,
-            "url": link or "/"
-        })
+            payload = json.dumps({
+                "title": title,
+                "body": message,
+                "url": link or "/"
+            })
 
-        for sub in subs:
-            sub_info = {
-                "endpoint": sub.endpoint,
-                "keys": sub.keys
-            }
-            try:
-                # webpush is synchronous and makes HTTP requests, use to_thread to prevent blocking
-                await asyncio.to_thread(
-                    webpush,
-                    subscription_info=sub_info,
-                    data=payload,
-                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": settings.VAPID_CLAIM_EMAIL}
-                )
-            except WebPushException as ex:
-                logger.warning("[WebPush] Failed for endpoint %s: %s", sub.endpoint, ex)
-                # If 410 Gone, the subscription is expired, we should delete it
-                if ex.response and ex.response.status_code == 410:
-                    await db.delete(sub)
-                    await db.commit()
+            for sub in subs:
+                sub_info = {
+                    "endpoint": sub.endpoint,
+                    "keys": sub.keys
+                }
+                try:
+                    # webpush is synchronous and makes HTTP requests, use to_thread to prevent blocking
+                    await asyncio.to_thread(
+                        webpush,
+                        subscription_info=sub_info,
+                        data=payload,
+                        vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                        vapid_claims={"sub": settings.VAPID_CLAIM_EMAIL}
+                    )
+                except WebPushException as ex:
+                    logger.warning("[WebPush] Failed for endpoint %s: %s", sub.endpoint, ex)
+                    # If 410 Gone, the subscription is expired, we should delete it
+                    if ex.response and ex.response.status_code == 410:
+                        await db.delete(sub)
+                        await db.commit()
     except Exception as e:
         logger.warning("[WebPush] Error triggering push: %s", e)
 
