@@ -447,7 +447,8 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
                 user_id=provider.id,
                 title="New Service Request",
                 message=f"{sender_name} has requested your service '{service.title}'.",
-                link=f"/dashboard/jobs/{job.id}"
+                link=f"/dashboard/jobs/{job.id}",
+                type="request",
             )
             
             if provider.email:
@@ -1043,6 +1044,7 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                 title="Job posted",
                 message=f"Your job '{title}' is live for ₦{price:,.0f}. Providers can now apply.",
                 link="/dashboard/activity",
+                type="job",
             )
             await db.commit()
         except Exception as ne:
@@ -1118,6 +1120,7 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                 title="Service listed",
                 message=f"Your service '{title}' is live for ₦{price:,.0f}. Clients can now request it.",
                 link="/dashboard/services",
+                type="job",
             )
             await db.commit()
         except Exception as ne:

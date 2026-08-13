@@ -16,6 +16,41 @@ function urlB64ToUint8Array(base64String: string) {
   return outputArray
 }
 
+async function getVapidPublicKey(): Promise<string> {
+  const res = await api.get('/push/vapid-public-key')
+  return res.data.publicKey
+}
+
+async function saveSubscription(subscription: PushSubscription): Promise<void> {
+  const subJSON = subscription.toJSON()
+  await api.post('/push/subscribe', {
+    endpoint: subJSON.endpoint,
+    keys: subJSON.keys
+  })
+}
+
+/**
+ * Re-send the browser's existing push subscription to the backend without
+ * prompting the user. Call on app load: if the backend lost the subscription
+ * (410 Gone, DB reset) or the user cleared site data, this heals it silently.
+ * Never requests permission and never prompts the native dialog.
+ */
+export async function syncPushSubscription(): Promise<boolean> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+  if (Notification.permission !== 'granted') return false
+
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (!subscription) return false
+    await saveSubscription(subscription)
+    return true
+  } catch (err) {
+    console.warn('Push subscription sync failed:', err)
+    return false
+  }
+}
+
 export async function subscribeToPushNotifications() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Push messaging is not supported.')
@@ -24,8 +59,7 @@ export async function subscribeToPushNotifications() {
 
   try {
     // 1. Get VAPID public key from backend
-    const res = await api.get('/push/vapid-public-key')
-    const { publicKey } = res.data
+    const publicKey = await getVapidPublicKey()
 
     // 2. Request permission (if not already granted/denied)
     let permission = Notification.permission
@@ -44,10 +78,7 @@ export async function subscribeToPushNotifications() {
     // 4. Subscribe
     const applicationServerKey = urlB64ToUint8Array(publicKey)
     let subscription = await registration.pushManager.getSubscription()
-    if (subscription) {
-      // If already subscribed but maybe key changed or not saved on backend, update it
-      // For simplicity, we just send it to backend again
-    } else {
+    if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: applicationServerKey,
@@ -55,11 +86,7 @@ export async function subscribeToPushNotifications() {
     }
 
     // 5. Send subscription to backend
-    const subJSON = subscription.toJSON()
-    await api.post('/push/subscribe', {
-      endpoint: subJSON.endpoint,
-      keys: subJSON.keys
-    })
+    await saveSubscription(subscription)
     
     console.log('Successfully subscribed to web push notifications')
     return true
