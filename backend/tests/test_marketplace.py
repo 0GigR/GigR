@@ -176,6 +176,58 @@ async def test_jobs_ranked_by_hotness(client):
     assert by_id[fresh["id"]]["applications_count"] == 0
 
 
+async def test_jobs_category_filter(client):
+    """Jobs browse filters by category: direct posts carry their own
+    category_id, service-request jobs inherit the listing's, and the filter
+    matches both."""
+    client_user = await register_user(client, role="client")
+    headers = auth_headers(client_user["token"])
+    cat = await _make_category(client, f"smoke-{RUN_ID}-catfilter")
+
+    def make(title: str, category_id=None) -> dict:
+        payload = {
+            "title": title,
+            "description": "Category filter smoke job",
+            "price": 5000,
+            "latitude": 6.5244,
+            "longitude": 3.3792,
+        }
+        if category_id:
+            payload["category_id"] = category_id
+        return payload
+
+    tagged = (await client.post("/api/v1/jobs/", headers=headers,
+                                json=make(f"Cat tagged {RUN_ID}", cat["id"]))).json()
+    untagged = (await client.post("/api/v1/jobs/", headers=headers,
+                                  json=make(f"Cat untagged {RUN_ID}"))).json()
+    assert tagged["category_id"] == cat["id"]
+    assert untagged["category_id"] is None
+
+    # Service-request jobs inherit the listing's category.
+    provider = await register_user(client, role="provider")
+    ph = auth_headers(provider["token"])
+    svc = (await client.post("/api/v1/services/", headers=ph, json={
+        "category_id": cat["id"],
+        "title": f"Cat svc {RUN_ID}",
+        "description": "svc",
+        "price": 10000,
+        "latitude": 6.5244,
+        "longitude": 3.3792,
+        "radius_km": 10,
+    })).json()
+    req = await client.post(f"/api/v1/jobs/request-service/{svc['id']}", headers=headers)
+    assert req.status_code == 201, req.text
+    assert req.json()["category_id"] == cat["id"]
+
+    filtered = await client.get("/api/v1/jobs/", headers=headers,
+                                params={"category_id": cat["id"]})
+    assert filtered.status_code == 200, filtered.text
+    ids = [j["id"] for j in filtered.json()]
+    assert tagged["id"] in ids, "direct post with category must match"
+    assert req.json()["id"] in ids, "service-request job must match via inherited category"
+    assert untagged["id"] not in ids, "job without category must be excluded"
+
+
 async def test_service_create_and_list(client):
     provider = await register_user(client, role="provider")
     headers = auth_headers(provider["token"])

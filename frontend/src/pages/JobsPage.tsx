@@ -31,6 +31,7 @@ import { processImageFile } from '@/lib/imageUtils'
 import { motion } from 'framer-motion'
 
 type Job = components['schemas']['JobOut']
+type Category = components['schemas']['CategoryOut']
 type Application = components['schemas']['ApplicationOut']
 type UserProfile = components['schemas']['UserOut']
 type Message = components['schemas']['MessageOut']
@@ -94,6 +95,7 @@ export default function JobsPage() {
   const [formData, setFormData] = useState({
     title: '', description: '', price: '',
     min_price: '', max_price: '',
+    category_id: '',
   })
 
   useEffect(() => {
@@ -169,6 +171,15 @@ export default function JobsPage() {
   const [statusFilter, setStatusFilter] = useState('all') // all, open, assigned, in_progress, completed, cancelled
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
+
+  const { data: categories = [] } = useQuery<Category[]>({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const { data } = await api.get('/categories/')
+      return data
+    },
+  })
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchQuery), 500)
@@ -187,10 +198,9 @@ export default function JobsPage() {
     hasNextPage: hasMoreOpenJobs,
     isFetchingNextPage: loadingMoreOpenJobs,
   } = useInfiniteQuery<Job[]>({
-    queryKey: ['jobs', 'open', debouncedSearch],
+    queryKey: ['jobs', 'open', debouncedSearch, categoryFilter],
     queryFn: async ({ pageParam = 0 }) => {
-      // const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam } })
-      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined } })
+      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined, category_id: categoryFilter || undefined } })
       const all = Array.isArray(res.data) ? res.data : []
       return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
     },
@@ -478,6 +488,7 @@ export default function JobsPage() {
       min_price: formData.min_price || undefined,
       max_price: formData.max_price || undefined,
       image_url: imageUrl,
+      category_id: formData.category_id || undefined,
       // Attach the poster's location so the job appears on the neighbourhood map
       latitude: useCustomLocation && customLocation ? customLocation.lat : geo.latitude ?? undefined,
       longitude: useCustomLocation && customLocation ? customLocation.lng : geo.longitude ?? undefined,
@@ -598,15 +609,28 @@ export default function JobsPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {activeTab === 'open' && (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <Input
-                placeholder="Search jobs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full sm:w-[220px] pl-9 bg-background border-border"
-              />
-            </div>
+            <>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <Input
+                  placeholder="Search jobs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full sm:w-[220px] pl-9 bg-background border-border"
+                />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-[160px] bg-background border-border">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Categories</SelectItem>
+                  {categories.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </>
           )}
           {activeTab === 'mine' && (
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -782,6 +806,16 @@ export default function JobsPage() {
           <DialogHeader><DialogTitle>Post a New Job</DialogTitle></DialogHeader>
           <div className="space-y-4 py-4">
             <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+            <Select value={formData.category_id} onValueChange={v => setFormData({...formData, category_id: v})}>
+              <SelectTrigger className="bg-background border-border">
+                <SelectValue placeholder="Category (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Textarea placeholder="Describe what you want done." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
             <Input placeholder="Price (₦) *" type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
             {/* Live NGN → USDC conversion hint */}
