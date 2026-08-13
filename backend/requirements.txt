@@ -6,7 +6,7 @@ psycopg2-binary
 alembic
 pydantic
 pydantic-settings
-python-jose[cryptography]
+PyJWT[crypto]
 bcrypt>=4.1.0
 python-multipart
 authlib
