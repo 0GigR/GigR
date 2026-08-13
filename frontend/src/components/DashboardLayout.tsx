@@ -8,6 +8,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
+import PushPromptBanner from '@/components/PushPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
 
@@ -185,6 +186,11 @@ export default function DashboardLayout() {
           </div>
         </div>
       )}
+      {/* Push Notification Banner — sticky under the header. Always asks when
+          push is not currently enabled (auto on load, then via the Enable
+          button, which is a user gesture the browsers require). */}
+      <PushPromptBanner />
+
       {/* Update Available Banner — sticky under the header, above the fixed sidebar (z-40) */}
       {needRefresh && (
         <div className="sticky top-14 z-[60] bg-blue-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">

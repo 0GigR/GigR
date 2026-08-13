@@ -54,8 +54,25 @@ function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios
   return (Notification.permission as any) || 'default'
 }
 
+// Bell filter tabs: which notification types each tab shows. Everything else
+// (unknown/legacy types) only appears under "All".
+const FILTER_GROUPS: Record<string, string[]> = {
+  messages: ['message'],
+  jobs: ['job', 'request', 'application', 'accepted', 'work', 'cancelled'],
+  money: ['payment'],
+  agent: ['agent'],
+}
+const FILTER_LABELS: Record<string, string> = {
+  all: 'All',
+  messages: 'Messages',
+  jobs: 'Jobs',
+  money: 'Money',
+  agent: 'Agent',
+}
+
 export default function NotificationBell() {
   const [open, setOpen] = useState(false)
+  const [filter, setFilter] = useState('all')
   const [pushState, setPushState] = useState<ReturnType<typeof getPushState>>('default')
   const [subscribing, setSubscribing] = useState(false)
   const queryClient = useQueryClient()
@@ -123,6 +140,14 @@ export default function NotificationBell() {
   }
 
   const unreadCount = notifications.filter(n => !n.is_read).length
+
+  const filtered = filter === 'all'
+    ? notifications
+    : notifications.filter(n => (FILTER_GROUPS[filter] || []).includes(n.type || ''))
+  const counts: Record<string, number> = { all: notifications.length }
+  for (const key of Object.keys(FILTER_GROUPS)) {
+    counts[key] = notifications.filter(n => FILTER_GROUPS[key].includes(n.type || '')).length
+  }
 
   // A notification counts as a "failure" if its text signals something went wrong.
   // Only these turn the badge red; everything else is a calm purple.
@@ -235,15 +260,33 @@ export default function NotificationBell() {
               </div>
             </div>
             
+            {/* Filter tabs */}
+            <div className="flex gap-1 px-3 py-2 border-b border-gray-100 dark:border-gray-800 overflow-x-auto shrink-0">
+              {Object.keys(FILTER_LABELS).map(key => (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                    filter === key
+                      ? 'bg-black text-white dark:bg-white dark:text-black'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {FILTER_LABELS[key]}
+                  {counts[key] > 0 && <span className={`ml-1 ${filter === key ? 'opacity-70' : 'text-gray-400'}`}>{counts[key]}</span>}
+                </button>
+              ))}
+            </div>
+
             <div className="flex-1 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {filtered.length === 0 ? (
                 <div className="p-8 text-center text-sm text-gray-500 flex flex-col items-center justify-center h-full">
                   <Bell className="w-12 h-12 text-gray-200 dark:text-gray-800 mb-3" />
-                  <p>No notifications yet.</p>
+                  <p>{filter === 'all' ? 'No notifications yet.' : 'Nothing here yet.'}</p>
                 </div>
               ) : (
                 <div className="flex flex-col divide-y divide-gray-50 dark:divide-gray-800/50">
-                  {notifications.map(n => {
+                  {filtered.map(n => {
                     const meta = getTypeMeta(n.type)
                     const TypeIcon = meta.icon
                     return (

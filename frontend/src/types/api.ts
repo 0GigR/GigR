@@ -1258,6 +1258,8 @@ export interface components {
             work_submitted_at?: string | null;
             /** Auto Release At */
             auto_release_at?: string | null;
+            /** Applications Count */
+            applications_count?: number | null;
         };
         /** MessageCreate */
         MessageCreate: {
