@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +29,11 @@ import {
   Flag,
   Briefcase,
   ExternalLink,
+  Sparkles,
+  UserPlus,
+  Zap,
+  X,
+  Wallet,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -157,6 +163,69 @@ function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, o
   )
 }
 
+// ─── Activity feed (story timeline) ────────────────────────────
+// Synthesized entirely client-side from jobs + applications: every state
+// transition of a job you touched becomes one timeline entry, newest first.
+type FeedEvent = {
+  id: string
+  at: Date
+  type: 'posted' | 'applied' | 'hired' | 'assigned' | 'funded' | 'submitted' | 'completed' | 'cancelled'
+  jobTitle: string
+  text: string
+  job: Job | null
+  counterpartId?: string
+  price?: string | null
+}
+
+const FEED_META: Record<FeedEvent['type'], { icon: ReactNode; color: string }> = {
+  posted: { icon: <Briefcase className="w-4 h-4" />, color: 'bg-blue-100 text-blue-700' },
+  applied: { icon: <Send className="w-4 h-4" />, color: 'bg-indigo-100 text-indigo-700' },
+  hired: { icon: <UserPlus className="w-4 h-4" />, color: 'bg-green-100 text-green-700' },
+  assigned: { icon: <Zap className="w-4 h-4" />, color: 'bg-amber-100 text-amber-700' },
+  funded: { icon: <Shield className="w-4 h-4" />, color: 'bg-emerald-100 text-emerald-700' },
+  submitted: { icon: <CheckCircle className="w-4 h-4" />, color: 'bg-purple-100 text-purple-700' },
+  completed: { icon: <Star className="w-4 h-4" />, color: 'bg-black text-white' },
+  cancelled: { icon: <X className="w-4 h-4" />, color: 'bg-red-100 text-red-700' },
+}
+
+function FeedEventRow({ event, isLast }: { event: FeedEvent; isLast: boolean }) {
+  const meta = FEED_META[event.type]
+  const { data: counterpart } = useUserInfo(event.counterpartId)
+  return (
+    <div className="relative flex gap-4 pb-6 last:pb-0">
+      {!isLast && <div className="absolute left-5 top-11 bottom-0 w-px bg-gray-200 dark:bg-gray-800" />}
+      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${meta.color}`}>
+        {meta.icon}
+      </div>
+      <div className="min-w-0 flex-1 pt-1">
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <p className="text-sm font-medium text-gray-900 dark:text-white leading-snug">
+            {event.text}
+          </p>
+          <span className="text-xs text-gray-400 shrink-0">
+            {formatDistanceToNow(event.at, { addSuffix: true })}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          {event.counterpartId && counterpart && (
+            <UserChip
+              userId={event.counterpartId}
+              name={counterpart.display_name}
+              avatarUrl={counterpart.profile_image_url}
+            />
+          )}
+          {event.price ? (
+            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              ₦{parseFloat(event.price).toLocaleString()}
+            </span>
+          ) : null}
+          {event.job?.status ? statusBadge(event.job.status) : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Cloudinary upload helper
 async function uploadFile(file: File): Promise<string> {
   const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
@@ -199,7 +268,7 @@ const statusBadge = (status: string) => {
 export default function ActivityPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'clienting' | 'providing' | 'completed' | 'cancelled' | 'applications'>('clienting')
+  const [activeTab, setActiveTab] = useState<'feed' | 'clienting' | 'providing' | 'completed' | 'cancelled' | 'applications'>('feed')
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -277,6 +346,77 @@ export default function ActivityPage() {
   const providingJobs = filterJobs(safeJobs.filter((j) => j.provider_id === user?.id && !['completed', 'cancelled'].includes(j.status)))
   const completedJobs = filterJobs(safeJobs.filter((j) => j.status === 'completed'))
   const cancelledJobs = filterJobs(safeJobs.filter((j) => j.status === 'cancelled'))
+
+  // Deduplicated job set (the client + provider lists can overlap) + stats.
+  const uniqueJobs = useMemo(() => [...new Map(safeJobs.map(j => [j.id, j])).values()], [safeJobs])
+  const activeJobsCount = uniqueJobs.filter(j => !['completed', 'cancelled'].includes(j.status)).length
+  const escrowTotal = uniqueJobs
+    .filter(j => ['funded', 'in_progress'].includes(j.status))
+    .reduce((sum, j) => sum + parseFloat((j.price as string) || '0'), 0)
+
+  // Story feed: one entry per event, newest first. Built from the state
+  // transitions of every job you touched plus your applications.
+  const feedEvents = useMemo<FeedEvent[]>(() => {
+    const events: FeedEvent[] = []
+    const byId = new Map<string, Job>(uniqueJobs.map(j => [j.id, j]))
+    const ts = (s?: string | null) => (s ? new Date(s) : null)
+
+    for (const j of uniqueJobs) {
+      const iAmClient = j.client_id === user?.id
+      const iAmProvider = j.provider_id === user?.id
+      const created = ts(j.created_at) ?? new Date()
+      const updated = ts(j.updated_at) ?? created
+
+      if (j.status === 'cancelled') {
+        events.push({ id: `${j.id}-cancelled`, at: updated, type: 'cancelled', job: j, jobTitle: j.title, text: `“${j.title}” was cancelled`, price: j.price as string })
+        continue
+      }
+      if (iAmClient) {
+        events.push({ id: `${j.id}-posted`, at: created, type: 'posted', job: j, jobTitle: j.title, text: `You posted “${j.title}”`, price: j.price as string })
+      }
+      if (j.provider_id && ['assigned', 'funded', 'in_progress', 'completed'].includes(j.status)) {
+        if (iAmClient) {
+          events.push({ id: `${j.id}-hired`, at: updated, type: 'hired', job: j, jobTitle: j.title, counterpartId: j.provider_id, text: `You hired a provider for “${j.title}”`, price: j.price as string })
+        } else if (iAmProvider) {
+          events.push({ id: `${j.id}-assigned`, at: updated, type: 'assigned', job: j, jobTitle: j.title, counterpartId: j.client_id, text: `You were hired for “${j.title}”`, price: j.price as string })
+        }
+      }
+      if (j.escrow_address && ['funded', 'in_progress'].includes(j.status)) {
+        events.push({ id: `${j.id}-funded`, at: updated, type: 'funded', job: j, jobTitle: j.title, text: `Escrow funded for “${j.title}”`, price: j.price as string })
+      }
+      if (j.work_submitted_at) {
+        events.push({
+          id: `${j.id}-submitted`, at: ts(j.work_submitted_at) ?? updated, type: 'submitted', job: j, jobTitle: j.title,
+          counterpartId: iAmClient ? (j.provider_id ?? undefined) : undefined,
+          text: iAmClient ? `Work was submitted for “${j.title}”` : `You submitted work for “${j.title}”`,
+          price: j.price as string,
+        })
+      }
+      if (j.status === 'completed') {
+        events.push({
+          id: `${j.id}-completed`, at: updated, type: 'completed', job: j, jobTitle: j.title,
+          counterpartId: iAmClient ? (j.provider_id ?? undefined) : j.client_id,
+          text: iAmClient ? `You completed “${j.title}”` : `“${j.title}” was completed`,
+          price: j.price as string,
+        })
+      }
+    }
+
+    for (const app of (myActivityFull?.applications ?? [])) {
+      events.push({
+        id: `app-${app.id}`,
+        at: new Date(app.created_at),
+        type: 'applied',
+        job: byId.get(app.job_id) ?? null,
+        jobTitle: app.job_title,
+        text: `You applied to “${app.job_title}”`,
+        price: app.proposed_price ?? undefined,
+      })
+    }
+
+    events.sort((a, b) => b.at.getTime() - a.at.getTime())
+    return events.slice(0, 60)
+  }, [uniqueJobs, myActivityFull, user?.id])
 
   // Contract room messages
   const { data: contractMessages, refetch: refetchMessages } = useQuery<Message[]>({
@@ -495,6 +635,38 @@ export default function ActivityPage() {
         </div>
       </div>
 
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
+          <div className="w-9 h-9 rounded-lg bg-black text-white flex items-center justify-center shrink-0"><Zap className="w-4 h-4" /></div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500">Active jobs</p>
+            <p className="text-lg font-bold leading-tight">{activeJobsCount}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
+          <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0"><Wallet className="w-4 h-4" /></div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500">In escrow</p>
+            <p className="text-lg font-bold leading-tight">{escrowTotal ? `₦${escrowTotal.toLocaleString()}` : '—'}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
+          <div className="w-9 h-9 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0"><CheckCircle className="w-4 h-4" /></div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500">Completed</p>
+            <p className="text-lg font-bold leading-tight">{completedJobs.length}</p>
+          </div>
+        </div>
+        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
+          <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0"><Send className="w-4 h-4" /></div>
+          <div className="min-w-0">
+            <p className="text-xs text-gray-500">Applications sent</p>
+            <p className="text-lg font-bold leading-tight">{myActivityFull?.applications?.length || 0}</p>
+          </div>
+        </div>
+      </div>
+
       <Tabs
         value={activeTab}
         onValueChange={(v) => setActiveTab(v as typeof activeTab)}
@@ -502,6 +674,9 @@ export default function ActivityPage() {
       >
         <div className="w-full overflow-x-auto pb-2 -mb-2 no-scrollbar">
           <TabsList className="inline-flex w-full sm:w-auto justify-start">
+            <TabsTrigger value="feed" className="whitespace-nowrap shrink-0">
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Feed
+            </TabsTrigger>
             <TabsTrigger value="clienting" className="whitespace-nowrap shrink-0">
               Clienting ({clientingJobs.length})
             </TabsTrigger>
@@ -519,6 +694,26 @@ export default function ActivityPage() {
             </TabsTrigger>
           </TabsList>
         </div>
+
+        <TabsContent value="feed" className="mt-4">
+          {isLoading ? (
+            <Skeleton className="h-20 w-full" />
+          ) : !feedEvents.length ? (
+            <EmptyState
+              icon={<Sparkles className="w-8 h-8" />}
+              title="Nothing here yet"
+              description="Your journey will show up here as a story — every job you post, apply to, fund, and complete, in order."
+              actionLabel="Browse Jobs"
+              actionHref="/dashboard/jobs"
+            />
+          ) : (
+            <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+              {feedEvents.map((ev, i) => (
+                <FeedEventRow key={ev.id} event={ev} isLast={i === feedEvents.length - 1} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
         {(['clienting', 'providing', 'completed', 'cancelled'] as const).map((tab) => (
           <TabsContent key={tab} value={tab} className="mt-4">
