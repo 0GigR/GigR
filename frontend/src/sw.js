@@ -76,6 +76,8 @@ self.addEventListener('push', (event) => {
 })
 
 // ── Notification click handler ───────────────────────────
+// Opens the app (PWA window or existing tab) at the exact deep link, instead of
+// spawning a new browser tab. On installed PWAs this focuses the app window.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
@@ -84,18 +86,36 @@ self.addEventListener('notificationclick', (event) => {
     (event.notification.data && event.notification.data.url) || '/',
     self.location.origin
   ).href
+  const origin = self.location.origin
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i]
-        if (client.url === urlToOpen && 'focus' in client) {
-          return client.focus()
+    (async () => {
+      const windowClients = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+
+      // 1. Prefer an existing window/tab on our origin: navigate it to the deep
+      //    link (SPA: same-origin navigate is a client-side route change) and
+      //    focus it. This covers both the installed PWA window and a desktop tab.
+      for (const client of windowClients) {
+        try {
+          if (new URL(client.url).origin !== origin) continue
+          if (client.url !== urlToOpen && 'navigate' in client) {
+            await client.navigate(urlToOpen)
+          }
+          if ('focus' in client) await client.focus()
+          return
+        } catch (e) {
+          // Fall through to the next client if navigate/focus failed.
         }
       }
+
+      // 2. No app window open — open one at the deep link. From an installed
+      //    PWA's service worker this opens the standalone app window, not a tab.
       if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen)
+        await self.clients.openWindow(urlToOpen)
       }
-    })
+    })()
   )
 })

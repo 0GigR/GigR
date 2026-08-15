@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import DashboardLayout from '@/components/DashboardLayout'
-import { CookieConsentBanner } from '@/components/CookieConsent'
 
 // ── Route-level code splitting ──────────────────────────────────────────────
 // Every page is loaded on demand via React.lazy. Leaflet (map pages), framer-motion
@@ -67,7 +66,6 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <ToastProvider />
-          <CookieConsentBanner />
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/" element={<LandingPage />} />
