@@ -11,7 +11,9 @@ interface Props {
 export function ImageViewer({ open, onClose, src, alt }: Props) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] p-0 bg-transparent border-none shadow-none">
+      {/* showCloseButton={false}: the dialog already renders a built-in X, which
+          duplicated the custom one below — two close icons on the lightbox. */}
+      <DialogContent showCloseButton={false} className="max-w-[90vw] max-h-[90vh] p-0 bg-transparent border-none shadow-none">
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white"

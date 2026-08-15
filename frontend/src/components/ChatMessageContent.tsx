@@ -35,14 +35,22 @@ export default function ChatMessageContent({ content, imageUrl, onImageClick, cl
       : null
 
   if (src) {
+    // A caption is any non-empty content that isn't itself an image URL
+    // (legacy messages stored the URL as content — don't show that as text).
+    const caption = content && !looksLikeImageUrl(content) ? content : null
     return (
-      <img
-        src={src}
-        alt="shared image"
-        loading="lazy"
-        className={`rounded-lg max-w-full max-h-64 object-cover cursor-pointer ${className || ''}`}
-        onClick={() => onImageClick?.(src)}
-      />
+      <div>
+        <img
+          src={src}
+          alt="shared image"
+          loading="lazy"
+          className={`rounded-lg max-w-full max-h-64 object-cover cursor-pointer ${className || ''}`}
+          onClick={() => onImageClick?.(src)}
+        />
+        {caption && (
+          <p className="mt-1.5 text-sm whitespace-pre-wrap break-words">{caption}</p>
+        )}
+      </div>
     )
   }
   return <p className={`text-sm whitespace-pre-wrap break-words ${className || ''}`}>{content}</p>

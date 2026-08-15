@@ -15,7 +15,7 @@ import { FundWalletButton } from '@/components/FundWalletButton'
 import { Turnstile } from '@marsidev/react-turnstile'
 
 import {
-  Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle
+  Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { processImageFile } from '@/lib/imageUtils'
@@ -112,6 +112,7 @@ export default function ProfilePage() {
   })
 
   const [showUSDC, setShowUSDC] = useState(false)
+  const [showWalletAddress, setShowWalletAddress] = useState(false)
 
   const usdcFloat = parseFloat(walletBalance?.usdc ?? '0')
   const ngnRate = rateData?.ngn_per_usd ?? null
@@ -293,11 +294,25 @@ export default function ProfilePage() {
           <p className="text-sm text-gray-500">Your invisible on‑chain identity — powered by Solana</p>
           {walletInfo?.wallet_public_key ? (
             <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
-              <code className="text-xs break-all">{walletInfo.wallet_public_key}</code>
-              <Button size="sm" variant="ghost" onClick={() => copyToClipboard(walletInfo.wallet_public_key)}>
-                <Copy className="w-3 h-3" />
-              </Button>
-              <FundWalletButton walletAddress={walletInfo.wallet_public_key} />
+              <code className="text-xs break-all">
+                {showWalletAddress
+                  ? walletInfo.wallet_public_key
+                  : `${walletInfo.wallet_public_key.slice(0, 6)}…${walletInfo.wallet_public_key.slice(-4)}`}
+              </code>
+              <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setShowWalletAddress((v) => !v)}
+                  title={showWalletAddress ? 'Hide wallet address' : 'Show wallet address'}
+                >
+                  {showWalletAddress ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => copyToClipboard(walletInfo.wallet_public_key)}>
+                  <Copy className="w-3 h-3" />
+                </Button>
+                <FundWalletButton walletAddress={walletInfo.wallet_public_key} />
+              </div>
             </div>
           ) : (
             <Skeleton className="h-10 w-full" />

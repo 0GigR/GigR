@@ -5,6 +5,7 @@ from typing import List
 import json
 import asyncio
 import logging
+import re
 import time
 from pywebpush import webpush, WebPushException
 
@@ -88,7 +89,7 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
             if push_tag is None and type in TAGGED_TYPES:
                 push_tag = "chat"  # safety net — message pushes should always group
 
-            payload = {
+            base_payload = {
                 "title": title,
                 "body": message,
                 "url": link or "/",
@@ -98,17 +99,21 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
                 "vibrate": [100, 50, 100],
                 "timestamp": int(time.time() * 1000),
             }
-            payload.update(opts)
+            base_payload.update(opts)
             if push_tag:
-                payload["tag"] = push_tag
-
-            payload_json = json.dumps(payload)
+                base_payload["tag"] = push_tag
 
             for sub in subs:
                 sub_info = {
                     "endpoint": sub.endpoint,
                     "keys": sub.keys
                 }
+                # Tell the service worker the device type so a tap can behave
+                # correctly: openWindow raises an Android/iOS PWA window, while
+                # desktop should focus the existing tab without spawning a new one.
+                payload = dict(base_payload)
+                payload["platform"] = _platform_from_ua(sub.user_agent)
+                payload_json = json.dumps(payload)
                 try:
                     # webpush is synchronous and makes HTTP requests, use to_thread to prevent blocking
                     await asyncio.to_thread(
@@ -133,6 +138,17 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
             "regenerate it and update the env var.",
             e,
         )
+
+def _platform_from_ua(ua: str | None) -> str:
+    """Best-effort platform detection for the notification-click behaviour."""
+    if not ua:
+        return "desktop"
+    u = ua.lower()
+    if "android" in u:
+        return "android"
+    if re.search(r"iphone|ipad|ipod", u):
+        return "ios"
+    return "desktop"
 
 async def mark_all_as_read(db: AsyncSession, user_id: UUID) -> None:
     await db.execute(
