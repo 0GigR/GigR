@@ -21,6 +21,10 @@ class User(Base):
     profile_image_url = Column(String(500), nullable=True)
     is_verified = Column(Boolean, default=False)
     role = Column(String(20), default="user", nullable=False)  # "user", "admin", "superadmin"
+    # IAM-style permission slugs granted to admins by the superadmin, e.g.
+    # ["jobs:manage", "users:manage", "announce:manage"]. Superadmin always
+    # bypasses these; regular users have none.
+    permissions = Column(ARRAY(String), nullable=True, default=[])
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # Solana wallet – public key is base58, private key is Fernet‑encrypted

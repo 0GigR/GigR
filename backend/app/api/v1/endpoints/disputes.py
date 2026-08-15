@@ -101,11 +101,15 @@ async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> s
 #     if x_admin_secret != ADMIN_SECRET:
 #         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
 #     return True
-from .admin import verify_admin
+from .admin import require_perm
+
+# Dispute court access is an IAM-granted power (disputes:manage). Superadmin
+# always has it; admins only when the superadmin tags them with the slug.
+verify_dispute_admin = require_perm("disputes:manage")
 # @router.get("/", response_model=list[DisputeOut])
 @router.get("/")
 async def list_all_disputes(
-    _: bool = Depends(verify_admin),
+    _: bool = Depends(verify_dispute_admin),
     db: AsyncSession = Depends(get_db),
 ):
     from sqlalchemy import select
@@ -396,7 +400,7 @@ async def get_dispute(dispute_id: UUID, db: AsyncSession = Depends(get_db)):
 @router.post("/{dispute_id}/jury/select", response_model=list[str])
 async def select_jury(
     dispute_id: UUID,
-    _: bool = Depends(verify_admin),
+    _: bool = Depends(verify_dispute_admin),
     db: AsyncSession = Depends(get_db),
 ):
     dispute = await get_dispute_by_id(db, dispute_id)
@@ -477,7 +481,7 @@ async def cast_vote(
 @router.get("/{dispute_id}/results")
 async def tally_votes(
     dispute_id: UUID,
-    _: bool = Depends(verify_admin),
+    _: bool = Depends(verify_dispute_admin),
     db: AsyncSession = Depends(get_db),
 ):
     dispute = await get_dispute_by_id(db, dispute_id)
@@ -534,7 +538,7 @@ async def tally_votes(
 async def resolve_dispute_route(
     dispute_id: UUID,
     resolution_data: DisputeResolve,
-    _: bool = Depends(verify_admin),
+    _: bool = Depends(verify_dispute_admin),
     db: AsyncSession = Depends(get_db),
 ):
     dispute = await get_dispute_by_id(db, dispute_id)

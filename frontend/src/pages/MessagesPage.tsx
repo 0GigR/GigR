@@ -175,6 +175,12 @@ export default function MessagesPage() {
         ...prev,
         [selectedJob.id]: { ...prev[selectedJob.id], unreadCount: 0 },
       }))
+      // Opening the conversation dismisses its message notifications server-side
+      // — message notifs are meant to disappear once you've seen the chat, unlike
+      // permanent ones (escrow, disputes) which only clear via explicit action.
+      api.post('/notifications/read-conversation', { job_id: selectedJob.id })
+        .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+        .catch(() => {})
     }
   }, [selectedJob?.id])
 

@@ -1,15 +1,24 @@
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Response, Request
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from ....core.dependencies import get_db, get_current_user
-from ....core.security import create_access_token, verify_password, decode_access_token, create_refresh_token, REFRESH_TOKEN_EXPIRE_DAYS
+from ....core.security import (
+    create_access_token,
+    verify_password,
+    decode_access_token,
+    create_refresh_token,
+    get_password_hash,
+    REFRESH_TOKEN_EXPIRE_DAYS,
+)
 from ....core.config import settings
 from ....crud.user import (
     get_user_by_email,
     get_user_by_google_id,
+    get_user_by_id,
     create_user,
     create_user_from_google,
 )
@@ -256,4 +265,80 @@ async def logout(response: Response):
     response.delete_cookie("access_token")
     response.delete_cookie("refresh_token")   # <— add this
     return {"message": "Logged out"}
+
+
+# ── Forgot / reset password (non-OAuth users) ─────────────────────────────────
+
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Email a one-time reset link if the address belongs to an account with a
+    password. Always returns the same message — don't leak which emails exist."""
+    from secrets import token_urlsafe
+    import hashlib
+    from ....models.password_reset_token import PasswordResetToken
+    from ....api.v1.endpoints import jobs as _jobs
+
+    email = str(payload.get("email") or "").strip().lower()
+    user = await get_user_by_email(db, email) if email else None
+
+    if user and user.hashed_password:
+        token = token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        db.add(PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        ))
+        await db.commit()
+
+        frontend_url = (settings.FRONTEND_URL or "https://gigrr.vercel.app").rstrip("/")
+        reset_url = f"{frontend_url}/reset-password?token={token}"
+        html = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif">
+<div style="max-width:520px;margin:0 auto;padding:24px;background:#ffffff;border-radius:16px">
+<h1 style="font-size:20px;margin:0 0 12px;color:#111">Reset your Gigr password</h1>
+<p style="font-size:15px;line-height:1.6;color:#333;margin:0">We got a request to reset the password for your Gigr account. This link expires in <strong>1 hour</strong>.</p>
+<p style="margin:20px 0 0"><a href="{reset_url}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;border-radius:9999px;text-decoration:none;font-weight:600">Reset password</a></p>
+<p style="margin:24px 0 0;font-size:12px;color:#999">If you didn't request this, you can safely ignore this email.</p>
+</div></body></html>"""
+        _jobs._send_email_background(user.email, "Reset your Gigr password", html)
+
+    return {"message": "If that email is registered with a password, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set a new password using a one-time reset token."""
+    import hashlib
+    from sqlalchemy import select as _select
+    from ....models.password_reset_token import PasswordResetToken
+
+    token = str(payload.get("token") or "").strip()
+    new_password = str(payload.get("new_password") or "")
+    if not token:
+        raise HTTPException(status_code=400, detail="Reset token is required")
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    row = (await db.execute(
+        _select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )).scalar_one_or_none()
+    if not row or row.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    user = await get_user_by_id(db, row.user_id)
+    if not user or not user.hashed_password:
+        raise HTTPException(status_code=400, detail="Invalid reset link")
+
+    user.hashed_password = get_password_hash(new_password)
+    await db.delete(row)
+    await db.commit()
+    return {"message": "Password updated. You can now sign in."}
 

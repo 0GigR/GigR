@@ -13,6 +13,7 @@ interface User {
   role?: string | null
   ai_enabled?: boolean
   location_public?: boolean
+  permissions?: string[] | null
 }
 
 interface AuthState {

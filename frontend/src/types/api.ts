@@ -1512,6 +1512,8 @@ export interface components {
             is_verified: boolean;
             /** Role */
             role?: string | null;
+            /** IAM-style permission slugs granted to admins by the superadmin */
+            permissions?: string[] | null;
             /**
              * Created At
              * Format: date-time

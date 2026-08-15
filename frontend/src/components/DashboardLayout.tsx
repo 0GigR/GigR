@@ -17,6 +17,7 @@ import api from '@/lib/api'
 // bundle (the dashboard shell must stay light for fast first paint after login).
 const VoiceAssistant = lazy(() => import('@/components/VoiceAssistant'))
 const OnboardingOverlay = lazy(() => import('@/components/OnboardingOverlay'))
+const AnnouncementPopup = lazy(() => import('@/components/AnnouncementPopup'))
 const AgentActivityPanel = lazy(() => import('@/components/agent/AgentActivityPanel'))
 const CallReminderPrompt = lazy(() => import('@/components/agent/CallReminderPrompt'))
 const GlobalItemModal = lazy(() => import('@/components/GlobalItemModal'))
@@ -145,6 +146,7 @@ export default function DashboardLayout() {
         {aiEnabled && <AgentActivityPanel />}
         {aiEnabled && <CallReminderPrompt />}
         <OnboardingOverlay />
+        <AnnouncementPopup />
         <GlobalItemModal />
       </Suspense>
       {/* Top Bar */}

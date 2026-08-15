@@ -142,6 +142,9 @@ app.include_router(push.router, prefix="/api/v1/push", tags=["push"])
 from .api.v1.endpoints import admin
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
+from .api.v1.endpoints import announcements
+app.include_router(announcements.router, prefix="/api/v1/announcements", tags=["announcements"])
+
 from .api.v1.endpoints import amendments
 app.include_router(amendments.router, prefix="/api/v1/amendments", tags=["amendments"])
 
