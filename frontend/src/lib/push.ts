@@ -30,10 +30,14 @@ async function saveSubscription(subscription: PushSubscription): Promise<void> {
 }
 
 /**
- * Re-send the browser's existing push subscription to the backend without
- * prompting the user. Call on app load: if the backend lost the subscription
- * (410 Gone, DB reset) or the user cleared site data, this heals it silently.
- * Never requests permission and never prompts the native dialog.
+ * Ensure the backend has a working copy of the browser's push subscription,
+ * without prompting the user. Call on app load: if the backend lost the
+ * subscription (410 Gone, DB reset), the user cleared site data, or the token
+ * expired and the local subscription vanished, this heals it silently.
+ *
+ * Never requests permission and never shows the native dialog. When permission
+ * is already granted but no subscription exists (expired token, cleared data),
+ * it re-subscribes directly — the browser allows this without a prompt.
  */
 export async function syncPushSubscription(): Promise<boolean> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
@@ -41,8 +45,16 @@ export async function syncPushSubscription(): Promise<boolean> {
 
   try {
     const registration = await navigator.serviceWorker.ready
-    const subscription = await registration.pushManager.getSubscription()
-    if (!subscription) return false
+    let subscription = await registration.pushManager.getSubscription()
+    if (!subscription) {
+      // Permission granted but no active subscription (expired token or
+      // cleared site data) — re-subscribe silently, no prompt needed.
+      const publicKey = await getVapidPublicKey()
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(publicKey),
+      })
+    }
     await saveSubscription(subscription)
     return true
   } catch (err) {
