@@ -125,7 +125,14 @@ async def _send_web_push(user_id: UUID, title: str, message: str, link: str | No
                         await db.delete(sub)
                         await db.commit()
     except Exception as e:
-        logger.warning("[WebPush] Error triggering push: %s", e)
+        # This used to be a silent warning — a broken VAPID key made every push
+        # fail invisibly for weeks. Keep it loud.
+        logger.error(
+            "[WebPush] Error triggering push: %s. If this mentions deserializing "
+            "the key, VAPID_PRIVATE_KEY is truncated or in the old SEC1 format — "
+            "regenerate it and update the env var.",
+            e,
+        )
 
 async def mark_all_as_read(db: AsyncSession, user_id: UUID) -> None:
     await db.execute(
