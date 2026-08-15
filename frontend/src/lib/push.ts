@@ -29,6 +29,17 @@ async function saveSubscription(subscription: PushSubscription): Promise<void> {
   })
 }
 
+// Telemetry: report where the push flow gets to (and where it stops) so
+// failures that happen before any push API call show up in the server logs
+// instead of vanishing. Best-effort — never breaks the flow.
+async function diag(event: string, detail?: string) {
+  try {
+    await api.post('/push/diagnostic', { event, detail })
+  } catch {
+    // ignore — telemetry must never break push
+  }
+}
+
 /**
  * Ensure the backend has a working copy of the browser's push subscription,
  * without prompting the user. Call on app load: if the backend lost the
@@ -56,9 +67,11 @@ export async function syncPushSubscription(): Promise<boolean> {
       })
     }
     await saveSubscription(subscription)
+    diag('synced')
     return true
-  } catch (err) {
+  } catch (err: any) {
     console.warn('Push subscription sync failed:', err)
+    diag('sync-error', `${err?.name}: ${err?.message}`)
     return false
   }
 }
@@ -72,8 +85,11 @@ export async function syncPushSubscription(): Promise<boolean> {
  * it to the account after sign-in — the server save requires auth.
  */
 export async function subscribeToPushNotifications(skipServerSave = false) {
+  diag('start', skipServerSave ? 'pre-login' : 'authed')
+
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Push messaging is not supported.')
+    diag('unsupported', `sw=${'serviceWorker' in navigator} pushMgr=${'PushManager' in window}`)
     return false
   }
 
@@ -89,6 +105,7 @@ export async function subscribeToPushNotifications(skipServerSave = false) {
     
     if (permission !== 'granted') {
       console.warn('Push notification permission denied.')
+      diag('permission-denied', String(permission))
       return false
     }
 
@@ -111,9 +128,11 @@ export async function subscribeToPushNotifications(skipServerSave = false) {
     }
     
     console.log('Successfully subscribed to web push notifications')
+    diag('subscribed')
     return true
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error subscribing to web push:', err)
+    diag('error', `${err?.name}: ${err?.message}`)
     return false
   }
 }
