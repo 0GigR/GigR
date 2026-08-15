@@ -22,18 +22,24 @@ async def websocket_agent_notifications(
     finishes or its status changes.
     """
     payload = decode_access_token(token)
+    # Accept before closing: closing pre-accept makes the browser see a failed
+    # handshake (code 1006) instead of our real code, so clients that are told
+    # to stop retrying on 4003/4001 never get the message and reconnect forever.
     if payload is None or payload.get("type") == "refresh":
+        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     token_user_id: str | None = payload.get("sub")
     if token_user_id is None or token_user_id != user_id:
+        await websocket.accept()
         await websocket.close(code=4003, reason="Unauthorized")
         return
 
     async with async_session() as db:
         user = await get_user_by_id(db, token_user_id)
     if user is None:
+        await websocket.accept()
         await websocket.close(code=4001, reason="User not found")
         return
 
@@ -62,12 +68,17 @@ async def websocket_messages(
     """
     # Authenticate via token query param
     payload = decode_access_token(token)
+    # Accept before closing (see note in the agent endpoint): the browser must
+    # see our real close code or it treats the rejection as a network failure
+    # and reconnects forever, flooding the logs with 403s.
     if payload is None:
+        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
     user_id: str | None = payload.get("sub")
     if user_id is None:
+        await websocket.accept()
         await websocket.close(code=4001, reason="Invalid token")
         return
 
@@ -77,21 +88,25 @@ async def websocket_messages(
     async with async_session() as db:
         user = await get_user_by_id(db, user_id)
         if user is None:
+            await websocket.accept()
             await websocket.close(code=4001, reason="User not found")
             return
 
         try:
             job_uuid = _uuid.UUID(job_id)
         except ValueError:
+            await websocket.accept()
             await websocket.close(code=4003, reason="Invalid job ID")
             return
 
         job = await get_job_by_id(db, job_uuid)
         if job is None:
+            await websocket.accept()
             await websocket.close(code=4004, reason="Job not found")
             return
 
         if job.client_id != user.id and job.provider_id != user.id:
+            await websocket.accept()
             await websocket.close(code=4003, reason="Not a participant in this job")
             return
 

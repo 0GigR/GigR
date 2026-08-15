@@ -312,7 +312,10 @@ export default function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 bg-black/40 z-[9998]" onClick={() => setOpen(false)} />
-          <div className="fixed top-0 right-0 h-full w-full max-w-sm bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300">
+          {/* 100dvh (not h-full/100vh): on mobile, 100vh is taller than the
+              visible viewport while the browser chrome is showing, which hid
+              the push-enable footer behind the bottom nav / browser UI. */}
+          <div className="fixed top-0 right-0 h-[100dvh] w-full max-w-sm bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300 pb-[env(safe-area-inset-bottom)]">
             <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
               <h3 className="font-semibold text-lg">Notifications</h3>
               <div className="flex items-center gap-3">
