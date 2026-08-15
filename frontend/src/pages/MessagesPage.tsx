@@ -21,6 +21,7 @@ import {
   ImagePlus,
   FileText,
   Loader2,
+  X,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
@@ -93,6 +94,9 @@ export default function MessagesPage() {
   const [amendImage, setAmendImage] = useState<File | null>(null)
   const [amendImagePreview, setAmendImagePreview] = useState<string | null>(null)
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  // Pending image message: selected but not yet sent — preview + caption first.
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
 
   // ── Fetch all my jobs ──────────────────────────────────────
   const { data: myJobs, isLoading: jobsLoading } = useQuery<Job[]>({
@@ -287,18 +291,22 @@ export default function MessagesPage() {
       toast.error(extractError(err, 'Message failed')),
   })
 
-  // Send image message
+  // Send image message (with optional caption)
   const sendImageMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, caption }: { file: File; caption: string }) => {
       const url = await uploadFile(file)
       if (!selectedJob?.id) return
       await api.post('/messages/', {
         job_id: selectedJob.id,
-        content: url,
+        content: caption || '',
+        image_url: url,
       })
     },
     onSuccess: () => {
       refetch()
+      setImageFile(null)
+      setImagePreview(null)
+      setMessageText('')
       toast.success('Image sent')
     },
     onError: (err: any) =>
@@ -336,6 +344,11 @@ export default function MessagesPage() {
   })
 
   const handleSendMessage = () => {
+    // An attached image sends with the typed text as its caption.
+    if (imageFile && imagePreview) {
+      sendImageMutation.mutate({ file: imageFile, caption: messageText })
+      return
+    }
     if (!messageText.trim()) return
     sendTextMutation.mutate()
   }
@@ -344,8 +357,18 @@ export default function MessagesPage() {
     const file = e.target.files?.[0]
     if (file) {
       const processed = await processImageFile(file)
-      sendImageMutation.mutate(processed)
+      // Preview first — nothing is sent until the user taps Send.
+      setImageFile(processed)
+      setImagePreview(URL.createObjectURL(processed))
+      setMessageText('')
     }
+    e.target.value = ''
+  }
+
+  const removeImage = () => {
+    setImageFile(null)
+    setImagePreview(null)
+    setMessageText('')
   }
 
   const isSending = sendTextMutation.isPending || sendImageMutation.isPending
@@ -554,6 +577,37 @@ export default function MessagesPage() {
 
               {/* Input area */}
               {!showScopeAmend ? (
+                imagePreview ? (
+                  /* Image pending: preview + caption, send is explicit */
+                  <div className="border-t p-3 flex gap-2 items-center">
+                    <img src={imagePreview} className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                    <Input
+                      placeholder="Add a caption..."
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isSending) handleSendMessage()
+                      }}
+                      className="flex-1"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleSendMessage}
+                      disabled={isSending}
+                      className="bg-black text-white min-w-[40px]"
+                    >
+                      {isSending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4" />
+                      )}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={removeImage} title="Remove image">
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ) : (
                 <div className="border-t p-3 flex gap-2 items-center">
                   <label className="cursor-pointer">
                     <ImagePlus className="w-5 h-5 text-gray-500 hover:text-black" />
@@ -598,6 +652,7 @@ export default function MessagesPage() {
                     <FileText className="w-4 h-4 mr-1" /> Amend
                   </Button>
                 </div>
+                )
               ) : (
                 <div className="border-t p-3 space-y-2">
                   <Textarea

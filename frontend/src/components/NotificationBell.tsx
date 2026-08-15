@@ -6,9 +6,10 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { createPortal } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import api from '@/lib/api'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { subscribeToPushNotifications, syncPushSubscription } from '@/lib/push'
 import { toast } from 'sonner'
@@ -78,10 +79,17 @@ export default function NotificationBell() {
   const [reconnecting, setReconnecting] = useState(false)
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+  const location = useLocation()
 
   useEffect(() => {
     setPushState(getPushState())
   }, [open])
+
+  // Close the panel whenever the route changes — tapping a notification
+  // navigates the app, and the panel should not linger over the new page.
+  useEffect(() => {
+    setOpen(false)
+  }, [location.pathname])
 
   // Truth check: green "enabled" must mean the SERVER has the subscription,
   // not just that the browser granted permission. If permission is granted
@@ -309,7 +317,11 @@ export default function NotificationBell() {
         )}
       </Button>
 
-      {open && (
+      {/* Portal the panel + backdrop to document.body: it lives inside the
+          z-50 header, so its z-[9999] was capped by the header's stacking
+          context — the mobile bottom nav (also z-50, later in the DOM) painted
+          over the panel's footer. Portaled, it sits above everything. */}
+      {open && createPortal(
         <>
           <div className="fixed inset-0 bg-black/40 z-[9998]" onClick={() => setOpen(false)} />
           {/* 100dvh (not h-full/100vh): on mobile, 100vh is taller than the
@@ -400,7 +412,8 @@ export default function NotificationBell() {
             
             {renderPushBanner()}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   )

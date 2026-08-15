@@ -76,8 +76,14 @@ self.addEventListener('push', (event) => {
 })
 
 // ── Notification click handler ───────────────────────────
-// Opens the app (PWA window or existing tab) at the exact deep link, instead of
-// spawning a new browser tab. On installed PWAs this focuses the app window.
+// Opens the app at the exact deep link. Behaviour is platform-aware:
+//  - Mobile (Android PWA / iOS): openWindow() raises the existing app window
+//    for the same scope (it does not duplicate it) and navigates it. focus()
+//    alone does NOT bring an Android PWA to the foreground — that's why taps
+//    used to navigate the app without ever showing it.
+//  - Desktop: reuse the existing tab — navigate it to the deep link (SPA:
+//    same-origin navigate is a client-side route change) and focus it, so a
+//    tap never spawns a duplicate tab.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
 
@@ -87,17 +93,20 @@ self.addEventListener('notificationclick', (event) => {
     self.location.origin
   ).href
   const origin = self.location.origin
+  const platform = (event.notification.data && event.notification.data.platform) || 'desktop'
 
   event.waitUntil(
     (async () => {
+      if ((platform === 'android' || platform === 'ios') && self.clients.openWindow) {
+        await self.clients.openWindow(urlToOpen)
+        return
+      }
+
       const windowClients = await self.clients.matchAll({
         type: 'window',
         includeUncontrolled: true,
       })
 
-      // 1. Prefer an existing window/tab on our origin: navigate it to the deep
-      //    link (SPA: same-origin navigate is a client-side route change) and
-      //    focus it. This covers both the installed PWA window and a desktop tab.
       for (const client of windowClients) {
         try {
           if (new URL(client.url).origin !== origin) continue
@@ -111,8 +120,6 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
 
-      // 2. No app window open — open one at the deep link. From an installed
-      //    PWA's service worker this opens the standalone app window, not a tab.
       if (self.clients.openWindow) {
         await self.clients.openWindow(urlToOpen)
       }

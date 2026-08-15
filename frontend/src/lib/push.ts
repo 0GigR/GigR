@@ -25,7 +25,11 @@ async function saveSubscription(subscription: PushSubscription): Promise<void> {
   const subJSON = subscription.toJSON()
   await api.post('/push/subscribe', {
     endpoint: subJSON.endpoint,
-    keys: subJSON.keys
+    keys: subJSON.keys,
+    // Lets the server tell the service worker the device type so a
+    // notification tap opens the app window (mobile) vs. focuses the
+    // existing tab (desktop) — see the notificationclick handler in sw.js.
+    user_agent: navigator.userAgent.slice(0, 500),
   })
 }
 

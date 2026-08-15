@@ -21,6 +21,7 @@ router = APIRouter()
 class PushSubscriptionIn(BaseModel):
     endpoint: str
     keys: Dict[str, str]
+    user_agent: Optional[str] = None
 
 async def get_optional_user(
     authorization: Optional[str] = Header(default=None),
@@ -105,13 +106,16 @@ async def subscribe_push(
             # Transfer ownership if the same browser logs into a different account
             existing.user_id = current_user.id
             existing.keys = subscription.keys
-            await db.commit()
+        if subscription.user_agent:
+            existing.user_agent = subscription.user_agent
+        await db.commit()
         return {"status": "ok", "detail": "Subscription updated"}
         
     new_sub = PushSubscription(
         user_id=current_user.id,
         endpoint=subscription.endpoint,
-        keys=subscription.keys
+        keys=subscription.keys,
+        user_agent=subscription.user_agent
     )
     db.add(new_sub)
     await db.commit()
