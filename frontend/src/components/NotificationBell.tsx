@@ -75,6 +75,7 @@ export default function NotificationBell() {
   const [filter, setFilter] = useState('all')
   const [pushState, setPushState] = useState<ReturnType<typeof getPushState>>('default')
   const [subscribing, setSubscribing] = useState(false)
+  const [reconnecting, setReconnecting] = useState(false)
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
 
@@ -116,6 +117,28 @@ export default function NotificationBell() {
       setOpen(false)
     },
   })
+
+  // Force a fresh push token. An expired subscription that the server 410'd
+  // (token dead, e.g. after a long gap) must be dropped before subscribing
+  // again — pushManager.subscribe() would otherwise return the same dead one.
+  const handleReconnect = async () => {
+    setReconnecting(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const existing = await reg.pushManager.getSubscription()
+      if (existing) await existing.unsubscribe()
+      const ok = await subscribeToPushNotifications()
+      if (ok) {
+        setPushState('granted')
+        toast.success('Push notifications reconnected')
+      } else {
+        setPushState(getPushState())
+        toast.error('Could not reconnect push notifications')
+      }
+    } finally {
+      setReconnecting(false)
+    }
+  }
 
   const handleSubscribe = async () => {
     setSubscribing(true)
@@ -171,9 +194,19 @@ export default function NotificationBell() {
   const renderPushBanner = () => {
     if (pushState === 'granted') {
       return (
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-green-50 dark:bg-green-900/20 flex items-center gap-2 justify-center text-xs text-green-700 dark:text-green-400 shrink-0">
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Push notifications are enabled
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-green-50 dark:bg-green-900/20 flex items-center justify-between gap-2 text-xs text-green-700 dark:text-green-400 shrink-0">
+          <span className="inline-flex items-center gap-2">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            Push notifications are enabled
+          </span>
+          <button
+            onClick={handleReconnect}
+            disabled={reconnecting}
+            className="font-medium text-green-800 dark:text-green-300 hover:underline disabled:opacity-60"
+            title="Expired subscriptions silently stop delivering — reconnect forces a fresh token"
+          >
+            {reconnecting ? 'Reconnecting...' : 'Reconnect'}
+          </button>
         </div>
       )
     }
