@@ -20,8 +20,9 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
   ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search,
-  Flame, Clock
+  Flame, Clock, Briefcase, MapPin, Zap, Inbox
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ImageViewer } from '@/components/ImageViewer'
@@ -49,6 +50,47 @@ const statusBadge = (status: string) => {
     default: return <Badge>{status}</Badge>
   }
 }
+
+// Great-circle distance in km between two points (haversine). Returns null when
+// either point is missing (jobs posted without a location, or no GPS fix).
+function distanceKm(lat1: number | null | undefined, lon1: number | null | undefined, lat2: number | null | undefined, lon2: number | null | undefined): number | null {
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null
+  const R = 6371
+  const dLat = ((lat2 - lat1) * Math.PI) / 180
+  const dLon = ((lon2 - lon1) * Math.PI) / 180
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10
+}
+
+// Small KPI card used in the stats strip above the tabs.
+function StatCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: number; hint?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
+      <div className="w-9 h-9 rounded-lg bg-black text-white flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-gray-500 truncate">{label}</p>
+        <p className="text-lg font-bold leading-tight">
+          {value}
+          {hint ? <span className="text-xs font-normal text-gray-400 ml-1">{hint}</span> : null}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Status groupings for the "My Jobs" tab. Order matters: requests first, then
+// open postings, then active work, then the archive.
+const MY_JOB_GROUPS: { key: string; label: string; icon: ReactNode; statuses: string[] }[] = [
+  { key: 'requested', label: 'Service Requests', icon: <Inbox className="w-4 h-4" />, statuses: ['requested'] },
+  { key: 'open', label: 'Open Postings', icon: <Briefcase className="w-4 h-4" />, statuses: ['open'] },
+  { key: 'active', label: 'Active Jobs', icon: <Zap className="w-4 h-4" />, statuses: ['assigned', 'funded', 'in_progress'] },
+  { key: 'completed', label: 'Completed', icon: <CheckCircle className="w-4 h-4" />, statuses: ['completed'] },
+  { key: 'cancelled', label: 'Cancelled', icon: <X className="w-4 h-4" />, statuses: ['cancelled'] },
+]
 
 // Fetch user info
 function useUserInfo(userId: string | undefined) {
@@ -168,7 +210,6 @@ export default function JobsPage() {
 
   // Filters & Sorting
   const [sortOrder, setSortOrder] = useState('newest') // newest, oldest, price_high, price_low
-  const [statusFilter, setStatusFilter] = useState('all') // all, open, assigned, in_progress, completed, cancelled
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -584,12 +625,14 @@ export default function JobsPage() {
   
   const handleAccept = (jobId: string) => acceptMutation.mutate(jobId)
 
-  // Derived filtered/sorted arrays
+  // Derived filtered/sorted arrays. The open browse search is server-side
+  // (debouncedSearch); My Jobs is filtered client-side so the search box works
+  // on both tabs.
   const applyFiltersAndSort = (jobs: Job[]) => {
-    let result = [...jobs]
-    if (statusFilter !== 'all') {
-      result = result.filter(j => j.status === statusFilter)
-    }
+    const q = searchQuery.trim().toLowerCase()
+    let result = q
+      ? jobs.filter(j => j.title.toLowerCase().includes(q) || j.description.toLowerCase().includes(q))
+      : [...jobs]
     result.sort((a, b) => {
       if (sortOrder === 'newest') return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       if (sortOrder === 'oldest') return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -612,44 +655,27 @@ export default function JobsPage() {
           <p className="text-gray-500">Find work or get things done</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {activeTab === 'open' && (
-            <>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                <Input
-                  placeholder="Search jobs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full sm:w-[220px] pl-9 bg-background border-border"
-                />
-              </div>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[160px] bg-background border-border">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
-                  {categories.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
+          {(activeTab === 'open' || activeTab === 'mine') && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Input
+                placeholder={activeTab === 'open' ? 'Search jobs...' : 'Search my jobs...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full sm:w-[220px] pl-9 bg-background border-border"
+              />
+            </div>
           )}
-          {activeTab === 'mine' && (
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] bg-background border-border">
-                <SelectValue placeholder="Status" />
+          {activeTab === 'open' && (
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[160px] bg-background border-border">
+                <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="requested">Requested</SelectItem>
-                <SelectItem value="assigned">Assigned</SelectItem>
-                <SelectItem value="funded">Funded</SelectItem>
-                <SelectItem value="in_progress">In Progress</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="">All Categories</SelectItem>
+                {categories.map(c => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           )}
@@ -668,6 +694,27 @@ export default function JobsPage() {
             <Plus className="w-4 h-4 mr-2" /> Post Job
           </Button>
         </div>
+      </div>
+
+      {/* Quick stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard icon={<Briefcase className="w-4 h-4" />} label="Open jobs" value={openJobs.length} />
+        <StatCard
+          icon={<MapPin className="w-4 h-4" />}
+          label="Near you"
+          value={
+            geo.latitude && geo.longitude
+              ? openJobs.filter(j => (distanceKm(geo.latitude, geo.longitude, j.latitude, j.longitude) ?? Infinity) <= 10).length
+              : 0
+          }
+          hint={geo.latitude ? undefined : 'location off'}
+        />
+        <StatCard icon={<Send className="w-4 h-4" />} label="You applied" value={appliedJobIds.size} />
+        <StatCard
+          icon={<Zap className="w-4 h-4" />}
+          label="Active with you"
+          value={(myJobs ?? []).filter(j => ['assigned', 'funded', 'in_progress'].includes(j.status)).length}
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'mine' | 'map')}>
@@ -695,6 +742,8 @@ export default function JobsPage() {
                   <JobCard
                     job={job}
                   user={user}
+                  distanceKm={distanceKm(geo.latitude, geo.longitude, job.latitude, job.longitude)}
+                  categoryName={job.category_id ? (categories.find(c => c.id === job.category_id)?.name ?? null) : null}
                   onApply={handleApply}
                   onAssign={handleAssign}
                   onFund={(jobId: string) => {
@@ -742,50 +791,70 @@ export default function JobsPage() {
         </TabsContent>
 
         <TabsContent value="mine" className="mt-6">
-          <motion.div 
-            className="grid gap-4 md:grid-cols-2"
-            initial="hidden"
-            animate="visible"
-            variants={{
-              hidden: { opacity: 0 },
-              visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-            }}
-          >
-            {myLoading ? (
-              [1].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)
-            ) : processedMyJobs.length ? (
-              processedMyJobs.map(job => (
-                <motion.div key={job.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}>
-                  <JobCard
-                  key={job.id}
-                  job={job}
-                  user={user}
-                  onApply={handleApply}
-                  onAssign={handleAssign}
-                  onFund={fundMutation.mutate}
-                  onRelease={releaseMutation.mutate}
-                  onVouch={vouchMutation.mutate}
-                  onDetail={setDetailJob}
-                  onContractRoom={openContractRoom}
-                  onOpenThread={openDiscussionThread}
-                  onAccept={handleAccept}
-                  onCancel={(jobId, title) => setConfirmAction({ type: 'cancel', jobId, title })}
-                  hasApplied={appliedJobIds.has(job.id)}
-                  hasVouched={vouchedJobIds.has(job.id)}
-                  onImageClick={setLightboxSrc}
-                  applyPending={applyMutation.isPending}
-                  assignPending={assignMutation.isPending}
-                  fundPending={fundMutation.isPending}
-                  releasePending={releaseMutation.isPending}
-                  vouchPending={vouchMutation.isPending}
-                  acceptPending={acceptMutation.isPending}
-                />
-                </motion.div>
-              ))
-            ) : (
-              <div className="col-span-2 text-center py-12 text-gray-500">No jobs yet.</div>
-            )}
-          </motion.div>
+          {myLoading ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {[1, 2].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)}
+            </div>
+          ) : processedMyJobs.length ? (
+            <div className="space-y-8">
+              {MY_JOB_GROUPS.map(group => {
+                const jobs = processedMyJobs.filter(j => group.statuses.includes(j.status))
+                if (!jobs.length) return null
+                return (
+                  <section key={group.key}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex items-center justify-center">
+                        {group.icon}
+                      </span>
+                      <h2 className="font-semibold text-gray-800 dark:text-gray-100">{group.label}</h2>
+                      <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full px-2 py-0.5 font-medium">{jobs.length}</span>
+                    </div>
+                    <motion.div
+                      className="grid gap-4 md:grid-cols-2"
+                      initial="hidden"
+                      animate="visible"
+                      variants={{
+                        hidden: { opacity: 0 },
+                        visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+                      }}
+                    >
+                      {jobs.map(job => (
+                        <motion.div key={job.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}>
+                          <JobCard
+                            job={job}
+                            user={user}
+                            distanceKm={distanceKm(geo.latitude, geo.longitude, job.latitude, job.longitude)}
+                            categoryName={job.category_id ? (categories.find(c => c.id === job.category_id)?.name ?? null) : null}
+                            onApply={handleApply}
+                            onAssign={handleAssign}
+                            onFund={fundMutation.mutate}
+                            onRelease={releaseMutation.mutate}
+                            onVouch={vouchMutation.mutate}
+                            onDetail={setDetailJob}
+                            onContractRoom={openContractRoom}
+                            onOpenThread={openDiscussionThread}
+                            onAccept={handleAccept}
+                            onCancel={(jobId, title) => setConfirmAction({ type: 'cancel', jobId, title })}
+                            hasApplied={appliedJobIds.has(job.id)}
+                            hasVouched={vouchedJobIds.has(job.id)}
+                            onImageClick={setLightboxSrc}
+                            applyPending={applyMutation.isPending}
+                            assignPending={assignMutation.isPending}
+                            fundPending={fundMutation.isPending}
+                            releasePending={releaseMutation.isPending}
+                            vouchPending={vouchMutation.isPending}
+                            acceptPending={acceptMutation.isPending}
+                          />
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  </section>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">No jobs yet.</div>
+          )}
         </TabsContent>
 
         {/* Map Tab */}
@@ -1097,6 +1166,7 @@ function JobCard({
   job, user,
   onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onOpenThread, onAccept, onCancel,
   hasApplied, hasVouched, onImageClick,
+  distanceKm, categoryName,
   applyPending, assignPending, fundPending, releasePending, vouchPending, acceptPending,
 }: {
   job: Job
@@ -1114,6 +1184,8 @@ function JobCard({
   hasApplied?: boolean
   hasVouched?: boolean
   onImageClick?: (url: string) => void
+  distanceKm?: number | null
+  categoryName?: string | null
   applyPending?: boolean
   assignPending?: boolean
   fundPending?: boolean
@@ -1153,7 +1225,7 @@ function JobCard({
   })
 
   return (
-    <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md transition-shadow">
+    <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <CardHeader className="pb-2">
         {/* Poster info */}
         <div className="mb-2">
@@ -1195,7 +1267,12 @@ function JobCard({
           </div>
         )}
         <div className="flex justify-between items-center">
-          <span className="font-semibold">₦{parseFloat(job.price as string).toLocaleString()}</span>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-lg font-bold text-gray-900 dark:text-white">₦{parseFloat(job.price as string).toLocaleString()}</span>
+            {job.min_price && job.max_price && (
+              <span className="text-xs text-gray-400">₦{Number(job.min_price).toLocaleString()}–₦{Number(job.max_price).toLocaleString()}</span>
+            )}
+          </div>
           {job.escrow_address && <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Escrowed</span>}
         </div>
         {/* Indicators */}
@@ -1208,6 +1285,16 @@ function JobCard({
           {appCount !== undefined && (
             <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
               <UserPlus className="w-3 h-3" /> {appCount} application{appCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {categoryName && (
+            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
+              {categoryName}
+            </span>
+          )}
+          {distanceKm != null && (
+            <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">
+              <MapPin className="w-3 h-3" /> {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm} km`} away
             </span>
           )}
           {hasApplied && (
