@@ -343,6 +343,9 @@ async def list_jobs(
         db,
         client_id=client_id,
         provider_id=provider_id,
+        # Public browse (no "my" filter): hide the caller's own jobs — they
+        # belong under "My Jobs", not in the open marketplace.
+        exclude_user_id=None if (client_id or provider_id) else current_user.id,
         status=status_filter,
         category_id=uuid.UUID(category_id) if category_id else None,
         min_price=min_price,

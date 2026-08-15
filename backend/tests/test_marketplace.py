@@ -94,6 +94,10 @@ async def test_jobs_search_filters(client):
     """
     client_user = await register_user(client, role="client")
     headers = auth_headers(client_user["token"])
+    # The public browse hides the caller's own jobs — search as a different
+    # user, exactly like a real marketplace viewer would.
+    viewer = await register_user(client, role="provider")
+    viewer_headers = auth_headers(viewer["token"])
 
     def make(title: str, desc: str) -> dict:
         return {
@@ -109,23 +113,29 @@ async def test_jobs_search_filters(client):
     b = (await client.post("/api/v1/jobs/", headers=headers, json=make(
         f"Smoke search B {RUN_ID}", "Dog walking in the park"))).json()
 
-    # --- the actual frontend call: ?q= must filter ---
-    q = await client.get("/api/v1/jobs/", headers=headers,
-                         params={"status": "open,requested", "q": "samsung"})
+    # The poster must NOT see their own job in the public browse.
+    own = await client.get("/api/v1/jobs/", headers=headers,
+                           params={"status": "open", "q": "Samsung"})
+    own_ids = [j["id"] for j in own.json()]
+    assert a["id"] not in own_ids, "poster must not see their own job in browse"
+
+    # --- the actual frontend call: ?q= must filter (as a viewer) ---
+    q = await client.get("/api/v1/jobs/", headers=viewer_headers,
+                         params={"status": "open", "q": "samsung"})
     assert q.status_code == 200, q.text
     q_ids = [j["id"] for j in q.json()]
     assert a["id"] in q_ids, "?q=samsung should match the Samsung job"
     assert b["id"] not in q_ids, "?q=samsung must NOT return the dog job"
 
     # --- legacy alias still works ---
-    legacy = await client.get("/api/v1/jobs/", headers=headers,
+    legacy = await client.get("/api/v1/jobs/", headers=viewer_headers,
                               params={"search": "dog walking"})
     legacy_ids = [j["id"] for j in legacy.json()]
     assert b["id"] in legacy_ids, "?search=dog walking should match the dog job"
     assert a["id"] not in legacy_ids
 
     # --- fuzzy: words split across title + description, out of order ---
-    fuzzy = await client.get("/api/v1/jobs/", headers=headers,
+    fuzzy = await client.get("/api/v1/jobs/", headers=viewer_headers,
                              params={"q": "cracked samsung"})
     fuzzy_ids = [j["id"] for j in fuzzy.json()]
     assert a["id"] in fuzzy_ids, "fuzzy words across title/description must match"
@@ -163,8 +173,10 @@ async def test_jobs_ranked_by_hotness(client):
     )
     assert applied.status_code == 201, applied.text
 
-    lst = await client.get("/api/v1/jobs/", headers=client_headers,
-                           params={"status": "open,requested"})
+    # Browse as the provider (the client must not see their own jobs in the
+    # public list — they belong under "My Jobs").
+    lst = await client.get("/api/v1/jobs/", headers=provider_headers,
+                           params={"status": "open"})
     assert lst.status_code == 200, lst.text
     ids = [j["id"] for j in lst.json()]
     assert engaged["id"] in ids and fresh["id"] in ids
@@ -219,7 +231,9 @@ async def test_jobs_category_filter(client):
     assert req.status_code == 201, req.text
     assert req.json()["category_id"] == cat["id"]
 
-    filtered = await client.get("/api/v1/jobs/", headers=headers,
+    # Browse as the provider: the client's own jobs are hidden from their own
+    # public browse, but a viewer sees them all (with the category filter).
+    filtered = await client.get("/api/v1/jobs/", headers=ph,
                                 params={"category_id": cat["id"]})
     assert filtered.status_code == 200, filtered.text
     ids = [j["id"] for j in filtered.json()]
