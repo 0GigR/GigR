@@ -63,7 +63,15 @@ export async function syncPushSubscription(): Promise<boolean> {
   }
 }
 
-export async function subscribeToPushNotifications() {
+/**
+ * Create (or reuse) the browser's push subscription and, when logged in, save
+ * it to the backend.
+ *
+ * Pass skipServerSave for pre-login enablement (landing page): the browser
+ * subscription is created early in the funnel, and syncPushSubscription links
+ * it to the account after sign-in — the server save requires auth.
+ */
+export async function subscribeToPushNotifications(skipServerSave = false) {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     console.warn('Push messaging is not supported.')
     return false
@@ -97,8 +105,10 @@ export async function subscribeToPushNotifications() {
       })
     }
 
-    // 5. Send subscription to backend
-    await saveSubscription(subscription)
+    // 5. Send subscription to backend (skip pre-login: it needs an account)
+    if (!skipServerSave) {
+      await saveSubscription(subscription)
+    }
     
     console.log('Successfully subscribed to web push notifications')
     return true
