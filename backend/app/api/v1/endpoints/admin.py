@@ -372,7 +372,9 @@ async def announce_to_all(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a rich announcement to users: bell notification + web push + a
-    dismissible in-app popup, and an email to stale users (last seen > N days).
+    dismissible in-app popup, and an email to every recipient (stale users
+    included — they won't see the in-app popup, and an "all" target reaches
+    people even if they're not in the app right now).
 
     Body: {title?, message, image_url?, link?, target?: "all"|"inactive",
            inactive_days?: int (default 10)}
@@ -423,8 +425,11 @@ async def announce_to_all(
         )
     await db.commit()
 
-    # Emails for stale users — background, non-blocking.
-    if target == "inactive" and settings.BREVO_API_KEY and users:
+    # Emails — background, non-blocking. Every recipient gets one: stale users
+    # are emailed because they won't see the in-app popup, and an "all" target
+    # emails everyone so the announcement reaches people even if they're not
+    # in the app right now.
+    if settings.BREVO_API_KEY and users:
         for u in users:
             if u.email:
                 _jobs._send_email_background(
