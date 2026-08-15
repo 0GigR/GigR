@@ -4,7 +4,10 @@ import AuthDialog from '@/components/AuthDialog'
 import ParticleBackground from '@/components/ParticleBackground'
 import PushPromptBanner from '@/components/PushPromptBanner'
 import { Logo } from '@/components/Logo'
-import { Shield, Users, ArrowRight, Zap, Bot, Star, Gavel, MapPin } from 'lucide-react'
+import {
+  Shield, Users, ArrowRight, Zap, Bot, Star, Gavel, MapPin,
+  CheckCircle, MessageCircle, Bell, Quote, ChevronRight, Flame,
+} from 'lucide-react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
 import { Navigate } from 'react-router-dom'
@@ -55,8 +58,8 @@ function FeatureCard({ icon: Icon, title, description, delay }: {
   )
 }
 
-// ---------- Typewriter text (black, no colour) ----------
-function TypewriterText({ texts }: { texts: string[] }) {
+// ---------- Typewriter text (gradient-accented word) ----------
+function TypewriterText({ texts, className = 'text-black' }: { texts: string[]; className?: string }) {
   const [index, setIndex] = useState(0)
   const [displayed, setDisplayed] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -83,7 +86,7 @@ function TypewriterText({ texts }: { texts: string[] }) {
   }, [displayed, isDeleting, index, texts])
 
   return (
-    <span className="text-black">
+    <span className={className}>
       {displayed}
       <motion.span
         animate={{ opacity: [0, 1, 0] }}
@@ -91,6 +94,141 @@ function TypewriterText({ texts }: { texts: string[] }) {
         className="inline-block w-[3px] h-[1.2em] bg-black ml-1 align-middle"
       />
     </span>
+  )
+}
+
+// ---------- Infinite category ticker ----------
+const CATEGORIES = [
+  'Repairs', 'Cleaning', 'Delivery & Errands', 'Tech & Gadgets', 'Design & Branding',
+  'Tutoring', 'Events & Catering', 'Beauty & Wellness', 'Moving & Logistics',
+  'Home Improvement', 'Photography', 'Car Care',
+]
+
+function CategoryMarquee() {
+  return (
+    <div className="relative py-5 border-y border-gray-100 bg-gray-50/60 overflow-hidden">
+      <div
+        className="flex w-max whitespace-nowrap animate-[gigr-marquee_35s_linear_infinite] hover:[animation-play-state:paused] motion-reduce:animate-none"
+        aria-hidden="true"
+      >
+        {[...CATEGORIES, ...CATEGORIES].map((cat, i) => (
+          <span
+            key={i}
+            className="mx-3 inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 px-4 py-1.5 rounded-full border border-gray-200 bg-white shadow-sm"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500" />
+            {cat}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ---------- Phone mockup of the live app ----------
+function PhoneMockup() {
+  return (
+    <div className="relative mx-auto mt-20 md:mt-24 max-w-[320px]">
+      {/* Floating proof chips (desktop) */}
+      <div className="absolute -left-40 top-14 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_6s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+          <Shield className="w-4 h-4" />
+        </span>
+        <div className="text-left">
+          <p className="text-xs font-bold text-gray-900">Escrow protected</p>
+          <p className="text-[10px] text-gray-500">Funds locked on-chain</p>
+        </div>
+      </div>
+      <div className="absolute -right-40 top-36 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_7s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+          <Star className="w-4 h-4" />
+        </span>
+        <div className="text-left">
+          <p className="text-xs font-bold text-gray-900">Vouch received</p>
+          <p className="text-[10px] text-gray-500">Minted as a cNFT</p>
+        </div>
+      </div>
+      <div className="absolute -left-32 bottom-20 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_8s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+          <MapPin className="w-4 h-4" />
+        </span>
+        <div className="text-left">
+          <p className="text-xs font-bold text-gray-900">Near you</p>
+          <p className="text-[10px] text-gray-500">2 km away</p>
+        </div>
+      </div>
+
+      {/* Phone frame */}
+      <div className="relative rounded-[2.8rem] border-[10px] border-gray-900 bg-white shadow-2xl overflow-hidden">
+        {/* Notch */}
+        <div className="absolute top-2 inset-x-0 mx-auto w-32 h-6 bg-gray-900 rounded-full z-20" />
+
+        {/* Screen */}
+        <div className="pt-12 pb-6 px-4 bg-gray-50">
+          {/* App header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-1.5">
+              <Logo className="w-5 h-5 text-black" />
+              <span className="text-sm font-bold">Gigr</span>
+            </div>
+            <div className="relative">
+              <Bell className="w-4 h-4 text-gray-600" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-fuchsia-500" />
+            </div>
+          </div>
+
+          {/* Job card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white text-[9px] font-bold flex items-center justify-center">AO</span>
+              <span className="text-[11px] font-semibold text-gray-900">Ada O.</span>
+              <span className="text-[9px] text-gray-400">· Client</span>
+            </div>
+            <p className="text-[13px] font-bold text-gray-900 mb-1">Fix my iPhone screen</p>
+            <p className="text-[11px] text-gray-500 line-clamp-1 mb-2">Cracked glass, need a same-day repair near Lekki Phase 1.</p>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-black text-gray-900">₦45,000</span>
+              <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                <Shield className="w-2.5 h-2.5" /> Escrowed
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-semibold">
+                <Flame className="w-2.5 h-2.5" /> Hot
+              </span>
+              <span className="inline-flex items-center gap-1 text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
+                4 applications
+              </span>
+              <span className="text-[9px] text-gray-400">2h ago</span>
+            </div>
+          </div>
+
+          {/* Second card */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm mt-2 flex items-center justify-between">
+            <div className="min-w-0">
+              <p className="text-[12px] font-bold text-gray-900 truncate">Clean 3-bedroom apartment</p>
+              <p className="text-[10px] text-gray-500">₦25,000 · <span className="text-indigo-600 font-medium">2 km away</span></p>
+            </div>
+            <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full shrink-0">
+              Open
+            </span>
+          </div>
+
+          {/* Chat bubble */}
+          <div className="flex justify-end mt-2">
+            <div className="bg-gray-900 text-white rounded-2xl rounded-br-sm px-3 py-2 max-w-[85%]">
+              <p className="text-[10px] leading-snug">Work submitted — review and release payment when ready</p>
+              <p className="text-[8px] text-gray-400 mt-0.5 text-right">9:41 AM</p>
+            </div>
+          </div>
+
+          {/* Fund button */}
+          <button className="w-full mt-3 bg-gray-900 text-white text-[12px] font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg">
+            <Shield className="w-3.5 h-3.5" /> Fund Escrow
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -111,7 +249,7 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 overflow-hidden">
+    <div className="min-h-screen bg-white text-gray-900 overflow-hidden scroll-smooth">
       {/* Navigation */}
       <nav className="fixed w-full top-0 z-50 backdrop-blur-lg bg-white/80 border-b border-gray-200">
         <div className="flex items-center justify-between px-4 md:px-6 py-4 max-w-7xl mx-auto">
@@ -137,7 +275,7 @@ export default function LandingPage() {
       />
 
       {/* Hero Section */}
-      <section className="relative flex flex-col items-center justify-center text-center px-6 pt-32 md:pt-40 pb-32 max-w-6xl mx-auto">
+      <section className="relative flex flex-col items-center justify-center text-center px-6 pt-24 md:pt-32 pb-24 max-w-6xl mx-auto">
         <BackgroundBlobs />
         <ParticleBackground className="absolute inset-0 w-full h-full" />
         <motion.div
@@ -146,10 +284,29 @@ export default function LandingPage() {
           transition={{ duration: 1, ease: 'easeOut' }}
           className="relative z-10"
         >
+          {/* Badge */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+            className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-full pl-2 pr-4 py-1.5 shadow-sm mb-8"
+          >
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+              <span className="relative flex w-2 h-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-75" />
+                <span className="relative inline-flex rounded-full w-2 h-2 bg-gradient-to-r from-indigo-500 to-fuchsia-500" />
+              </span>
+              Now live — escrow-protected neighborhood marketplace
+            </span>
+          </motion.div>
+
           <h1 className="text-5xl md:text-8xl font-black tracking-tight leading-tight">
             Trust works
             <br />
-            <TypewriterText texts={['neighborly', 'on-chain', 'verifiably']} />
+            <TypewriterText
+              texts={['neighborly', 'on-chain', 'verifiably']}
+              className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500"
+            />
           </h1>
           <p className="mt-8 text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
             The first neighborhood marketplace where <strong className="text-gray-900">reputation is real</strong> and{' '}
@@ -165,27 +322,33 @@ export default function LandingPage() {
               Get Started
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-2 border-gray-800 text-gray-800 font-bold px-10 py-4 rounded-full text-lg hover:bg-gray-800 hover:text-white transition-all"
+            <a
+              href="#how-it-works"
+              className="inline-flex items-center border-2 border-gray-800 text-gray-800 font-bold px-10 py-4 rounded-full text-lg hover:bg-gray-800 hover:text-white transition-all"
             >
               Learn More
-            </Button>
+            </a>
           </div>
         </motion.div>
+
+        {/* Phone mockup */}
+        <PhoneMockup />
       </section>
+
+      {/* Category ticker */}
+      <CategoryMarquee />
 
       {/* How it Works – Parallax */}
       <motion.section
+        id="how-it-works"
         ref={howItWorksRef}
         style={{ scale, opacity }}
         className="py-32 px-6 max-w-7xl mx-auto relative"
       >
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-20">
-          How Gigr <span className="text-black">works</span>
+          How Gigr <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">works</span>
         </h2>
-        <div className="grid md:grid-cols-3 gap-10">
+        <div className="grid md:grid-cols-3 gap-10 md:gap-6 relative">
           {[
             { step: '01', icon: Users, title: 'Post a job or service', desc: 'Describe what you need. Set your price. Your neighborhood sees it.' },
             { step: '02', icon: Shield, title: 'Fund escrow securely', desc: 'Payment is locked in a smart contract. No one can touch it.' },
@@ -197,9 +360,12 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.2, duration: 0.6 }}
-              className="flex gap-6 items-start"
+              className="flex gap-6 items-start relative"
             >
-              <div className="text-5xl font-black text-gray-200">{item.step}</div>
+              {i < 2 && (
+                <ChevronRight className="hidden md:block absolute -right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-200" />
+              )}
+              <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-gray-300 to-gray-200">{item.step}</div>
               <div>
                 <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-4">
                   <item.icon className="w-6 h-6 text-black" />
@@ -213,9 +379,9 @@ export default function LandingPage() {
       </motion.section>
 
       {/* Feature Cards */}
-      <section className="py-32 px-6 max-w-7xl mx-auto">
+      <section id="features" className="py-32 px-6 max-w-7xl mx-auto">
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-20">
-          Why <span className="text-black">trust</span> Gigr?
+          Why <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">trust</span> Gigr?
         </h2>
         <div className="grid md:grid-cols-3 gap-10">
           <FeatureCard icon={Bot} title="AI Assistant" description="Speak or type — your AI agent finds services, posts jobs, and even negotiates on your behalf, hands-free." delay={0} />
@@ -224,6 +390,64 @@ export default function LandingPage() {
           <FeatureCard icon={Star} title="Ratings & Reviews" description="Real 1–5 star reviews tied to real completed jobs. See exactly who trusts whom, and why." delay={0.3} />
           <FeatureCard icon={Gavel} title="Community Disputes" description="Disagreements are settled by a jury of verified neighbors voting on-chain — not a faceless support desk." delay={0.4} />
           <FeatureCard icon={MapPin} title="Hyper-Local Map" description="See jobs and providers around you on a live neighborhood map. Trust starts close to home." delay={0.5} />
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="py-32 px-6 max-w-7xl mx-auto">
+        <h2 className="text-4xl md:text-6xl font-bold text-center mb-6">
+          Neighbors who <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">trust</span> Gigr
+        </h2>
+        <p className="text-center text-gray-500 text-lg mb-16 max-w-2xl mx-auto">
+          Real jobs, real escrow, real reputation — from the people next door.
+        </p>
+        <div className="grid md:grid-cols-3 gap-10">
+          {[
+            {
+              quote: 'I posted a phone repair at 9am and had it fixed by noon. The escrow meant I paid only when the work was done.',
+              name: 'Ada O.',
+              role: 'Homeowner, Lekki',
+              initials: 'AO',
+            },
+            {
+              quote: 'Clients pay upfront into escrow, so I never chase payments anymore. My vouches got me my next three jobs.',
+              name: 'Chidi K.',
+              role: 'Electrician, Surulere',
+              initials: 'CK',
+            },
+            {
+              quote: 'The AI agent handled the whole back-and-forth for my branding job. I just reviewed and approved.',
+              name: 'Tobi A.',
+              role: 'Freelance Designer',
+              initials: 'TA',
+            },
+          ].map((t, i) => (
+            <motion.div
+              key={t.name}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-50px' }}
+              transition={{ duration: 0.6, delay: i * 0.12 }}
+              className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm hover:shadow-xl transition-shadow duration-500 flex flex-col"
+            >
+              <Quote className="w-8 h-8 text-gray-200 mb-4" />
+              <div className="flex gap-0.5 mb-4">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Star key={n} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
+              <p className="text-gray-700 leading-relaxed flex-1">“{t.quote}”</p>
+              <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-100">
+                <span className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white text-xs font-bold flex items-center justify-center">
+                  {t.initials}
+                </span>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{t.name}</p>
+                  <p className="text-xs text-gray-500">{t.role}</p>
+                </div>
+              </div>
+            </motion.div>
+          ))}
         </div>
       </section>
 
@@ -236,22 +460,48 @@ export default function LandingPage() {
           viewport={{ once: true }}
           className="relative z-10"
         >
-          <h2 className="text-4xl md:text-6xl font-bold mb-6">Ready to trust your neighborhood?</h2>
+          <h2 className="text-4xl md:text-6xl font-bold mb-6">
+            Ready to trust your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">neighborhood</span>?
+          </h2>
           <p className="text-xl text-gray-600 mb-10">Join the pilot. First 200 users get free access.</p>
-          <Button
-            size="lg"
-            onClick={() => setAuthOpen(true)}
-            className="bg-black text-white font-bold px-12 py-5 rounded-full text-xl shadow-2xl hover:scale-105 transition-all"
-          >
-            Get Started Free
-            <ArrowRight className="ml-2 h-6 w-6" />
-          </Button>
+          <div className="relative inline-block">
+            <div className="absolute -inset-5 rounded-full bg-gradient-to-r from-indigo-500/30 via-fuchsia-500/30 to-violet-500/30 blur-2xl animate-pulse" />
+            <Button
+              size="lg"
+              onClick={() => setAuthOpen(true)}
+              className="relative bg-black text-white font-bold px-12 py-5 rounded-full text-xl shadow-2xl hover:scale-105 transition-all"
+            >
+              Get Started Free
+              <ArrowRight className="ml-2 h-6 w-6" />
+            </Button>
+          </div>
+          <div className="mt-10 flex items-center justify-center gap-6 flex-wrap text-sm text-gray-500">
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle className="w-4 h-4 text-green-600" /> Free to join
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Shield className="w-4 h-4 text-green-600" /> Escrow-protected
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <MessageCircle className="w-4 h-4 text-green-600" /> Local support
+            </span>
+          </div>
         </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="py-8 text-center text-gray-500">
-        © 2026 Gigr · Built for every neighborhood.
+      <footer className="py-10 px-6 border-t border-gray-100">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <span className="text-gray-500">© 2026 Gigr · Built for every neighborhood.</span>
+          <div className="flex items-center gap-6 text-sm text-gray-500">
+            <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
+            <a href="#features" className="hover:text-gray-900 transition-colors">Why Gigr</a>
+            <button onClick={() => setAuthOpen(true)} className="hover:text-gray-900 transition-colors">Sign in</button>
+            <button onClick={() => setAuthOpen(true)} className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">
+              Get Started
+            </button>
+          </div>
+        </div>
       </footer>
 
       <AuthDialog open={authOpen} onOpenChange={setAuthOpen} />
