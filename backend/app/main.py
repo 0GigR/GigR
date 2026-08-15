@@ -67,6 +67,11 @@ async def on_startup():
     from .api.v1.endpoints.ai import agent_loop
 
     await init_db()
+
+    # Fail loudly at boot if the VAPID key is broken — web push was silently
+    # dying for weeks because the send path swallowed the exception.
+    settings.validate_vapid_key()
+
     if settings.RUN_STARTUP_CLEANUP:
         try:
             await _dedup_duplicate_jobs()

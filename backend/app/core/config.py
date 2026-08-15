@@ -74,6 +74,46 @@ class Settings(BaseSettings):
     VAPID_PRIVATE_KEY: str = Field(default="", env="VAPID_PRIVATE_KEY")
     VAPID_CLAIM_EMAIL: str = Field(default="", env="VAPID_CLAIM_EMAIL")
 
+    def validate_vapid_key(self) -> None:
+        """Verify the VAPID private key can actually be loaded before any push is sent.
+
+        web push was silently failing for a long time because the send path caught
+        every exception and only logged a warning. A truncated or SEC1-format key
+        (which cryptography >= 45 refuses to load) made every send throw, and the
+        failure was invisible. This runs at startup so a broken key is loud.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        if not self.VAPID_PRIVATE_KEY or not self.VAPID_PUBLIC_KEY:
+            logger.error(
+                "[VAPID] VAPID_PRIVATE_KEY / VAPID_PUBLIC_KEY are not set — web push will not work. "
+                "Generate keys with: npx web-push generate-vapid-keys"
+            )
+            return
+
+        try:
+            from py_vapid import Vapid
+            from py_vapid import b64urldecode
+            import base64
+
+            # mirror exactly what pywebpush does in Vapid.from_string -> from_der
+            value = self.VAPID_PRIVATE_KEY.encode().replace(b"\n", b"")
+            der = b64urldecode(value)
+            if len(der) == 32:
+                Vapid.from_raw(value)
+            else:
+                Vapid.from_der(value)
+        except Exception as exc:
+            logger.error(
+                "[VAPID] VAPID_PRIVATE_KEY cannot be loaded (%s). Web push will fail for every user. "
+                "This usually means the key was truncated when copied or is in the old SEC1 format "
+                "(cryptography >= 45 rejects SEC1). Regenerate a pair with `npx web-push "
+                "generate-vapid-keys` (PKCS#8 is produced by default) and update BOTH the private "
+                "and public key env vars — existing subscriptions will need to re-enable.",
+                exc,
+            )
+
     # ── Follow-up nudges (unanswered applications) ─────────────────────────────
     # Background loop reminds clients that providers are waiting and reminds
     # applicants their application hasn't been replied to.
