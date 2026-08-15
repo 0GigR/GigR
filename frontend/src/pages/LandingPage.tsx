@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import AuthDialog from '@/components/AuthDialog'
 import ParticleBackground from '@/components/ParticleBackground'
+import PushPromptBanner from '@/components/PushPromptBanner'
 import { Logo } from '@/components/Logo'
 import { Shield, Users, ArrowRight, Zap, Bot, Star, Gavel, MapPin } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'framer-motion'
@@ -126,6 +127,14 @@ export default function LandingPage() {
           </Button>
         </div>
       </nav>
+
+      {/* Push prompt — pre-login funnel: enable now, links to the account
+          after sign-in. mt-20 clears the fixed nav; not sticky so it doesn't
+          fight the hero for attention. */}
+      <PushPromptBanner
+        onSignIn={() => setAuthOpen(true)}
+        positionClassName="relative mt-20"
+      />
 
       {/* Hero Section */}
       <section className="relative flex flex-col items-center justify-center text-center px-6 pt-32 md:pt-40 pb-32 max-w-6xl mx-auto">
