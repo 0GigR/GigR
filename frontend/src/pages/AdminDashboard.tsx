@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAuthStore } from '@/store/authStore'
-import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send } from 'lucide-react'
+import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -67,6 +67,40 @@ export default function AdminDashboard() {
     enabled: isSuperadmin,
   })
 
+  // ── Moderation data ───────────────────────────────────────
+  const { data: adminJobs } = useQuery({
+    queryKey: ['admin-jobs'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/jobs', { params: { limit: 100 } })
+      return data
+    },
+  })
+  const { data: adminServices } = useQuery({
+    queryKey: ['admin-services'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/services', { params: { limit: 100 } })
+      return data
+    },
+  })
+  const { data: adminUsers } = useQuery({
+    queryKey: ['admin-users'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/users', { params: { limit: 100 } })
+      return data
+    },
+  })
+  const { data: adminMessages } = useQuery({
+    queryKey: ['admin-messages'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/messages', { params: { limit: 100 } })
+      return data
+    },
+    enabled: isSuperadmin,
+  })
+
+  const [announceTitle, setAnnounceTitle] = useState('')
+  const [announceBody, setAnnounceBody] = useState('')
+
   // Fetch messages for selected dispute
   const { data: courtroomMessages, refetch: refetchMessages } = useQuery({
     queryKey: ['messages', selectedDispute?.job_id],
@@ -110,6 +144,59 @@ export default function AdminDashboard() {
     onSuccess: () => {
       toast.success('Admin removed')
       queryClient.invalidateQueries({ queryKey: ['admins'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+
+  // ── Moderation mutations ──────────────────────────────────
+  const deleteJobMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/jobs/${id}`)
+    },
+    onSuccess: () => {
+      toast.success('Job deleted')
+      queryClient.invalidateQueries({ queryKey: ['admin-jobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+  const deleteServiceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/services/${id}`)
+    },
+    onSuccess: () => {
+      toast.success('Service deleted')
+      queryClient.invalidateQueries({ queryKey: ['admin-services'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+  const deleteUserMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/users/${id}`)
+    },
+    onSuccess: () => {
+      toast.success('User deleted')
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+  const deleteMessageMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/admin/messages/${id}`)
+    },
+    onSuccess: () => {
+      toast.success('Message deleted')
+      queryClient.invalidateQueries({ queryKey: ['admin-messages'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+  const announceMutation = useMutation({
+    mutationFn: async () => {
+      await api.post('/admin/announce', { title: announceTitle, message: announceBody })
+    },
+    onSuccess: () => {
+      toast.success('Announcement sent to all users')
+      setAnnounceTitle('')
+      setAnnounceBody('')
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
@@ -170,6 +257,7 @@ export default function AdminDashboard() {
         <TabsList>
           <TabsTrigger value="disputes">Active</TabsTrigger>
           <TabsTrigger value="resolved">Resolved</TabsTrigger>
+          <TabsTrigger value="moderation">Moderation</TabsTrigger>
           {isSuperadmin && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
 
@@ -236,6 +324,158 @@ export default function AdminDashboard() {
           ))}
         </TabsContent>
         
+        <TabsContent value="moderation" className="mt-6">
+          {/* Announce to all users — superadmin only */}
+          {isSuperadmin && (
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Megaphone className="w-4 h-4" /> Announce to all users
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Input
+                  placeholder="Title"
+                  value={announceTitle}
+                  onChange={(e) => setAnnounceTitle(e.target.value)}
+                />
+                <Input
+                  placeholder="Message (sends a bell notification + push to every user)"
+                  value={announceBody}
+                  onChange={(e) => setAnnounceBody(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  onClick={() => announceMutation.mutate()}
+                  disabled={!announceBody.trim() || announceMutation.isPending}
+                  className="bg-black text-white"
+                >
+                  <Megaphone className="w-3 h-3 mr-1" />
+                  {announceMutation.isPending ? 'Sending...' : 'Send Announcement'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Jobs */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Briefcase className="w-4 h-4" /> Jobs (most recent {adminJobs?.length || 0})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+              {(adminJobs as any[])?.map((j: any) => (
+                <div key={j.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{j.title}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {j.status} · ₦{parseFloat(j.price || '0').toLocaleString()} · {new Date(j.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm(`Delete job "${j.title}"? This removes its messages, applications, amendments and disputes.`)) {
+                        deleteJobMutation.mutate(j.id)
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              )) || <p className="text-sm text-gray-500">No jobs.</p>}
+            </CardContent>
+          </Card>
+
+          {/* Services */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wrench className="w-4 h-4" /> Services ({adminServices?.length || 0})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+              {(adminServices as any[])?.map((s: any) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{s.title}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      ₦{parseFloat(s.price || '0').toLocaleString()} · by {s.provider_name || s.provider_id?.slice(0, 8)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      if (confirm(`Delete service "${s.title}"?`)) deleteServiceMutation.mutate(s.id)
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              )) || <p className="text-sm text-gray-500">No services.</p>}
+            </CardContent>
+          </Card>
+
+          {/* Users */}
+          <Card className="mb-4">
+            <CardHeader>
+              <CardTitle className="text-base">Users ({adminUsers?.length || 0})</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+              {(adminUsers as any[])?.map((u: any) => (
+                <div key={u.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">{u.display_name || u.email}</p>
+                    <p className="text-xs text-gray-500 truncate">{u.email} · {u.role}</p>
+                  </div>
+                  {u.role !== 'superadmin' && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm(`Delete user ${u.email}? This removes their account, jobs and services.`)) deleteUserMutation.mutate(u.id)
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+              )) || <p className="text-sm text-gray-500">No users.</p>}
+            </CardContent>
+          </Card>
+
+          {/* Messages — superadmin only (dispute-forgery protection) */}
+          {isSuperadmin && (
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="text-base">Messages (recent 100) — superadmin only</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+                {(adminMessages as any[])?.map((m: any) => (
+                  <div key={m.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-700 truncate">{(m.content || '(image)').slice(0, 80)}</p>
+                      <p className="text-xs text-gray-500">{m.sender_name || m.sender_id?.slice(0, 8)} · {new Date(m.created_at).toLocaleString()}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        if (confirm('Delete this message from the contract room?')) deleteMessageMutation.mutate(m.id)
+                      }}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
+                )) || <p className="text-sm text-gray-500">No messages.</p>}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         {isSuperadmin && (
           <TabsContent value="admins" className="mt-6">
             <div className="flex gap-2 mb-4">

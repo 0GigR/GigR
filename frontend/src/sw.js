@@ -93,11 +93,21 @@ self.addEventListener('notificationclick', (event) => {
     self.location.origin
   ).href
   const origin = self.location.origin
-  const platform = (event.notification.data && event.notification.data.platform) || 'desktop'
+  // Prefer the platform hint the server sends (when the subscription was
+  // created with user-agent info), but detect it here too as a fallback —
+  // subscriptions created before that existed have no hint, and the SW's own
+  // user agent is always available.
+  const hint = (event.notification.data && event.notification.data.platform) || ''
+  const ua = (self.navigator && self.navigator.userAgent) || ''
+  const isMobile = hint === 'android' || hint === 'ios'
+    || /android/i.test(ua)
+    || /iphone|ipad|ipod/i.test(ua)
 
   event.waitUntil(
     (async () => {
-      if ((platform === 'android' || platform === 'ios') && self.clients.openWindow) {
+      if (isMobile && self.clients.openWindow) {
+        // openWindow raises the existing app window on Android and opens the
+        // app on iOS; it reuses the same-scope window instead of duplicating.
         await self.clients.openWindow(urlToOpen)
         return
       }

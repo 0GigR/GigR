@@ -141,6 +141,7 @@ async def get_jobs_filtered(
     db: AsyncSession,
     client_id: Optional[PyUUID] = None,
     provider_id: Optional[PyUUID] = None,
+    exclude_user_id: Optional[PyUUID] = None,
     status: Optional[str] = None,
     category_id: Optional[PyUUID] = None,
     min_price: Optional[float] = None,
@@ -160,6 +161,12 @@ async def get_jobs_filtered(
         conditions.append(Job.client_id == client_id)
     if provider_id:
         conditions.append(Job.provider_id == provider_id)
+    # Public browse: never show the caller's own jobs (they belong under
+    # "My Jobs"). Only the client is excluded — providers are only set on
+    # non-public statuses, and NULL != x is false in SQL so provider checks
+    # would wrongly drop every open job.
+    if exclude_user_id:
+        conditions.append(Job.client_id != exclude_user_id)
     if status:
         statuses = [s.strip() for s in status.split(",")]
         conditions.append(Job.status.in_(statuses))

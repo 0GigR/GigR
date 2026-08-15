@@ -9,6 +9,7 @@ import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
 import PushPromptBanner from '@/components/PushPromptBanner'
+import LocationPromptBanner from '@/components/LocationPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
 
@@ -190,6 +191,10 @@ export default function DashboardLayout() {
           push is not currently enabled (auto on load, then via the Enable
           button, which is a user gesture the browsers require). */}
       <PushPromptBanner />
+
+      {/* Periodic location-sharing nudge — only when location_public is off,
+          re-asks at most every 7 days. */}
+      <LocationPromptBanner />
 
       {/* Update Available Banner — sticky under the header, above the fixed sidebar (z-40) */}
       {needRefresh && (

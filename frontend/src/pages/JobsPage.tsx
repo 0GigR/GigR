@@ -200,9 +200,13 @@ export default function JobsPage() {
   } = useInfiniteQuery<Job[]>({
     queryKey: ['jobs', 'open', debouncedSearch, categoryFilter],
     queryFn: async ({ pageParam = 0 }) => {
-      const res = await api.get('/jobs/', { params: { status: 'open,requested', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined, category_id: categoryFilter || undefined } })
+      // Public browse shows only genuinely open jobs — service requests
+      // (status 'requested') are private client<->provider conversations and
+      // must never appear here. The backend hides the caller's own jobs, so
+      // no client-side filtering is needed.
+      const res = await api.get('/jobs/', { params: { status: 'open', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined, category_id: categoryFilter || undefined } })
       const all = Array.isArray(res.data) ? res.data : []
-      return all.filter(job => !(job.status === 'requested' && job.client_id === user?.id))
+      return all
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
