@@ -479,10 +479,13 @@ export default function AdminDashboard() {
                         onChange={(e) => setAnnounceInactiveDays(Number(e.target.value) || 10)}
                         className="w-16 h-8"
                       />
-                      days ago (emails them too)
+                      days ago
                     </label>
                   )}
                 </div>
+                <p className="text-[11px] text-gray-400">
+                  Both targets email their recipients — "All users" emails everyone, "Inactive users only" emails just stale accounts.
+                </p>
 
                 <Button
                   size="sm"

@@ -175,3 +175,54 @@ async def test_forgot_and_reset_password(client):
     again = await client.post("/api/v1/auth/reset-password",
                               json={"token": raw_token, "new_password": "Another!789"})
     assert again.status_code == 400, "used token must be rejected"
+
+
+async def test_announce_emails_all_recipients(client, monkeypatch):
+    """Announcement emails go to every recipient, not just stale users: an
+    "all" announce emails active users too, while "inactive" emails only
+    accounts that have been away past the cutoff."""
+    import app.api.v1.endpoints.jobs as jobs_module
+
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        jobs_module, "_send_email_background",
+        lambda to, subject, html: sent.append((to, subject, html)),
+    )
+
+    # One freshly-active user and one stale user.
+    active = await register_user(client, role="client")
+    stale = await register_user(client, role="provider")
+    async with _engine.begin() as conn:
+        await conn.execute(text("UPDATE users SET last_seen_at = NOW() WHERE id = :i"), {"i": active["user_id"]})
+        await conn.execute(text("UPDATE users SET last_seen_at = NOW() - interval '30 days' WHERE id = :i"), {"i": stale["user_id"]})
+
+    # The announcer needs announce:manage — make them superadmin.
+    admin = await register_user(client, role="admin")
+    ah = auth_headers(admin["token"])
+    async with _engine.begin() as conn:
+        await _set_role(conn, admin["user_id"], "superadmin", None)
+
+    # "all" emails everyone, including the active user.
+    resp = await client.post("/api/v1/admin/announce", headers=ah,
+                             json={"title": "All", "message": "Hello everyone", "target": "all"})
+    assert resp.status_code == 200, resp.text
+    all_emails = {e[0] for e in sent}
+    assert active["email"] in all_emails, "active user must be emailed on an 'all' announce"
+    assert stale["email"] in all_emails
+    ann_all = resp.json()["announcement_id"]
+
+    # "inactive" emails only the stale user.
+    sent.clear()
+    resp = await client.post("/api/v1/admin/announce", headers=ah,
+                             json={"title": "Inactive", "message": "Come back", "target": "inactive", "inactive_days": 10})
+    assert resp.status_code == 200, resp.text
+    inactive_emails = {e[0] for e in sent}
+    assert stale["email"] in inactive_emails
+    assert active["email"] not in inactive_emails, "active user must NOT be emailed on an 'inactive' announce"
+    ann_inactive = resp.json()["announcement_id"]
+
+    # Clean up rows this test created (announcements + their notifications).
+    async with _engine.begin() as conn:
+        for ann_id in (ann_all, ann_inactive):
+            await conn.execute(text("DELETE FROM notifications WHERE tag = :t"), {"t": f"announcement:{ann_id}"})
+            await conn.execute(text("DELETE FROM announcements WHERE id = :i"), {"i": ann_id})
