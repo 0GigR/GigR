@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import Dict, Any
+from urllib.parse import urlparse
 
 from app.core.dependencies import get_db, get_current_user
 from app.models.user import User
@@ -21,6 +22,28 @@ async def get_vapid_public_key():
     if not settings.VAPID_PUBLIC_KEY:
         raise HTTPException(status_code=501, detail="Web Push is not configured on this server.")
     return {"publicKey": settings.VAPID_PUBLIC_KEY}
+
+@router.get("/status")
+async def push_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Whether the current user has a saved push subscription on this server.
+
+    The frontend uses this to show a truthful "enabled" state: browser
+    permission being granted says nothing about whether the subscription was
+    ever saved here (a failed save or an expired token leaves the user looking
+    enabled while nothing ever arrives).
+    """
+    result = await db.execute(
+        select(PushSubscription).where(PushSubscription.user_id == current_user.id)
+    )
+    subs = result.scalars().all()
+    return {
+        "subscribed": len(subs) > 0,
+        "count": len(subs),
+        "endpoints": sorted({urlparse(s.endpoint).netloc for s in subs}),
+    }
 
 @router.post("/subscribe")
 async def subscribe_push(

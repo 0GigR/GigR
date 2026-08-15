@@ -88,8 +88,19 @@ export default function PushPromptBanner() {
   const handleEnable = async () => {
     setBusy(true)
     try {
+      // In the disconnected state the browser may hold a dead subscription
+      // (expired token) that subscribe() would just hand back — drop it so a
+      // fresh one is created.
+      if (state === 'disconnected') {
+        const reg = await navigator.serviceWorker.ready
+        const existing = await reg.pushManager.getSubscription()
+        if (existing) await existing.unsubscribe()
+      }
       const ok = await subscribeToPushNotifications()
-      setState(ok ? 'granted' : currentPushState())
+      // Never hide on a failed save: permission may be granted while the
+      // subscription still isn't on the server, which used to look "enabled"
+      // while nothing ever arrived.
+      setState(ok ? 'granted' : 'disconnected')
     } finally {
       setBusy(false)
     }
