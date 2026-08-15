@@ -44,7 +44,7 @@ function getTypeMeta(type?: string) {
   return TYPE_META[type || 'system'] || TYPE_META.system
 }
 
-function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios-browser' {
+function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios-browser' | 'disconnected' {
   // iOS Safari in regular browser doesn't support Web Push at all
   // Only works when installed as a PWA (home screen app) on iOS 16.4+
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
@@ -81,6 +81,25 @@ export default function NotificationBell() {
 
   useEffect(() => {
     setPushState(getPushState())
+  }, [open])
+
+  // Truth check: green "enabled" must mean the SERVER has the subscription,
+  // not just that the browser granted permission. If permission is granted
+  // but the backend has no record of it (failed save, expired token), show
+  // "not connected" so the user can Reconnect instead of silently getting
+  // nothing.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    api.get('/push/status')
+      .then(({ data }) => {
+        if (cancelled) return
+        if (getPushState() === 'granted' && !data.subscribed) {
+          setPushState('disconnected')
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [open])
 
   // Silent heal: if push is already granted, re-sync the subscription on load
@@ -150,7 +169,9 @@ export default function NotificationBell() {
       } else {
         // Check if it's a permission denial
         const state = getPushState()
-        setPushState(state)
+        // Permission granted but the save failed or the token is dead — keep
+        // it visible as "not connected" instead of pretending it's enabled.
+        setPushState(state === 'granted' ? 'disconnected' : state)
         if (state === 'denied') {
           toast.error('Notifications blocked. Go to your browser/device settings and allow notifications for this site.')
         } else {
@@ -204,6 +225,23 @@ export default function NotificationBell() {
             disabled={reconnecting}
             className="font-medium text-green-800 dark:text-green-300 hover:underline disabled:opacity-60"
             title="Expired subscriptions silently stop delivering — reconnect forces a fresh token"
+          >
+            {reconnecting ? 'Reconnecting...' : 'Reconnect'}
+          </button>
+        </div>
+      )
+    }
+    if (pushState === 'disconnected') {
+      return (
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-amber-50 dark:bg-amber-900/20 flex items-center justify-between gap-2 text-xs text-amber-700 dark:text-amber-300 shrink-0">
+          <span className="inline-flex items-center gap-2">
+            <BellOff className="w-3.5 h-3.5 shrink-0" />
+            Permission on, but not connected
+          </span>
+          <button
+            onClick={handleReconnect}
+            disabled={reconnecting}
+            className="font-medium text-amber-800 dark:text-amber-200 hover:underline disabled:opacity-60"
           >
             {reconnecting ? 'Reconnecting...' : 'Reconnect'}
           </button>
