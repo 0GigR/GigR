@@ -209,16 +209,15 @@ export default function NotificationBell() {
     )
   const hasUnreadFailure = notifications.some(n => !n.is_read && isFailure(n))
 
-  // Opening the panel is itself an acknowledgement — clear the badge server-side
-  // so the user doesn't have to press "Mark all read".
-  useEffect(() => {
-    if (open && unreadCount > 0) {
-      api.post('/notifications/read-all')
-        .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
-        .catch(() => {})
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+  // Mark ONE notification read when the user taps it. Opening the panel does
+  // NOT clear the badge anymore — unread dots stay until each item is actually
+  // seen (or "Mark all read" is pressed). Message notifications also auto-clear
+  // when the conversation itself is opened (read-conversation).
+  const markOneRead = (id: string) => {
+    api.post(`/notifications/${id}/read`)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['notifications'] }))
+      .catch(() => {})
+  }
 
   const renderPushBanner = () => {
     if (pushState === 'granted') {
@@ -384,7 +383,7 @@ export default function NotificationBell() {
                       >
                         <Link
                           to={n.link || '#'}
-                          onClick={() => setOpen(false)}
+                          onClick={() => { setOpen(false); if (!n.is_read) markOneRead(n.id) }}
                           className="block"
                         >
                           <p className="font-semibold mb-1 flex items-start gap-2">

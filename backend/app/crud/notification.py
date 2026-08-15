@@ -1,4 +1,4 @@
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from typing import List
@@ -49,12 +49,37 @@ async def create_notification(
     type: str = "system",
     tag: str | None = None
 ) -> Notification:
+    # Message notifications coalesce per conversation: instead of stacking one
+    # row per message, bump the existing unread notification (new preview, fresh
+    # timestamp so it jumps to the top). The bell then shows ONE entry per chat.
+    if type == "message" and tag:
+        existing = (
+            await db.execute(
+                select(Notification)
+                .where(Notification.user_id == user_id)
+                .where(Notification.type == "message")
+                .where(Notification.tag == tag)
+                .where(Notification.is_read == False)
+                .order_by(Notification.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing:
+            existing.title = title
+            existing.message = message
+            existing.link = link
+            existing.created_at = func.now()
+            if settings.VAPID_PRIVATE_KEY and settings.VAPID_CLAIM_EMAIL:
+                asyncio.create_task(_send_web_push(user_id, title, message, link, type, tag))
+            return existing
+
     notif = Notification(
         user_id=user_id,
         title=title,
         message=message,
         link=link,
-        type=type
+        type=type,
+        tag=tag
     )
     db.add(notif)
     

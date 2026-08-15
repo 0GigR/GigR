@@ -34,6 +34,7 @@ class UserOut(BaseModel):
     location_public: bool = False
     bio: Optional[str] = None
     skills: Optional[List[str]] = None
+    permissions: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

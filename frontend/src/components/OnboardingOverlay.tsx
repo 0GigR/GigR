@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Briefcase, Shield, Star, ArrowRight, ArrowLeft, Wallet, Bot, MessageSquare } from 'lucide-react'
+import { Briefcase, Shield, Star, ArrowRight, ArrowLeft, Wallet, Bot, MessageSquare, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
@@ -11,25 +11,31 @@ const BASE_STEPS = [
   {
     icon: Briefcase,
     title: 'Welcome to Gigr',
-    desc: 'Your neighborhood marketplace for trusted local services. Post a job or offer a service in minutes.',
+    desc: 'Your neighborhood marketplace for trusted local services. Post a job or offer a service in minutes — no middlemen, no percentages.',
     isFundWallet: false,
   },
   {
-    icon: Bot,
-    title: 'Meet Your AI Assistant',
-    desc: 'Speak or type to instantly find jobs, analyze data, and manage your account hands-free.',
+    icon: MessageSquare,
+    title: 'Find work — fast',
+    desc: 'Browse open jobs and services near you, filter by category, and chat with clients or providers in real time before you commit.',
     isFundWallet: false,
   },
   {
     icon: Shield,
     title: 'Payments are guaranteed',
-    desc: 'Funds are locked in a secure on-chain escrow until the work is done — no scams, no awkward chasing.',
+    desc: 'Funds are locked in a secure on-chain escrow until the work is done. No scams, no awkward chasing — disputes go to a real admin court.',
     isFundWallet: false,
   },
   {
-    icon: MessageSquare,
-    title: 'Communicate in Real Time',
-    desc: 'Chat with your clients and providers in real-time. Messages are stored in a decentralized, censorship-resistant manner.',
+    icon: Bot,
+    title: 'Meet Your AI Assistant',
+    desc: 'Speak or type to instantly find jobs, analyze data, and manage your account hands-free. It can even call you when things move.',
+    isFundWallet: false,
+  },
+  {
+    icon: Bell,
+    title: 'Never miss a beat',
+    desc: 'Get instant push notifications on your phone — new messages, job updates, and payment alerts. Tap one to jump straight into the app.',
     isFundWallet: false,
   },
   {
@@ -47,8 +53,14 @@ const FUND_WALLET_STEP = {
   isFundWallet: true,
 }
 
-function storageKey(userId?: string) {
-  return `gigr_onboarded_${userId || 'anon'}`
+// Persistence is versioned so a future product change can re-show onboarding
+// deliberately (bump ONBOARD_VERSION), while a user who said "never again"
+// stays silenced forever.
+const ONBOARD_VERSION = 'v2'
+const RE_SHOW_AFTER_MS = 7 * 24 * 60 * 60 * 1000 // 7 days when "do not show" is off
+
+function storageKey(kind: 'seen' | 'never', userId?: string) {
+  return `gigr_onboarded_${kind}_${ONBOARD_VERSION}_${userId || 'anon'}`
 }
 
 export default function OnboardingOverlay() {
@@ -82,24 +94,41 @@ export default function OnboardingOverlay() {
     [needsFunding],
   )
 
-  // Trigger only for users who haven't seen onboarding yet.
+  // Show unless the user has permanently opted out; if they skipped without
+  // opting out, wait 7 days before asking again.
   useEffect(() => {
     if (!user?.id) return
     try {
-      const seen = localStorage.getItem(storageKey(user.id))
-      if (!seen) setOpen(true)
+      if (localStorage.getItem(storageKey('never', user.id))) return
+      const seenAt = parseInt(localStorage.getItem(storageKey('seen', user.id)) || '0', 10)
+      if (seenAt && Date.now() - seenAt < RE_SHOW_AFTER_MS) return
+      setOpen(true)
     } catch {
       /* localStorage unavailable — skip */
     }
   }, [user?.id])
 
+  // Escape closes the overlay too (same as Skip — respects the checkbox).
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') finish()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, step, doNotShowAgain])
+
   const finish = () => {
-    if (doNotShowAgain) {
-      try {
-        localStorage.setItem(storageKey(user?.id), '1')
-      } catch {
-        /* ignore */
+    try {
+      if (user?.id) {
+        // Always record that they've seen it…
+        localStorage.setItem(storageKey('seen', user.id), String(Date.now()))
+        // …and if they ticked the box, never ask again.
+        if (doNotShowAgain) localStorage.setItem(storageKey('never', user.id), '1')
       }
+    } catch {
+      /* ignore */
     }
     setOpen(false)
   }
@@ -124,6 +153,7 @@ export default function OnboardingOverlay() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          onClick={finish}
         >
           <motion.div
             className="relative w-full max-w-md rounded-3xl bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
@@ -131,6 +161,7 @@ export default function OnboardingOverlay() {
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.9, y: 30, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Animated header band */}
             <div className="h-28 bg-gradient-to-br from-gray-900 to-black relative overflow-hidden">

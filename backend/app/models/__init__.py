@@ -14,3 +14,5 @@ from .agent_log import AgentLog
 from .notification import Notification
 from app.models.push_subscription import PushSubscription
 from .voice_call import VoiceCall
+from .announcement import Announcement
+from .password_reset_token import PasswordResetToken

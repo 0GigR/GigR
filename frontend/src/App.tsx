@@ -13,6 +13,8 @@ import DashboardLayout from '@/components/DashboardLayout'
 const LandingPage = lazy(() => import('@/pages/LandingPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
 const HomePage = lazy(() => import('@/pages/HomePage'))
 const JobsPage = lazy(() => import('@/pages/JobsPage'))
 const ServicesPage = lazy(() => import('@/pages/ServicesPage'))
@@ -71,6 +73,8 @@ function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route
                 path="/dashboard"
                 element={

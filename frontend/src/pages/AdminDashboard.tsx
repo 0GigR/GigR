@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { useAuthStore } from '@/store/authStore'
-import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench } from 'lucide-react'
+import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -98,8 +99,40 @@ export default function AdminDashboard() {
     enabled: isSuperadmin,
   })
 
+  // ── Announcement state ────────────────────────────────────
   const [announceTitle, setAnnounceTitle] = useState('')
   const [announceBody, setAnnounceBody] = useState('')
+  const [announceImageFile, setAnnounceImageFile] = useState<File | null>(null)
+  const [announceImagePreview, setAnnounceImagePreview] = useState<string | null>(null)
+  const [announceLink, setAnnounceLink] = useState('')
+  const [announceTarget, setAnnounceTarget] = useState<'all' | 'inactive'>('all')
+  const [announceInactiveDays, setAnnounceInactiveDays] = useState(10)
+  const announceImageRef = useRef<HTMLInputElement>(null)
+
+  // IAM-style permission catalog (mirrors the backend PERMISSION_SLUGS)
+  const PERMISSIONS = [
+    { slug: 'jobs:manage', label: 'Delete jobs' },
+    { slug: 'services:manage', label: 'Delete services' },
+    { slug: 'users:manage', label: 'Delete users' },
+    { slug: 'messages:manage', label: 'Delete messages (forgery risk)' },
+    { slug: 'disputes:manage', label: 'Resolve disputes' },
+    { slug: 'announce:manage', label: 'Send announcements' },
+  ]
+  const hasPerm = (slug: string) => isSuperadmin || (user?.permissions || []).includes(slug)
+
+  // New-admin permission selection + per-admin edits
+  const [newAdminPerms, setNewAdminPerms] = useState<string[]>([])
+  const [permEdits, setPermEdits] = useState<Record<string, string[]>>({})
+  const togglePerm = (userId: string | null, slug: string) => {
+    if (userId === null) {
+      setNewAdminPerms((prev) => prev.includes(slug) ? prev.filter((p) => p !== slug) : [...prev, slug])
+    } else {
+      setPermEdits((prev) => {
+        const current = prev[userId] ?? (admins as any[])?.find((a: any) => a.id === userId)?.permissions ?? []
+        return { ...prev, [userId]: current.includes(slug) ? current.filter((p) => p !== slug) : [...current, slug] }
+      })
+    }
+  }
 
   // Fetch messages for selected dispute
   const { data: courtroomMessages, refetch: refetchMessages } = useQuery({
@@ -127,12 +160,13 @@ export default function AdminDashboard() {
   // Mutations
   const createAdminMutation = useMutation({
     mutationFn: async (email: string) => {
-      await api.post('/admin/admins/create', { email })
+      await api.post('/admin/admins/create', { email, permissions: newAdminPerms })
     },
     onSuccess: () => {
       toast.success('Admin created')
       queryClient.invalidateQueries({ queryKey: ['admins'] })
       setNewAdminEmail('')
+      setNewAdminPerms([])
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
@@ -190,13 +224,46 @@ export default function AdminDashboard() {
     onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
   const announceMutation = useMutation({
-    mutationFn: async () => {
-      await api.post('/admin/announce', { title: announceTitle, message: announceBody })
+    mutationFn: async (payload: any) => {
+      await api.post('/admin/announce', payload)
     },
     onSuccess: () => {
-      toast.success('Announcement sent to all users')
+      toast.success('Announcement sent')
       setAnnounceTitle('')
       setAnnounceBody('')
+      setAnnounceImageFile(null)
+      setAnnounceImagePreview(null)
+      setAnnounceLink('')
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed')),
+  })
+
+  const handleAnnounce = async () => {
+    if (!announceBody.trim() && !announceImageFile) {
+      toast.error('Add a message or an image to announce')
+      return
+    }
+    let imageUrl: string | null = null
+    if (announceImageFile) {
+      try { imageUrl = await uploadFile(announceImageFile) } catch { return }
+    }
+    announceMutation.mutate({
+      title: announceTitle,
+      message: announceBody,
+      image_url: imageUrl,
+      link: announceLink.trim() || undefined,
+      target: announceTarget,
+      inactive_days: announceInactiveDays,
+    })
+  }
+
+  const setAdminPermsMutation = useMutation({
+    mutationFn: async ({ userId, permissions }: { userId: string; permissions: string[] }) => {
+      await api.post(`/admin/admins/${userId}/permissions`, { permissions })
+    },
+    onSuccess: () => {
+      toast.success('Permissions updated')
+      queryClient.invalidateQueries({ queryKey: ['admins'] })
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed')),
   })
@@ -253,10 +320,10 @@ export default function AdminDashboard() {
         </h1>
         <p className="text-gray-500">Manage disputes and administrators.</p>
       </div>
-      <Tabs defaultValue="disputes">
+      <Tabs defaultValue={hasPerm('disputes:manage') ? 'disputes' : 'moderation'}>
         <TabsList>
-          <TabsTrigger value="disputes">Active</TabsTrigger>
-          <TabsTrigger value="resolved">Resolved</TabsTrigger>
+          {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Active</TabsTrigger>}
+          {hasPerm('disputes:manage') && <TabsTrigger value="resolved">Resolved</TabsTrigger>}
           <TabsTrigger value="moderation">Moderation</TabsTrigger>
           {isSuperadmin && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
@@ -325,29 +392,102 @@ export default function AdminDashboard() {
         </TabsContent>
         
         <TabsContent value="moderation" className="mt-6">
-          {/* Announce to all users — superadmin only */}
-          {isSuperadmin && (
+          {!isSuperadmin && !(user?.permissions || []).some((p) => p.endsWith(':manage')) && (
+            <p className="text-sm text-gray-500 mb-4">
+              No powers granted yet. Ask the superadmin to tag you with the abilities you need.
+            </p>
+          )}
+          {/* Announce — superadmin or admins tagged with announce:manage */}
+          {hasPerm('announce:manage') && (
             <Card className="mb-4">
               <CardHeader>
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Megaphone className="w-4 h-4" /> Announce to all users
+                  <Megaphone className="w-4 h-4" /> Announce to users
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-3">
                 <Input
                   placeholder="Title"
                   value={announceTitle}
                   onChange={(e) => setAnnounceTitle(e.target.value)}
                 />
-                <Input
-                  placeholder="Message (sends a bell notification + push to every user)"
+                <Textarea
+                  placeholder="Message — appears as a popup on every user's screen, a bell notification and a push"
                   value={announceBody}
                   onChange={(e) => setAnnounceBody(e.target.value)}
+                  rows={3}
                 />
+
+                {/* Optional banner image */}
+                <div className="flex items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={() => announceImageRef.current?.click()}>
+                    <ImagePlus className="w-4 h-4 mr-1" /> {announceImageFile ? 'Change image' : 'Add banner image'}
+                  </Button>
+                  <input
+                    type="file"
+                    accept="image/*, .heic, .heif, .webp"
+                    ref={announceImageRef}
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        const processed = await processImageFile(file)
+                        setAnnounceImageFile(processed)
+                        setAnnounceImagePreview(URL.createObjectURL(processed))
+                      }
+                    }}
+                  />
+                  {announceImagePreview && (
+                    <div className="relative h-14 w-24">
+                      <img src={announceImagePreview} className="rounded-lg object-cover w-full h-full" />
+                      <X
+                        className="absolute -top-2 -right-2 h-4 w-4 bg-white text-black border border-gray-300 rounded-full cursor-pointer"
+                        onClick={() => { setAnnounceImageFile(null); setAnnounceImagePreview(null) }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <Input
+                  placeholder="Optional deep link (e.g. /dashboard/jobs)"
+                  value={announceLink}
+                  onChange={(e) => setAnnounceLink(e.target.value)}
+                />
+
+                {/* Recipient filter */}
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-xs font-medium text-gray-500">Send to:</span>
+                  <button
+                    onClick={() => setAnnounceTarget('all')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'all' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    All users
+                  </button>
+                  <button
+                    onClick={() => setAnnounceTarget('inactive')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'inactive' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+                  >
+                    Inactive users only
+                  </button>
+                  {announceTarget === 'inactive' && (
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                      last seen &gt;
+                      <Input
+                        type="number"
+                        min={1}
+                        value={announceInactiveDays}
+                        onChange={(e) => setAnnounceInactiveDays(Number(e.target.value) || 10)}
+                        className="w-16 h-8"
+                      />
+                      days ago (emails them too)
+                    </label>
+                  )}
+                </div>
+
                 <Button
                   size="sm"
-                  onClick={() => announceMutation.mutate()}
-                  disabled={!announceBody.trim() || announceMutation.isPending}
+                  onClick={handleAnnounce}
+                  disabled={announceMutation.isPending}
                   className="bg-black text-white"
                 >
                   <Megaphone className="w-3 h-3 mr-1" />
@@ -358,6 +498,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Jobs */}
+          {hasPerm('jobs:manage') && (
           <Card className="mb-4">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -388,8 +529,10 @@ export default function AdminDashboard() {
               )) || <p className="text-sm text-gray-500">No jobs.</p>}
             </CardContent>
           </Card>
+          )}
 
           {/* Services */}
+          {hasPerm('services:manage') && (
           <Card className="mb-4">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
@@ -418,8 +561,10 @@ export default function AdminDashboard() {
               )) || <p className="text-sm text-gray-500">No services.</p>}
             </CardContent>
           </Card>
+          )}
 
           {/* Users */}
+          {hasPerm('users:manage') && (
           <Card className="mb-4">
             <CardHeader>
               <CardTitle className="text-base">Users ({adminUsers?.length || 0})</CardTitle>
@@ -446,9 +591,10 @@ export default function AdminDashboard() {
               )) || <p className="text-sm text-gray-500">No users.</p>}
             </CardContent>
           </Card>
+          )}
 
-          {/* Messages — superadmin only (dispute-forgery protection) */}
-          {isSuperadmin && (
+          {/* Messages — only admins tagged with messages:manage (dispute-forgery protection) */}
+          {hasPerm('messages:manage') && (
             <Card className="mb-4">
               <CardHeader>
                 <CardTitle className="text-base">Messages (recent 100) — superadmin only</CardTitle>
@@ -478,27 +624,68 @@ export default function AdminDashboard() {
 
         {isSuperadmin && (
           <TabsContent value="admins" className="mt-6">
-            <div className="flex gap-2 mb-4">
-              <Input placeholder="Email address" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} />
-              <Button onClick={() => createAdminMutation.mutate(newAdminEmail)} disabled={!newAdminEmail}>
-                <UserPlus className="w-4 h-4 mr-1" /> Add Admin
-              </Button>
-            </div>
-            {admins?.map((a: any) => (
-              <Card key={a.id} className="bg-white border border-gray-100 mb-2">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between">
-                    <CardTitle className="text-base">{a.display_name} ({a.email})</CardTitle>
-                    <Badge>{a.role}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Button size="sm" variant="destructive" onClick={() => deleteAdminMutation.mutate(a.id)}>
-                    <Trash2 className="w-4 h-4 mr-1" /> Remove
+            {/* Create admin with IAM-style powers */}
+            <Card className="mb-4">
+              <CardHeader>
+                <CardTitle className="text-base">Grant admin powers</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Input placeholder="Email address" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} />
+                  <Button onClick={() => createAdminMutation.mutate(newAdminEmail)} disabled={!newAdminEmail.trim()}>
+                    <UserPlus className="w-4 h-4 mr-1" /> Add Admin
                   </Button>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1.5">Powers to grant (IAM-style tags — like AWS *FullAccess policies)</p>
+                  <div className="flex flex-wrap gap-2">
+                    {PERMISSIONS.map((p) => (
+                      <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${newAdminPerms.includes(p.slug) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        <input type="checkbox" className="hidden" checked={newAdminPerms.includes(p.slug)} onChange={() => togglePerm(null, p.slug)} />
+                        {p.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {admins?.map((a: any) => {
+              const editPerms = permEdits[a.id] ?? a.permissions ?? []
+              const isDirty = JSON.stringify(editPerms) !== JSON.stringify(a.permissions ?? [])
+              return (
+                <Card key={a.id} className="bg-white border border-gray-100 mb-2">
+                  <CardHeader className="pb-2">
+                    <div className="flex justify-between items-center">
+                      <CardTitle className="text-base">{a.display_name} ({a.email})</CardTitle>
+                      <Badge>{a.role}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {PERMISSIONS.map((p) => (
+                        <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${editPerms.includes(p.slug) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                          <input type="checkbox" className="hidden" checked={editPerms.includes(p.slug)} onChange={() => togglePerm(a.id, p.slug)} />
+                          {p.label}
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        disabled={!isDirty}
+                        onClick={() => setAdminPermsMutation.mutate({ userId: a.id, permissions: editPerms })}
+                      >
+                        <Save className="w-3 h-3 mr-1" /> Save powers
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => deleteAdminMutation.mutate(a.id)}>
+                        <Trash2 className="w-4 h-4 mr-1" /> Demote
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </TabsContent>
         )}
       </Tabs>
