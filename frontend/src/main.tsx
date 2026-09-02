@@ -3,8 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import './index.css'
 import App from './App.tsx'
+import { initWebMCP } from '@/lib/webmcp'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
+
+// Expose Gigr's WebMCP tools (post_job, fund_escrow, search_providers, …) to
+// AI agents that browse the app. No-op in browsers without WebMCP support.
+initWebMCP()
 
 // Wake up the backend (useful for serverless cold starts on Vercel hobby tier)
 const apiUrl = import.meta.env.VITE_API_URL || 'https://wispy-lilly-ksschkw-ee52198c.koyeb.app/api/v1'

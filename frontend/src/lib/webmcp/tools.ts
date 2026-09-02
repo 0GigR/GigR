@@ -1,0 +1,569 @@
+/**
+ * tools.ts — Gigr WebMCP tool definitions (pure).
+ *
+ * Every tool here is a plain object that the registry hands to WebMCP's
+ * imperative API (`document.modelContext.registerTool(def, { signal })`). The
+ * `execute` functions run inside the user's already-open, already-authenticated
+ * tab and reuse the app's real API layer, so an agent that calls a tool acts as
+ * the logged-in user — there is no separate agent login to build.
+ *
+ * Nothing in this file touches the DOM, React, or the axios instance directly:
+ * the API client and the current-user getter are injected (`deps`). That keeps
+ * the whole surface unit-testable with a mock client.
+ */
+
+export interface ToolApi {
+  get<T = unknown>(url: string, params?: Record<string, unknown>): Promise<T>
+  post<T = unknown>(url: string, body?: unknown): Promise<T>
+}
+
+export interface CurrentUser {
+  id: string
+  display_name?: string | null
+  email?: string | null
+  is_verified?: boolean
+  role?: string | null
+}
+
+export interface ToolDeps {
+  api: ToolApi
+  currentUser: () => CurrentUser | null
+}
+
+export interface WebMCPTool {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  execute: (input: any) => unknown | Promise<unknown>
+  annotations?: { readOnlyHint?: boolean }
+}
+
+// Tools that require a signed-in Gigr user. They are not just guarded at
+// runtime — the registry only *registers* them once the user is logged in, so
+// an agent on a logged-out session never even sees them in the tool list.
+export const PUBLIC_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'get_auth_status',
+  'search_providers',
+  'get_provider_reputation',
+])
+
+export const AUTHED_TOOL_NAMES: readonly string[] = [
+  'post_job',
+  'get_job_status',
+  'list_my_jobs',
+  'fund_escrow',
+  'release_escrow',
+  'accept_job',
+  'send_message',
+  'get_notifications',
+]
+
+export const ALL_TOOL_NAMES: ReadonlySet<string> = new Set([...PUBLIC_TOOL_NAMES, ...AUTHED_TOOL_NAMES])
+
+// ─── Small helpers ────────────────────────────────────────────────────────────
+
+const ok = (payload: Record<string, unknown>) => ({ ok: true, ...payload })
+const fail = (error: string) => ({ ok: false, error })
+
+/** Pull a human-readable detail out of an axios-style error. */
+function detailOf(err: unknown): string {
+  const e = err as any
+  const detail = e?.response?.data?.detail
+  if (typeof detail === 'string' && detail) return detail
+  const nested = e?.response?.data?.error?.message
+  if (typeof nested === 'string' && nested) return nested
+  return e?.message ? String(e.message) : 'Unknown error'
+}
+
+/** First line of defence for auth-gated tools (second line is registration gating). */
+function requireUser(currentUser: CurrentUser | null):
+  | { ok: true; user: CurrentUser }
+  | { ok: false; error: string } {
+  if (!currentUser) {
+    return {
+      ok: false,
+      error:
+        'Not signed in. Ask the user to sign in to Gigr (Google OAuth or email) first — ' +
+        'payment and job tools are only enabled for a signed-in session.',
+    }
+  }
+  return { ok: true, user: currentUser }
+}
+
+/** Match a category by name (e.g. "Plumbing") to its UUID, or pass a UUID through. */
+async function resolveCategoryId(api: ToolApi, category?: unknown): Promise<string | undefined> {
+  if (category == null || category === '') return undefined
+  const raw = String(category)
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return raw
+  const cats = await api.get<{ id: string; name: string }[]>('/categories')
+  const hit = cats.find((c) => c.name.toLowerCase() === raw.toLowerCase())
+  if (hit) return hit.id
+  const available = cats.map((c) => c.name).join(', ')
+  throw new Error(`Unknown category "${raw}". Known categories: ${available || 'none'}.`)
+}
+
+/** Slice a Job row down to the fields an agent can act on. */
+function summarizeJob(job: any): Record<string, unknown> {
+  return {
+    id: String(job.id),
+    title: job.title,
+    status: job.status,
+    price: job.price,
+    client_id: String(job.client_id),
+    provider_id: job.provider_id ? String(job.provider_id) : null,
+    category_id: job.category_id ? String(job.category_id) : null,
+    escrow_address: job.escrow_address ?? null,
+    created_at: job.created_at ?? null,
+  }
+}
+
+/**
+ * A human/agent-readable read of a job's lifecycle, so an agent knows what it
+ * can do next instead of fumbling with raw status strings.
+ */
+function jobLifecycle(job: any): Record<string, unknown> {
+  const j = summarizeJob(job)
+  const guide: Record<string, string> = {
+    open: 'Waiting for a provider. A client can assign a provider (status becomes assigned), or a provider applies and the client assigns.',
+    requested: 'A client requested a provider\'s service listing. The provider can accept this job (status becomes assigned).',
+    assigned: 'Provider hired. The client can now fund the escrow (status becomes funded).',
+    funded: 'Escrow is funded on Solana. The provider can submit work; the client can still release early.',
+    in_progress: 'Provider submitted work. The client reviews — release the escrow or the job auto-releases when the review window ends.',
+    completed: 'Payment released to the provider. The client can leave a rating/vouch.',
+    cancelled: 'This job was cancelled.',
+    disputed: 'This job is under dispute.',
+  }
+  return {
+    ...j,
+    next_actions: guide[job.status] ?? 'No further automated actions for this status.',
+  }
+}
+
+function pickProviderProfile(p: any): Record<string, unknown> {
+  return {
+    id: String(p.id),
+    display_name: p.display_name,
+    profile_image_url: p.profile_image_url ?? null,
+    is_verified: !!p.is_verified,
+    avg_rating: p.avg_rating ?? null,
+    rating_count: p.rating_count ?? 0,
+    vouches_received_count: p.vouches_received_count ?? 0,
+    skills: p.skills ?? [],
+    bio: p.bio ?? null,
+  }
+}
+
+// ─── Tool factory ─────────────────────────────────────────────────────────────
+
+export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
+  const { api } = deps
+  const me = () => deps.currentUser()
+
+  return [
+    {
+      name: 'get_auth_status',
+      description:
+        'Check whether the Gigr user is signed in and which WebMCP tools that unlocks. Call this first: if signed_in is false, ask the user to sign in (Google or email) before using account tools such as post_job, fund_escrow or release_escrow. Marketplace browsing (search_providers, get_provider_reputation) still works while signed out.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true },
+      execute: () => {
+        const u = me()
+        const base: Record<string, unknown> = {
+          signed_in: !!u,
+          requires_sign_in: [...AUTHED_TOOL_NAMES],
+          message: u
+            ? 'Signed in. All Gigr tools are available.'
+            : 'Not signed in. Only browsing tools are available. Ask the user to sign in before posting jobs or moving money.',
+        }
+        if (u) {
+          base.user = {
+            id: u.id,
+            display_name: u.display_name ?? null,
+            email: u.email ?? null,
+            is_verified: !!u.is_verified,
+            role: u.role ?? null,
+          }
+        }
+        return base
+      },
+    },
+
+    {
+      name: 'search_providers',
+      description:
+        'Search Gigr for providers (and their service listings) to hire. Give a category ("Plumbing", "Cleaning", …) and/or free-text query. When the user\'s latitude/longitude are known, results are ranked by proximity (PostGIS). Returns each service listing plus its provider\'s name, verification and reputation snapshot. Prices are in Nigerian Naira (₦).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          category: { type: 'string', description: 'Service category name, e.g. "Plumbing". Either this or query is recommended.' },
+          query: { type: 'string', description: 'Free-text search across service titles/descriptions.' },
+          latitude: { type: 'number', description: 'User latitude — enables proximity ranking.' },
+          longitude: { type: 'number', description: 'User longitude — enables proximity ranking.' },
+          radius_km: { type: 'number', description: 'Search radius in kilometres (default 10).' },
+          limit: { type: 'number', description: 'Maximum results (default 10).' },
+        },
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: any) => {
+        let categoryId: string | undefined
+        try {
+          categoryId = await resolveCategoryId(api, input?.category)
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+
+        let services: any[]
+        try {
+          if (input?.latitude != null && input?.longitude != null) {
+            services = await api.get('/services/search/nearby', {
+              lat: input.latitude,
+              lon: input.longitude,
+              radius: input.radius_km ?? 10,
+              ...(categoryId ? { category_id: categoryId } : {}),
+              limit: input.limit ?? 10,
+            })
+          } else {
+            const q = input?.query || input?.category
+            if (!q) {
+              return fail('Provide latitude/longitude for a nearby search, or a category/query for a text search.')
+            }
+            services = await api.get('/services/search/text', { q, limit: input.limit ?? 10 })
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+
+        const results = await Promise.all(
+          (services ?? []).slice(0, 10).map(async (svc) => {
+            let provider: Record<string, unknown> | null = null
+            try {
+              provider = pickProviderProfile(await api.get(`/users/${svc.provider_id}`))
+            } catch {
+              provider = { id: String(svc.provider_id) }
+            }
+            return {
+              service: {
+                id: String(svc.id),
+                provider_id: String(svc.provider_id),
+                category_id: String(svc.category_id),
+                title: svc.title,
+                description: svc.description ?? null,
+                price: svc.price,
+                latitude: svc.latitude,
+                longitude: svc.longitude,
+                radius_km: svc.radius_km,
+              },
+              provider,
+            }
+          }),
+        )
+        return ok({ count: results.length, results })
+      },
+    },
+
+    {
+      name: 'get_provider_reputation',
+      description:
+        'Look up a provider\'s verifiable trust record before hiring: star-rating average/count plus the number of on-chain verified vouches (cNFTs minted after completed jobs) and the most recent ones with their NFT/transaction ids. A strong on-chain vouch count is more trustworthy than a star rating alone.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider_id: { type: 'string', description: 'Provider user UUID (from search_providers).' },
+          max_vouches: { type: 'number', description: 'How many recent vouches to return (default 5).' },
+        },
+        required: ['provider_id'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: any) => {
+        if (!input?.provider_id) return fail('provider_id is required (a user UUID from search_providers).')
+        const pid = String(input.provider_id)
+        let profile: any
+        try {
+          profile = await api.get(`/users/${pid}`)
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+        let vouches: any[] = []
+        try {
+          vouches = await api.get(`/vouches/user/${pid}`)
+        } catch {
+          vouches = []
+        }
+        const recent = (Array.isArray(vouches) ? vouches : []).slice(0, Math.max(1, input?.max_vouches ?? 5)).map((v) => ({
+          job_id: String(v.job_id),
+          voucher_id: String(v.voucher_id),
+          cnf_nft_id: v.cnf_nft_id ?? null,
+          transaction_signature: v.transaction_signature ?? null,
+          created_at: v.created_at ?? null,
+        }))
+        return ok({
+          provider: pickProviderProfile(profile),
+          recent_verified_vouches: recent,
+          summary:
+            `${profile.display_name} — ${profile.avg_rating != null ? profile.avg_rating + '/5 from ' + (profile.rating_count ?? 0) + ' rating(s)' : 'no star ratings yet'}, ` +
+            `${profile.vouches_received_count ?? 0} verified on-chain vouch(es).`,
+        })
+      },
+    },
+
+    {
+      name: 'post_job',
+      description:
+        'Create a new Gigr job listing on the user\'s behalf (status "open"): title, description, budget and optional category/location. Budget is in Nigerian Naira (₦). After posting, providers near the job can find and apply to it. Returns the created job including its id — use get_job_status to follow it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Short job title, e.g. "Fix leaking kitchen sink".' },
+          description: { type: 'string', description: 'What needs doing, in a sentence or two.' },
+          price: { type: 'number', description: 'Budget in Nigerian Naira (₦), e.g. 15000.' },
+          category: { type: 'string', description: 'Category name, e.g. "Plumbing". Optional but helps matching.' },
+          min_price: { type: 'number', description: 'Optional lower end of a budget range (₦).' },
+          max_price: { type: 'number', description: 'Optional upper end of a budget range (₦).' },
+          latitude: { type: 'number', description: 'Optional job latitude.' },
+          longitude: { type: 'number', description: 'Optional job longitude.' },
+        },
+        required: ['title', 'description', 'price'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.title || !input?.description) return fail('title and description are required.')
+        if (input?.price == null || !Number.isFinite(Number(input.price)) || Number(input.price) <= 0) {
+          return fail('price is required and must be a positive number (₦ Naira).')
+        }
+        let categoryId: string | undefined
+        try {
+          categoryId = await resolveCategoryId(api, input?.category)
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+        const payload: Record<string, unknown> = {
+          title: String(input.title),
+          description: String(input.description),
+          price: Number(input.price),
+          ...(input.min_price != null && Number.isFinite(Number(input.min_price)) ? { min_price: Number(input.min_price) } : {}),
+          ...(input.max_price != null && Number.isFinite(Number(input.max_price)) ? { max_price: Number(input.max_price) } : {}),
+          ...(categoryId ? { category_id: categoryId } : {}),
+          ...(input.latitude != null ? { latitude: Number(input.latitude) } : {}),
+          ...(input.longitude != null ? { longitude: Number(input.longitude) } : {}),
+        }
+        try {
+          const job = await api.post('/jobs/', payload)
+          return {
+            ...ok({ job: summarizeJob(job as any) }),
+            note: 'Job is live and open. Nearby providers who match the category get notified.',
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'get_job_status',
+      description:
+        'Get the current state of a job the user is involved in (posted, requested, assigned, funded, in_progress, completed, cancelled, disputed) plus what the next sensible action is. Use this to check the result of post_job, fund_escrow, accept_job or release_escrow, and to decide what to do next.',
+      inputSchema: {
+        type: 'object',
+        properties: { job_id: { type: 'string', description: 'Job UUID.' } },
+        required: ['job_id'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        try {
+          const job = await api.get(`/jobs/${input.job_id}`)
+          return ok(jobLifecycle(job as any))
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'list_my_jobs',
+      description:
+        'List the user\'s own jobs — as the client who posted them or the provider who is doing them — optionally filtered by status (open, assigned, funded, in_progress, completed, cancelled). Call this before deciding which job to fund/release/message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string', enum: ['client', 'provider'], description: 'Whether to list jobs the user posted (client) or is doing (provider).' },
+          status: { type: 'string', description: 'Optional status filter, e.g. assigned, funded, in_progress.' },
+        },
+        required: ['role'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.role || (input.role !== 'client' && input.role !== 'provider')) {
+          return fail('role must be "client" or "provider".')
+        }
+        try {
+          const jobs = await api.get('/jobs/', {
+            my: input.role,
+            ...(input.status ? { status: input.status } : {}),
+            limit: 50,
+          })
+          return ok({ role: input.role, count: (jobs as any[]).length, jobs: (jobs as any[]).map(summarizeJob) })
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'fund_escrow',
+      description:
+        'Fund a job\'s on-chain escrow on Solana (client side). This moves real USDC into the escrow smart contract for the job — a job must have a hired provider (status "assigned") before it can be funded. Only the job\'s client can call this. Funding is idempotent and safe to repeat.',
+      inputSchema: {
+        type: 'object',
+        properties: { job_id: { type: 'string', description: 'Job UUID to fund. The user must be the client and the job must be assigned.' } },
+        required: ['job_id'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        try {
+          const job: any = await api.get(`/jobs/${input.job_id}`)
+          if (!job.provider_id) {
+            return fail(`Job "${job.title}" has no hired provider yet — a provider must be assigned before escrow can be funded.`)
+          }
+          if (job.status !== 'assigned' && job.status !== 'funded') {
+            return fail(`Job "${job.title}" is currently "${job.status}". Escrow can only be funded once a provider is hired (status "assigned").`)
+          }
+          const funded = await api.post(`/jobs/${input.job_id}/fund`)
+          return {
+            ...ok({ job: summarizeJob(funded as any) }),
+            note: 'Escrow funded on Solana (USDC). The provider can now start work.',
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'release_escrow',
+      description:
+        'Release a funded job\'s escrow so the provider gets paid (client side). The job must be funded or have work submitted (status funded/in_progress); if it is already completed the payment was already released. Only the job\'s client can call this. This is the final step of the trust loop — funds leave the escrow to the provider.',
+      inputSchema: {
+        type: 'object',
+        properties: { job_id: { type: 'string', description: 'Job UUID to release. The user must be the client.' } },
+        required: ['job_id'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        try {
+          const job: any = await api.get(`/jobs/${input.job_id}`)
+          if (job.status === 'completed') {
+            return ok({ job: summarizeJob(job), note: 'This job is already completed — payment was released.' })
+          }
+          if (job.status !== 'funded' && job.status !== 'in_progress') {
+            return fail(`Job "${job.title}" is "${job.status}". Release only makes sense once the escrow is funded (assigned work is underway or submitted).`)
+          }
+          const released = await api.post(`/jobs/${input.job_id}/release`)
+          return {
+            ...ok({ job: summarizeJob(released as any) }),
+            note: 'Escrow released — the provider has been paid. Job marked completed.',
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'accept_job',
+      description:
+        'Provider side: accept a job request. When a client requests one of the user\'s service listings the job is "requested"; this accepts it so the client can fund the escrow (status becomes "assigned"). Only the job\'s provider can accept. For open marketplace jobs the provider applies or waits to be assigned instead.',
+      inputSchema: {
+        type: 'object',
+        properties: { job_id: { type: 'string', description: 'Job UUID to accept. The user must be the job\'s provider.' } },
+        required: ['job_id'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        try {
+          const job: any = await api.get(`/jobs/${input.job_id}`)
+          if (job.status !== 'requested') {
+            return fail(`Job "${job.title}" is "${job.status}", not "requested" — only requested service requests can be accepted here.`)
+          }
+          const accepted = await api.post(`/jobs/${input.job_id}/accept-request`)
+          return {
+            ...ok({ job: summarizeJob(accepted as any) }),
+            note: 'Accepted. The client is notified and can now fund the escrow.',
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'send_message',
+      description:
+        'Post a message into a job\'s Contract Room chat (the client ↔ provider thread). The user must be a participant in the job. Use it to confirm scope, send an update, or nudge the other side to fund/release.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Job UUID whose chat room to post into.' },
+          content: { type: 'string', description: 'Message text.' },
+        },
+        required: ['job_id', 'content'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        if (!input?.content || !String(input.content).trim()) return fail('content is required.')
+        try {
+          const message = await api.post('/messages/', { job_id: input.job_id, content: String(input.content) })
+          return ok({
+            message_id: String((message as any).id),
+            sent: true,
+            note: 'Message posted to the job chat room.',
+          })
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'get_notifications',
+      description:
+        'Fetch the user\'s latest in-app notifications (escrow funded, work submitted, new message, job matched, etc.) with read state. Lets the agent report what has happened since the user last looked.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true },
+      execute: async () => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        try {
+          const items = (await api.get('/notifications')) as any[]
+          return ok({
+            unread_count: items.filter((n) => !n.is_read).length,
+            notifications: items.map((n) => ({
+              id: String(n.id),
+              title: n.title,
+              message: n.message,
+              type: n.type ?? 'system',
+              link: n.link ?? null,
+              is_read: !!n.is_read,
+              created_at: n.created_at ?? null,
+            })),
+          })
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+  ]
+}

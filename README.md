@@ -124,6 +124,11 @@ VITE_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
 npm run dev
 ```
 
+**Run WebMCP tool tests** (see [`WEBMCP_TOOLS.md`](WEBMCP_TOOLS.md)):
+```bash
+npm test
+```
+
 ---
 
 ## 💡 Key Features
@@ -142,6 +147,9 @@ Users can post jobs with images, showcase service portfolios, and exchange photo
 
 ### 5. Google OAuth + Profile Sync
 Frictionless onboarding using Google OAuth, which automatically pulls and syncs the user's Google profile picture to their Gigr account.
+
+### 6. Agent-native (WebMCP)
+Gigr is **built for humans and their agents together** via [WebMCP](WEBMCP_TOOLS.md). AI agents browsing the app can call structured tools — `search_providers`, `get_provider_reputation`, `post_job`, `fund_escrow`, `release_escrow`, `accept_job`, `send_message`, … — that run in the user's authenticated tab. An agent can find a real provider, verify their on-chain vouches, hire them, fund the Solana escrow and release payment on the user's behalf. Payment tools are only ever **exposed** (registered) while the user is signed in.
 
 ---# GigR
 # GigR

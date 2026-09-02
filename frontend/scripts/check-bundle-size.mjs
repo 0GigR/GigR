@@ -22,9 +22,12 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { fileURLToPath } from 'node:url'
 
 const DIST = new URL('../dist/', import.meta.url)
-const assetsDir = new URL('assets/', DIST)
+// `new URL(...).pathname` is not a usable filesystem path on Windows (it begins
+// with `/C:/`), so resolve to a real path via fileURLToPath before joining.
+const assetsDir = fileURLToPath(new URL('assets/', DIST))
 
 const kB = (n) => Number(n || 0)
 const budgets = [
@@ -58,7 +61,7 @@ const budgets = [
 const files = readdirSync(assetsDir).filter((f) => f.endsWith('.js'))
 const sizes = files
   .map((f) => {
-    const path = join(assetsDir.pathname, f)
+    const path = join(assetsDir, f)
     const bytes = statSync(path).size
     let content = null
     return {
@@ -104,7 +107,7 @@ for (const b of budgets) {
     process.exit(1)
   }
 
-  const gz = gzipSync(readFileSync(join(assetsDir.pathname, chunk.name))).length
+  const gz = gzipSync(readFileSync(join(assetsDir, chunk.name))).length
   const pct = ((chunk.bytes / b.budgetBytes) * 100).toFixed(0)
   const mark = chunk.bytes > b.budgetBytes ? '✗' : '✓'
   console.log(
