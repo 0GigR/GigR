@@ -105,6 +105,70 @@ describe('get_auth_status', () => {
   })
 })
 
+describe('get_user_location', () => {
+  it('returns the location saved in the user\'s profile when signed in', async () => {
+    const { api, calls } = makeApi({
+      onGet: (url) => (url === '/users/me' ? { id: 'u1', location_lat: 6.5244, location_lng: 3.3792 } : {}),
+    })
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'get_user_location')
+    expect(res.ok).toBe(true)
+    expect(res.has_location).toBe(true)
+    expect(res.source).toBe('saved_profile')
+    expect(res.latitude).toBe(6.5244)
+    expect(calls.get.map((c) => c.url)).toContain('/users/me')
+  })
+
+  it('does not hit the profile (or invent a location) while signed out with no GPS', async () => {
+    const { api, calls } = makeApi()
+    const tools = createGigrWebMCPTools({ api, currentUser: () => null })
+    const res = await run(tools, 'get_user_location')
+    expect(res.ok).toBe(true)
+    expect(res.has_location).toBe(false)
+    expect(res.latitude).toBeNull()
+    expect(calls.get).toHaveLength(0)
+  })
+
+  it('falls back to browser GPS when the profile has no saved location', async () => {
+    // Node ≥21 ships a global `navigator` without geolocation. Stub it when the
+    // runtime allows; otherwise just assert the graceful no-location path.
+    let overridden = false
+    const desc = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+    try {
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: {
+          geolocation: {
+            getCurrentPosition: (ok: (p: unknown) => void) =>
+              ok({ coords: { latitude: 6.52, longitude: 3.37, accuracy: 12 } }),
+          },
+        },
+      })
+      overridden = true
+    } catch {
+      overridden = false
+    }
+    try {
+      const { api } = makeApi({ onGet: () => ({ id: 'u1' }) }) // signed-in but no saved location
+      const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+      const res = await run(tools, 'get_user_location')
+      if (overridden) {
+        expect(res.ok).toBe(true)
+        expect(res.has_location).toBe(true)
+        expect(res.source).toBe('browser_gps')
+        expect(res.latitude).toBe(6.52)
+      } else {
+        expect(res.has_location).toBe(false)
+      }
+    } finally {
+      if (overridden) {
+        if (desc) Object.defineProperty(globalThis, 'navigator', desc)
+        else delete (globalThis as any).navigator
+      }
+    }
+  })
+})
+
 describe('post_job', () => {
   it('blocks when signed out', async () => {
     const { api, calls } = makeApi()

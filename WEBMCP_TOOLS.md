@@ -4,7 +4,7 @@ Gigr exposes an **agent-native interface** through [WebMCP](https://docs.mcp-b.a
 
 | File | What it is |
 |---|---|
-| `frontend/src/lib/webmcp/tools.ts` | The 11 tool definitions (name, description, JSON input schema, `execute`). Pure & dependency-injected. |
+| `frontend/src/lib/webmcp/tools.ts` | The 12 tool definitions (name, description, JSON input schema, `execute`). Pure & dependency-injected. |
 | `frontend/src/lib/webmcp/registry.ts` | Registers/unregisters tools as the auth state flips, using WebMCP's AbortSignal lifecycle. |
 | `frontend/src/lib/webmcp/index.ts` | Wires the tools to the real app (axios + zustand auth store + `document.modelContext`) and exports `initWebMCP()`. |
 | `frontend/src/lib/webmcp/webmcp.test.ts` | Unit tests (`npm test`). |
@@ -16,7 +16,7 @@ WebMCP tools **execute inside the user's already-open, already-authenticated tab
 
 What we *do* gate is **exposure**:
 
-- **Signed out** → an agent only sees browsing tools (`get_auth_status`, `search_providers`, `get_provider_reputation`).
+- **Signed out** → an agent only sees browsing tools (`get_auth_status`, `get_user_location`, `search_providers`, `get_provider_reputation`).
 - **Signed in** → every tool is registered.
 
 The sensitive tools (`fund_escrow`, `release_escrow`, `post_job`, …) are **not merely runtime-checked** — on a logged-out session they are never in the tool list at all. The registry keeps one `AbortController` per tool and aborts it the moment the user signs out (WebMCP has no `unregisterTool`; a tool dies when its registration `AbortSignal` fires). Each gated `execute` also double-checks auth as defence in depth. There is deliberately **no attempt to automate the Google OAuth popup** — that stays a human-in-the-loop moment by design.
@@ -30,6 +30,7 @@ All prices are in **Nigerian Naira (₦)**. The escrow transaction itself conver
 | Tool | Input | What it does | Backend |
 |---|---|---|---|
 | `get_auth_status` | — | Reports whether the user is signed in, who they are, and which tools sign-in unlocks. **Call first.** | local |
+| `get_user_location` | — | **Gets the user's location automatically so the agent never has to ask** — saved Gigr profile location, else browser GPS. Feeds `search_providers`/`post_job`. | `GET /users/me` • browser Geolocation |
 | `search_providers` | `category` / `query`, `latitude`, `longitude`, `radius_km`, `limit` | Finds providers & their service listings to hire. With lat/lon the results are PostGIS proximity-ranked. Each result is enriched with the provider's name, verification and reputation snapshot. | `GET /services/search/nearby` • `GET /services/search/text` • `GET /users/{id}` • `GET /categories` |
 | `get_provider_reputation` | `provider_id`, `max_vouches` | A provider's verifiable trust record: star-rating average/count **plus** the number of on-chain verified vouches (cNFTs minted after completed jobs) with their NFT + transaction ids. | `GET /users/{id}` • `GET /vouches/user/{id}` |
 
@@ -64,13 +65,14 @@ open ──(client assigns a provider)──▶ assigned ──(client funds)─
 ## Example agent flows
 
 **Client: "hire a plumber near me and hold the money safely"**
-1. `search_providers({ category: "Plumbing", latitude, longitude, radius_km: 10 })`
-2. `get_provider_reputation({ provider_id })` → pick someone with a solid on-chain vouch count
-3. Hire (request their service) → provider's agent runs `accept_job`
-4. `fund_escrow({ job_id })` → USDC locked in escrow
-5. Provider does the work → provider marks it submitted
-6. `release_escrow({ job_id })` → provider paid, job `completed`
-7. `send_message({ job_id, content })` to confirm scope along the way
+1. `get_user_location()` → coordinates, no questions asked
+2. `search_providers({ category: "Plumbing", latitude, longitude, radius_km: 10 })`
+3. `get_provider_reputation({ provider_id })` → pick someone with a solid on-chain vouch count
+4. Hire (request their service) → provider's agent runs `accept_job`
+5. `fund_escrow({ job_id })` → USDC locked in escrow
+6. Provider does the work → provider marks it submitted
+7. `release_escrow({ job_id })` → provider paid, job `completed`
+8. `send_message({ job_id, content })` to confirm scope along the way
 
 **Provider: "what do I have to accept today?"**
 1. `list_my_jobs({ role: "provider", status: "requested" })`
@@ -81,7 +83,7 @@ open ──(client assigns a provider)──▶ assigned ──(client funds)─
 
 ```bash
 cd frontend
-npm test          # vitest — 24 tests over tools.ts + registry.ts
+npm test          # vitest — unit tests over tools.ts + registry.ts
 npm run build     # tsc typecheck + Vite build (runs in CI)
 ```
 
