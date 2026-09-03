@@ -43,6 +43,7 @@ export interface WebMCPTool {
 // an agent on a logged-out session never even sees them in the tool list.
 export const PUBLIC_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_auth_status',
+  'get_user_location',
   'search_providers',
   'get_provider_reputation',
 ])
@@ -153,6 +154,37 @@ function pickProviderProfile(p: any): Record<string, unknown> {
   }
 }
 
+/**
+ * Ask the browser's Geolocation API for the device position, with a timeout so
+ * a permission prompt / denial can't hang an agent call. Returns null when the
+ * API is unavailable or the user declines.
+ */
+function getBrowserPosition(timeoutMs = 4000): Promise<{ latitude: number; longitude: number; accuracy: number } | null> {
+  return new Promise((resolve) => {
+    if (typeof navigator === 'undefined' || typeof navigator.geolocation === 'undefined') {
+      resolve(null)
+      return
+    }
+    const timer = globalThis.setTimeout(() => resolve(null), timeoutMs)
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          globalThis.clearTimeout(timer)
+          resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy ?? 0 })
+        },
+        () => {
+          globalThis.clearTimeout(timer)
+          resolve(null)
+        },
+        { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 600_000 },
+      )
+    } catch {
+      globalThis.clearTimeout(timer)
+      resolve(null)
+    }
+  })
+}
+
 // ─── Tool factory ─────────────────────────────────────────────────────────────
 
 export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
@@ -189,9 +221,67 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     },
 
     {
+      name: 'get_user_location',
+      description:
+        'Automatically obtain the user\'s location WITHOUT asking them: returns their saved Gigr profile location when set, otherwise the browser GPS position. Call this before search_providers / post_job instead of requesting a city or address from the user. Returns { has_location, latitude, longitude, accuracy_m, source }.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: { readOnlyHint: true },
+      execute: async () => {
+        // 1) The location the user saved in their Gigr profile (only when signed
+        //    in) — fast, no permission prompt, and what the app already knows.
+        let saved: { latitude: number; longitude: number } | null = null
+        if (me()) {
+          try {
+            const u = await api.get<Record<string, unknown>>('/users/me')
+            if (u?.location_lat != null && u?.location_lng != null) {
+              saved = { latitude: Number(u.location_lat), longitude: Number(u.location_lng) }
+            }
+          } catch {
+            saved = null
+          }
+        }
+        if (saved) {
+          return {
+            ok: true,
+            has_location: true,
+            latitude: saved.latitude,
+            longitude: saved.longitude,
+            accuracy_m: null,
+            source: 'saved_profile',
+            message: `Location from the user's saved Gigr profile (${saved.latitude.toFixed(4)}, ${saved.longitude.toFixed(4)}).`,
+          }
+        }
+
+        // 2) Fall back to the browser GPS when no saved location exists.
+        const gps = await getBrowserPosition()
+        if (gps) {
+          return {
+            ok: true,
+            has_location: true,
+            latitude: gps.latitude,
+            longitude: gps.longitude,
+            accuracy_m: gps.accuracy,
+            source: 'browser_gps',
+            message: `Live location from the browser GPS (${gps.latitude.toFixed(4)}, ${gps.longitude.toFixed(4)}).`,
+          }
+        }
+
+        return {
+          ok: true,
+          has_location: false,
+          latitude: null,
+          longitude: null,
+          source: null,
+          message:
+            'No location is available yet. The user needs to share their location once in the Gigr app (it saves to their profile) or grant browser location permission. Ask them to do that, then call get_user_location again.',
+        }
+      },
+    },
+
+    {
       name: 'search_providers',
       description:
-        'Search Gigr for providers (and their service listings) to hire. Give a category ("Plumbing", "Cleaning", …) and/or free-text query. When the user\'s latitude/longitude are known, results are ranked by proximity (PostGIS). Returns each service listing plus its provider\'s name, verification and reputation snapshot. Prices are in Nigerian Naira (₦).',
+        'Search Gigr for providers (and their service listings) to hire. Give a category ("Plumbing", "Cleaning", …) and/or free-text query. Call get_user_location first to fetch the user\'s coordinates automatically instead of asking for an address; with lat/lon the results are ranked by proximity (PostGIS). Returns each service listing plus its provider\'s name, verification and reputation snapshot. Prices are in Nigerian Naira (₦).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -309,7 +399,7 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     {
       name: 'post_job',
       description:
-        'Create a new Gigr job listing on the user\'s behalf (status "open"): title, description, budget and optional category/location. Budget is in Nigerian Naira (₦). After posting, providers near the job can find and apply to it. Returns the created job including its id — use get_job_status to follow it.',
+        'Create a new Gigr job listing on the user\'s behalf (status "open"): title, description, budget and optional category/location. Budget is in Nigerian Naira (₦). To fill in the location automatically, call get_user_location first and pass its latitude/longitude. After posting, providers near the job can find and apply to it. Returns the created job including its id — use get_job_status to follow it.',
       inputSchema: {
         type: 'object',
         properties: {

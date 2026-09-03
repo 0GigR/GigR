@@ -32,6 +32,10 @@ class UserOut(BaseModel):
     ai_settings: Optional[Dict[str, Any]] = None
     ai_enabled: bool = True
     location_public: bool = False
+    # Saved home/neighbourhood location — returned to the user themselves so the
+    # WebMCP get_user_location tool can feed nearby provider searches.
+    location_lat: Optional[float] = None
+    location_lng: Optional[float] = None
     bio: Optional[str] = None
     skills: Optional[List[str]] = None
     permissions: Optional[List[str]] = None

@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button } from '@/components/ui/button'
 import AuthDialog from '@/components/AuthDialog'
 import ParticleBackground from '@/components/ParticleBackground'
-import PushPromptBanner from '@/components/PushPromptBanner'
 import { Logo } from '@/components/Logo'
 import {
   Shield, Users, ArrowRight, Zap, Bot, Star, Gavel, MapPin,
@@ -128,7 +126,7 @@ function CategoryMarquee() {
 // ---------- Phone mockup of the live app ----------
 function PhoneMockup() {
   return (
-    <div className="relative mx-auto mt-20 md:mt-24 max-w-[320px]">
+    <div className="relative mx-auto mt-16 md:mt-20">
       {/* Floating proof chips (desktop) */}
       <div className="absolute -left-40 top-14 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_6s_ease-in-out_infinite]">
         <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
@@ -159,12 +157,12 @@ function PhoneMockup() {
       </div>
 
       {/* Phone frame */}
-      <div className="relative rounded-[2.8rem] border-[10px] border-gray-900 bg-white shadow-2xl overflow-hidden">
+      <div className="relative aspect-[9/17] w-[250px] rounded-[2.8rem] border-[10px] border-gray-900 bg-white shadow-2xl overflow-hidden sm:w-[264px]">
         {/* Notch */}
         <div className="absolute top-2 inset-x-0 mx-auto w-32 h-6 bg-gray-900 rounded-full z-20" />
 
         {/* Screen */}
-        <div className="pt-12 pb-6 px-4 bg-gray-50">
+        <div className="flex h-full flex-col px-4 pt-14 pb-6 bg-gray-50">
           {/* App header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5">
@@ -257,22 +255,14 @@ export default function LandingPage() {
             <Logo className="w-8 h-8 text-black" />
             <span className="text-xl font-bold tracking-tight">Gigr</span>
           </div>
-          <Button
+          <button
             onClick={() => setAuthOpen(true)}
-            className="bg-black hover:bg-gray-800 text-white font-semibold px-6 py-2.5 rounded-full shadow-lg hover:shadow-xl transition-all"
+            className="inline-flex h-12 items-center justify-center rounded-full bg-black px-6 text-base font-semibold text-white shadow-lg transition-all hover:bg-gray-800 hover:shadow-xl"
           >
             Sign In
-          </Button>
+          </button>
         </div>
       </nav>
-
-      {/* Push prompt — pre-login funnel: enable now, links to the account
-          after sign-in. mt-20 clears the fixed nav; not sticky so it doesn't
-          fight the hero for attention. */}
-      <PushPromptBanner
-        onSignIn={() => setAuthOpen(true)}
-        positionClassName="relative mt-20"
-      />
 
       {/* Hero Section */}
       <section className="relative flex flex-col items-center justify-center text-center px-6 pt-24 md:pt-32 pb-24 max-w-6xl mx-auto">
@@ -305,7 +295,7 @@ export default function LandingPage() {
             <br />
             <TypewriterText
               texts={['neighborly', 'on-chain', 'verifiably']}
-              className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-500"
+              className="text-black"
             />
           </h1>
           <p className="mt-8 text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
@@ -314,17 +304,16 @@ export default function LandingPage() {
             blockchain.
           </p>
           <div className="mt-12 flex gap-5 justify-center flex-wrap">
-            <Button
-              size="lg"
+            <button
               onClick={() => setAuthOpen(true)}
-              className="bg-black text-white font-bold px-10 py-4 rounded-full text-lg shadow-xl hover:shadow-2xl hover:scale-105 transition-all"
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-black px-10 text-lg font-bold text-white shadow-xl transition-all hover:scale-105 hover:shadow-2xl"
             >
               Get Started
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Button>
+              <ArrowRight className="h-5 w-5" />
+            </button>
             <a
               href="#how-it-works"
-              className="inline-flex items-center border-2 border-gray-800 text-gray-800 font-bold px-10 py-4 rounded-full text-lg hover:bg-gray-800 hover:text-white transition-all"
+              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-gray-800 px-10 text-lg font-bold text-gray-800 transition-all hover:bg-gray-800 hover:text-white"
             >
               Learn More
             </a>
@@ -346,7 +335,7 @@ export default function LandingPage() {
         className="py-32 px-6 max-w-7xl mx-auto relative"
       >
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-20">
-          How Gigr <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">works</span>
+          How Gigr works
         </h2>
         <div className="grid md:grid-cols-3 gap-10 md:gap-6 relative">
           {[
@@ -381,7 +370,7 @@ export default function LandingPage() {
       {/* Feature Cards */}
       <section id="features" className="py-32 px-6 max-w-7xl mx-auto">
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-20">
-          Why <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">trust</span> Gigr?
+          Why trust Gigr?
         </h2>
         <div className="grid md:grid-cols-3 gap-10">
           <FeatureCard icon={Bot} title="AI Assistant" description="Speak or type — your AI agent finds services, posts jobs, and even negotiates on your behalf, hands-free." delay={0} />
@@ -396,7 +385,7 @@ export default function LandingPage() {
       {/* Testimonials */}
       <section className="py-32 px-6 max-w-7xl mx-auto">
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-6">
-          Neighbors who <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">trust</span> Gigr
+          Neighbors who trust Gigr
         </h2>
         <p className="text-center text-gray-500 text-lg mb-16 max-w-2xl mx-auto">
           Real jobs, real escrow, real reputation — from the people next door.
@@ -461,19 +450,18 @@ export default function LandingPage() {
           className="relative z-10"
         >
           <h2 className="text-4xl md:text-6xl font-bold mb-6">
-            Ready to trust your <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-fuchsia-500">neighborhood</span>?
+            Ready to trust your neighborhood?
           </h2>
           <p className="text-xl text-gray-600 mb-10">Join the pilot. First 200 users get free access.</p>
           <div className="relative inline-block">
             <div className="absolute -inset-5 rounded-full bg-gradient-to-r from-indigo-500/30 via-fuchsia-500/30 to-violet-500/30 blur-2xl animate-pulse" />
-            <Button
-              size="lg"
+            <button
               onClick={() => setAuthOpen(true)}
-              className="relative bg-black text-white font-bold px-12 py-5 rounded-full text-xl shadow-2xl hover:scale-105 transition-all"
+              className="relative inline-flex h-14 items-center justify-center gap-2 rounded-full bg-black px-12 text-xl font-bold text-white shadow-2xl transition-all hover:scale-105"
             >
               Get Started Free
-              <ArrowRight className="ml-2 h-6 w-6" />
-            </Button>
+              <ArrowRight className="h-6 w-6" />
+            </button>
           </div>
           <div className="mt-10 flex items-center justify-center gap-6 flex-wrap text-sm text-gray-500">
             <span className="inline-flex items-center gap-1.5">
