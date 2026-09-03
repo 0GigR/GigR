@@ -17,6 +17,8 @@
 
 import api from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
+import { applyDisplayCurrency } from '@/store/currencyStore'
+import type { CurrencyCode } from '@/lib/currency'
 import { createGigrWebMCPTools, PUBLIC_TOOL_NAMES, type CurrentUser, type ToolApi, type WebMCPTool } from './tools'
 import { createRegistrar, type ModelContext } from './registry'
 
@@ -66,7 +68,11 @@ export function initWebMCP(): void {
     }
   }
 
-  const tools: WebMCPTool[] = createGigrWebMCPTools({ api: adapter, currentUser })
+  const tools: WebMCPTool[] = createGigrWebMCPTools({
+    api: adapter,
+    currentUser,
+    setDisplayCurrency: (code) => applyDisplayCurrency(code as CurrencyCode),
+  })
 
   const registrar = createRegistrar({
     tools,

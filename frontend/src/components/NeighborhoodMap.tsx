@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useQuery } from '@tanstack/react-query'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import { Link } from 'react-router-dom'
@@ -86,7 +87,7 @@ function JobMarker({ job }: { job: Job }) {
           <Badge className="bg-blue-100 text-blue-800 mb-1">Open Job</Badge>
           <h3 className="font-bold">{job.title}</h3>
           <p className="line-clamp-2 text-gray-600">{job.description}</p>
-          <p className="font-semibold mt-1">₦{parseFloat(job.price as string).toLocaleString()}</p>
+          <p className="font-semibold mt-1">{fmtPrice(parseFloat(job.price as string))}</p>
           {posterId && (
             <Link to={`/dashboard/user/${posterId}`} className="inline-flex items-center gap-1 mt-2 text-blue-600 font-medium hover:underline">
               {poster?.profile_image_url && <img src={poster.profile_image_url} className="w-4 h-4 rounded-full object-cover" />}
@@ -111,7 +112,7 @@ function ServiceMarker({ service }: { service: Service }) {
           <Badge className="bg-green-100 text-green-800 mb-1">Service Provider</Badge>
           <h3 className="font-bold">{service.title}</h3>
           <p className="line-clamp-2 text-gray-600">{service.description}</p>
-          <p className="font-semibold mt-1">₦{parseFloat(service.price as string).toLocaleString()}</p>
+          <p className="font-semibold mt-1">{fmtPrice(parseFloat(service.price as string))}</p>
           {posterId && (
             <Link to={`/dashboard/user/${posterId}`} className="inline-flex items-center gap-1 mt-2 text-green-600 font-medium hover:underline">
               {provider?.profile_image_url && <img src={provider.profile_image_url} className="w-4 h-4 rounded-full object-cover" />}

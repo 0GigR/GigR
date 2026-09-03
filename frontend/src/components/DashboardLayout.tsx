@@ -8,6 +8,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
+import { CurrencySelect } from '@/components/CurrencySelect'
 import PushPromptBanner from '@/components/PushPromptBanner'
 import LocationPromptBanner from '@/components/LocationPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
@@ -157,6 +158,7 @@ export default function DashboardLayout() {
             <span className="font-bold text-lg">Gigr</span>
           </div>
           <div className="flex items-center gap-2">
+            <CurrencySelect />
             <NotificationBell />
             {aiEnabled && <AgentBell />}
             <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh data">

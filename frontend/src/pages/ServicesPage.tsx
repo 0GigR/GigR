@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -126,7 +127,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           )}
         </div>
         <div className="flex justify-between items-center mt-2">
-          <span className="font-semibold text-black">₦{parseFloat(service.price as string).toLocaleString()}</span>
+          <span className="font-semibold text-black">{fmtPrice(parseFloat(service.price as string))}</span>
           <span className="text-gray-400 text-xs">{service.radius_km} km radius</span>
         </div>
       </CardContent>

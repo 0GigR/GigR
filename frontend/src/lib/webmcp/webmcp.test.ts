@@ -207,6 +207,69 @@ describe('post_job', () => {
   })
 })
 
+describe('post_service', () => {
+  it('publishes a provider listing (be hired) with a resolved category + location', async () => {
+    const { api, calls } = makeApi({
+      onGet: (url) => (url === '/categories' ? [{ id: 'cat-2', name: 'Tutoring' }] : []),
+      onPost: (url) =>
+        url === '/services/'
+          ? { id: 'svc-1', provider_id: 'u-provider', title: 'Piano lessons for beginners', price: '10000', category_id: 'cat-2' }
+          : {},
+    })
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'post_service', {
+      title: 'Piano lessons for beginners',
+      price: 10000,
+      category: 'Tutoring',
+      latitude: 6.5,
+      longitude: 3.37,
+    })
+    expect(res.ok).toBe(true)
+    expect(res.service.title).toBe('Piano lessons for beginners')
+    const posted = calls.post.find((c) => c.url === '/services/')
+    expect(posted?.body).toMatchObject({ category_id: 'cat-2', price: 10000, latitude: 6.5, longitude: 3.37 })
+  })
+
+  it('asks for a location rather than guessing', async () => {
+    const tools = createGigrWebMCPTools({ api: makeApi().api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'post_service', { title: 'Piano lessons', price: 10000, category: 'Tutoring' })
+    expect(res.ok).toBe(false)
+    expect(res.error).toMatch(/latitude and longitude/)
+  })
+})
+
+describe('set_display_currency', () => {
+  it('is gated behind sign-in', async () => {
+    const { api } = makeApi()
+    const tools = createGigrWebMCPTools({ api, currentUser: () => null, setDisplayCurrency: () => {} })
+    const res = await run(tools, 'set_display_currency', { code: 'USD' })
+    expect(res.ok).toBe(false)
+    expect(res.error).toMatch(/sign in/i)
+  })
+
+  it('switches the user display currency via the injected setter', async () => {
+    const { api } = makeApi()
+    const calls: string[] = []
+    const tools = createGigrWebMCPTools({
+      api,
+      currentUser: loggedInState(USER).currentUser,
+      setDisplayCurrency: async (code: string) => { calls.push(code) },
+    })
+    const res = await run(tools, 'set_display_currency', { code: 'usd' }) // case-insensitive
+    expect(res.ok).toBe(true)
+    expect(res.display_currency).toBe('USD')
+    expect(calls).toEqual(['USD'])
+  })
+
+  it('rejects unsupported codes', async () => {
+    const { api } = makeApi()
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser, setDisplayCurrency: () => {} })
+    const res = await run(tools, 'set_display_currency', { code: 'BTC' })
+    expect(res.ok).toBe(false)
+    expect(res.error).toMatch(/USD/)
+  })
+})
+
 describe('fund_escrow / release_escrow', () => {
   it('funds only an assigned (hired) job', async () => {
     const { api, calls } = makeApi({
