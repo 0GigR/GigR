@@ -12,6 +12,17 @@ export const CURRENCIES = [
   { code: 'USD', symbol: '$', label: 'US Dollar', decimals: 0 },
   { code: 'GBP', symbol: '£', label: 'British Pound', decimals: 0 },
   { code: 'EUR', symbol: '€', label: 'Euro', decimals: 0 },
+  { code: 'INR', symbol: '₹', label: 'Indian Rupee', decimals: 0 },
+  { code: 'ZAR', symbol: 'R', label: 'South African Rand', decimals: 0 },
+  { code: 'KES', symbol: 'KSh', label: 'Kenyan Shilling', decimals: 0 },
+  { code: 'GHS', symbol: 'GH₵', label: 'Ghanaian Cedi', decimals: 0 },
+  { code: 'EGP', symbol: 'E£', label: 'Egyptian Pound', decimals: 0 },
+  { code: 'CAD', symbol: 'C$', label: 'Canadian Dollar', decimals: 0 },
+  { code: 'AUD', symbol: 'A$', label: 'Australian Dollar', decimals: 0 },
+  { code: 'AED', symbol: 'AED', label: 'UAE Dirham', decimals: 0 },
+  { code: 'SAR', symbol: 'SAR', label: 'Saudi Riyal', decimals: 0 },
+  { code: 'JPY', symbol: '¥', label: 'Japanese Yen', decimals: 0 },
+  { code: 'CNY', symbol: 'CN¥', label: 'Chinese Yuan', decimals: 0 },
 ] as const
 
 export type CurrencyCode = (typeof CURRENCIES)[number]['code']

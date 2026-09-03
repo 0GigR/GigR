@@ -33,7 +33,14 @@ describe('currency metadata', () => {
   it('validates supported codes and symbols', () => {
     expect(isCurrencyCode('NGN')).toBe(true)
     expect(isCurrencyCode('USD')).toBe(true)
+    expect(isCurrencyCode('INR')).toBe(true)
+    expect(isCurrencyCode('ZAR')).toBe(true)
     expect(isCurrencyCode('XYZ')).toBe(false)
     expect(symbolFor('USD' as CurrencyCode)).toBe('$')
+  })
+
+  it('converts into rupee and rand too', () => {
+    expect(formatAmount(15000, 'INR', 1)).toBe('₹15,000')
+    expect(formatAmount(15000, 'ZAR', 1)).toBe('R15,000')
   })
 })
