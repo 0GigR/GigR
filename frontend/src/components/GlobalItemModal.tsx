@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useEffect, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -79,8 +80,8 @@ export default function GlobalItemModal() {
               {job.image_url && <img src={job.image_url} className="rounded-lg max-h-64 object-cover w-full" />}
               <p className="whitespace-pre-wrap">{job.description}</p>
               <div className="flex gap-4 text-sm font-medium">
-                <span>Price: ₦{parseFloat(job.price as string).toLocaleString()}</span>
-                {job.min_price && job.max_price && <span>Range: ₦{job.min_price} – ₦{job.max_price}</span>}
+                <span>Price: {fmtPrice(parseFloat(job.price as string))}</span>
+                {job.min_price && job.max_price && <span>Range: {fmtPrice(job.min_price)} – {fmtPrice(job.max_price)}</span>}
                 <span>Status: {statusBadge(job.status)}</span>
               </div>
             </div>
@@ -92,7 +93,7 @@ export default function GlobalItemModal() {
               {service.image_url && <img src={service.image_url} className="rounded-lg max-h-64 object-cover w-full" />}
               <p className="whitespace-pre-wrap">{service.description}</p>
               <div className="flex gap-4 text-sm font-medium items-center">
-                <span>Price: ₦{parseFloat(service.price as string).toLocaleString()}</span>
+                <span>Price: {fmtPrice(parseFloat(service.price as string))}</span>
                 <Badge variant={service.is_active ? 'default' : 'secondary'} className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}>
                   {service.is_active ? 'Active' : 'Paused'}
                 </Badge>

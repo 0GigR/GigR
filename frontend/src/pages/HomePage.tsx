@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -230,7 +231,7 @@ export default function HomePage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{job.title}</p>
                       <p className="text-xs text-gray-500">
-                        ₦{parseFloat(job.price as string).toLocaleString()} · {job.status}
+                        {fmtPrice(parseFloat(job.price as string))} · {job.status}
                       </p>
                     </div>
                     <Badge variant="outline" className="capitalize ml-3">

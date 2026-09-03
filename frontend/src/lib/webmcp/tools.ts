@@ -12,6 +12,8 @@
  * the whole surface unit-testable with a mock client.
  */
 
+import { CURRENCIES, isCurrencyCode } from '@/lib/currency'
+
 export interface ToolApi {
   get<T = unknown>(url: string, params?: Record<string, unknown>): Promise<T>
   post<T = unknown>(url: string, body?: unknown): Promise<T>
@@ -28,6 +30,11 @@ export interface CurrentUser {
 export interface ToolDeps {
   api: ToolApi
   currentUser: () => CurrentUser | null
+  /**
+   * Optional: switch the user's DISPLAY currency (NGN default; stored/settled
+   * amounts are always Naira). Used by the `set_display_currency` tool.
+   */
+  setDisplayCurrency?: (code: string) => void | Promise<unknown>
 }
 
 export interface WebMCPTool {
@@ -50,6 +57,7 @@ export const PUBLIC_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 export const AUTHED_TOOL_NAMES: readonly string[] = [
   'post_job',
+  'post_service',
   'get_job_status',
   'list_my_jobs',
   'fund_escrow',
@@ -57,6 +65,7 @@ export const AUTHED_TOOL_NAMES: readonly string[] = [
   'accept_job',
   'send_message',
   'get_notifications',
+  'set_display_currency',
 ]
 
 export const ALL_TOOL_NAMES: ReadonlySet<string> = new Set([...PUBLIC_TOOL_NAMES, ...AUTHED_TOOL_NAMES])
@@ -450,6 +459,75 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     },
 
     {
+      name: 'post_service',
+      description:
+        'Provider side — publish (or replace) a service the user OFFERS, so clients can find and hire them. This is the opposite of post_job: post_job hires someone, post_service says "hire me". Requires a title, a price in Nigerian Naira (₦), a category, and a location (call get_user_location first for coordinates). Use it when the user wants to be found for work, e.g. piano lessons.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Service title, e.g. "Piano lessons for beginners".' },
+          description: { type: 'string', description: 'What the provider offers, in a sentence or two.' },
+          price: { type: 'number', description: 'Price in Nigerian Naira (₦).' },
+          category: { type: 'string', description: 'Category name, e.g. "Tutoring". Optional but recommended.' },
+          min_price: { type: 'number', description: 'Optional lower end of a price range (₦).' },
+          max_price: { type: 'number', description: 'Optional upper end of a price range (₦).' },
+          latitude: { type: 'number', description: 'Service location latitude — call get_user_location to fill automatically.' },
+          longitude: { type: 'number', description: 'Service location longitude — call get_user_location to fill automatically.' },
+          radius_km: { type: 'number', description: 'How far the provider is willing to travel (default 5).' },
+        },
+        required: ['title', 'price'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.title) return fail('title is required.')
+        if (input?.price == null || !Number.isFinite(Number(input.price)) || Number(input.price) <= 0) {
+          return fail('price is required and must be a positive number (₦ Naira).')
+        }
+        if (input?.latitude == null || input?.longitude == null) {
+          return fail('latitude and longitude are required for a provider listing — call get_user_location first to fetch the user\'s coordinates automatically.')
+        }
+        let categoryId: string | undefined
+        try {
+          categoryId = await resolveCategoryId(api, input?.category)
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+        if (!categoryId) {
+          return fail('A category is required for a provider listing (e.g. "Tutoring", "Music"). Pick one from get_categories.')
+        }
+        const payload: Record<string, unknown> = {
+          category_id: categoryId,
+          title: String(input.title),
+          ...(input.description ? { description: String(input.description) } : {}),
+          price: Number(input.price),
+          ...(input.min_price != null && Number.isFinite(Number(input.min_price)) ? { min_price: Number(input.min_price) } : {}),
+          ...(input.max_price != null && Number.isFinite(Number(input.max_price)) ? { max_price: Number(input.max_price) } : {}),
+          latitude: Number(input.latitude),
+          longitude: Number(input.longitude),
+          radius_km: input.radius_km != null ? Number(input.radius_km) : 5,
+        }
+        try {
+          const service = await api.post('/services/', payload)
+          return {
+            ...ok({
+              service: {
+                id: String((service as any).id),
+                provider_id: String((service as any).provider_id),
+                title: (service as any).title,
+                price: (service as any).price,
+                category_id: String((service as any).category_id),
+              },
+            }),
+            note: 'Your service listing is live — clients searching this category near you can now find and hire you.',
+          }
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
       name: 'get_job_status',
       description:
         'Get the current state of a job the user is involved in (posted, requested, assigned, funded, in_progress, completed, cancelled, disputed) plus what the next sensible action is. Use this to check the result of post_job, fund_escrow, accept_job or release_escrow, and to decide what to do next.',
@@ -649,6 +727,46 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
               is_read: !!n.is_read,
               created_at: n.created_at ?? null,
             })),
+          })
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'set_display_currency',
+      description:
+        'Change the currency Gigr DISPLAYS prices in for the signed-in user. This is a display-only setting (default NGN): every job is still priced, escrowed and settled in Nigerian Naira (₦) — only the on-screen formatting converts to the chosen currency. Call it with a supported code (USD, GBP, EUR). The app reloads with the new currency applied.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          code: {
+            type: 'string',
+            enum: CURRENCIES.map((c) => c.code),
+            description: 'Display currency code to switch to.',
+          },
+        },
+        required: ['code'],
+      },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        const code = String(input?.code ?? '').trim().toUpperCase()
+        if (!isCurrencyCode(code)) {
+          return fail(`Unknown currency "${input?.code}". Supported: ${CURRENCIES.map((c) => c.code).join(', ')}.`)
+        }
+        if (!deps.setDisplayCurrency) {
+          return fail('Changing the display currency is not available in this context.')
+        }
+        try {
+          await deps.setDisplayCurrency(code)
+          return ok({
+            display_currency: code,
+            note:
+              code === 'NGN'
+                ? 'Display currency set to Nigerian Naira (default).'
+                : `Display currency set to ${code}. Prices are now shown converted from Naira; stored/settled amounts are unchanged.`,
           })
         } catch (err) {
           return fail(detailOf(err))

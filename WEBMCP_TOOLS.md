@@ -4,7 +4,7 @@ Gigr exposes an **agent-native interface** through [WebMCP](https://docs.mcp-b.a
 
 | File | What it is |
 |---|---|
-| `frontend/src/lib/webmcp/tools.ts` | The 12 tool definitions (name, description, JSON input schema, `execute`). Pure & dependency-injected. |
+| `frontend/src/lib/webmcp/tools.ts` | The 14 tool definitions (name, description, JSON input schema, `execute`). Pure & dependency-injected. |
 | `frontend/src/lib/webmcp/registry.ts` | Registers/unregisters tools as the auth state flips, using WebMCP's AbortSignal lifecycle. |
 | `frontend/src/lib/webmcp/index.ts` | Wires the tools to the real app (axios + zustand auth store + `document.modelContext`) and exports `initWebMCP()`. |
 | `frontend/src/lib/webmcp/webmcp.test.ts` | Unit tests (`npm test`). |
@@ -38,7 +38,8 @@ All prices are in **Nigerian Naira (₦)**. The escrow transaction itself conver
 
 | Tool | Input | What it does | Backend |
 |---|---|---|---|
-| `post_job` | `title`, `description`, `price`, `category`, optional `min_price`/`max_price`/`lat`/`lon` | Creates a job listing (status `open`); matching nearby providers get notified. | `POST /jobs/` |
+| `post_job` | `title`, `description`, `price`, `category`, optional `min_price`/`max_price`/`lat`/`lon` | **Client side:** creates a hiring job listing (status `open`); matching nearby providers get notified. Use this when the user wants to HIRE someone. | `POST /jobs/` |
+| `post_service` | `title`, `price`, `category`, `latitude`, `longitude`, optional `description`/range/`radius_km` | **Provider side — "hire me".** Publishes a service the user OFFERS so clients can find and hire them (opposite of `post_job`). Call `get_user_location` for the coordinates. | `POST /services/` |
 | `get_job_status` | `job_id` | Current job state plus the **next sensible action** an agent should take. | `GET /jobs/{id}` |
 | `list_my_jobs` | `role` (`client`/`provider`), optional `status` | The user's own jobs, to decide which to fund/release/message. | `GET /jobs/?my=…` |
 | `fund_escrow` | `job_id` | **Moves real USDC into the on-chain escrow** for an assigned job (client only). Idempotent. Refuses with a clear reason if the job has no hired provider. | `GET /jobs/{id}` + `POST /jobs/{id}/fund` |
@@ -46,6 +47,7 @@ All prices are in **Nigerian Naira (₦)**. The escrow transaction itself conver
 | `accept_job` | `job_id` | Provider side: accepts a requested service request so the client can fund. | `GET /jobs/{id}` + `POST /jobs/{id}/accept-request` |
 | `send_message` | `job_id`, `content` | Posts into the job's Contract Room chat (client ↔ provider). | `POST /messages/` |
 | `get_notifications` | — | Latest notifications with read state + unread count. | `GET /notifications` |
+| `set_display_currency` | `code` (`USD`/`GBP`/`EUR`) | Switches the currency Gigr *displays* prices in (default NGN). Display-only — stored & settled amounts are always Naira. Reloads the app. | local preference |
 
 ## The escrow state machine the agent navigates
 
@@ -74,10 +76,19 @@ open ──(client assigns a provider)──▶ assigned ──(client funds)─
 7. `release_escrow({ job_id })` → provider paid, job `completed`
 8. `send_message({ job_id, content })` to confirm scope along the way
 
+**Provider: "get me hired — I want to offer piano lessons"**
+1. `get_user_location()` → coordinates
+2. `post_service({ title: "Piano lessons for beginners", price: 15000, category: "Music", latitude, longitude })` → your "hire me" listing is live
+3. `list_my_jobs({ role: "provider", status: "requested" })` → clients who requested your service
+4. `accept_job({ job_id })` → start work once they fund
+
 **Provider: "what do I have to accept today?"**
 1. `list_my_jobs({ role: "provider", status: "requested" })`
 2. `accept_job({ job_id })` for each
 3. `get_job_status({ job_id })` to watch for funding, then do the work.
+
+**Preferences: "show me prices in dollars"**
+- `set_display_currency({ code: "USD" })` — display-only; stored/escrowed amounts stay Naira (₦). Also settable from the currency picker in the dashboard header.
 
 ## Testing
 

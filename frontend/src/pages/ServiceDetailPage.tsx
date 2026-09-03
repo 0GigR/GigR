@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation, MessageCircle } from 'lucide-react'
@@ -196,7 +197,7 @@ export default function ServiceDetailPage() {
               <div className="flex justify-between items-start mb-4">
                 <h1 className="text-3xl font-bold">{service.title}</h1>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-black">₦{parseFloat(service.price as string).toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-black">{fmtPrice(parseFloat(service.price as string))}</p>
                   <p className="text-sm text-gray-500">Base Price</p>
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -894,7 +895,7 @@ export default function JobsPage() {
             {/* Live NGN → USDC conversion hint */}
             {ngnRate && formData.price && parseFloat(formData.price) > 0 && (
               <p className="text-xs text-gray-500 -mt-2">
-                ₦{parseFloat(formData.price).toLocaleString()} ≈{' '}
+                {fmtPrice(parseFloat(formData.price))} ≈{' '}
                 <span className="font-medium text-green-700">
                   ${(parseFloat(formData.price) / ngnRate).toFixed(2)} USDC
                 </span>
@@ -988,7 +989,7 @@ export default function JobsPage() {
           {contractRoomJob && (
             <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
               <p>Status: {statusBadge(contractRoomJob.status)}</p>
-              <p>Price: ₦{parseFloat(contractRoomJob.price as string).toLocaleString()}</p>
+              <p>Price: {fmtPrice(parseFloat(contractRoomJob.price as string))}</p>
               {contractRoomJob.escrow_address && <p className="text-xs text-green-600">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
               {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc(contractRoomJob.image_url!)} />}
             </div>
@@ -998,7 +999,7 @@ export default function JobsPage() {
             <div key={amend.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm space-y-2 mt-2">
               <p className="font-bold text-yellow-800">Scope Amendment Proposed</p>
               <p><strong>Reason:</strong> {amend.reason}</p>
-              <p><strong>New Price:</strong> ₦{parseFloat(amend.new_total_price as string).toLocaleString()}</p>
+              <p><strong>New Price:</strong> {fmtPrice(parseFloat(amend.new_total_price as string))}</p>
               {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc((amend as any).image_url)} />}
               {contractRoomJob?.client_id === user?.id && (
                 <div className="flex gap-2 pt-2">
@@ -1105,8 +1106,8 @@ export default function JobsPage() {
               {detailJob.image_url && <img src={detailJob.image_url} className="rounded-lg max-h-64 object-cover cursor-pointer" onClick={() => setLightboxSrc(detailJob.image_url!)} />}
               <p>{detailJob.description}</p>
               <div className="flex gap-4 text-sm">
-                <span>Price: ₦{parseFloat(detailJob.price as string).toLocaleString()}</span>
-                {detailJob.min_price && detailJob.max_price && <span>Range: ₦{detailJob.min_price} – ₦{detailJob.max_price}</span>}
+                <span>Price: {fmtPrice(parseFloat(detailJob.price as string))}</span>
+                {detailJob.min_price && detailJob.max_price && <span>Range: {fmtPrice(detailJob.min_price)} – {fmtPrice(detailJob.max_price)}</span>}
                 <span>Status: {statusBadge(detailJob.status)}</span>
               </div>
             </div>
@@ -1268,9 +1269,9 @@ function JobCard({
         )}
         <div className="flex justify-between items-center">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-lg font-bold text-gray-900 dark:text-white">₦{parseFloat(job.price as string).toLocaleString()}</span>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">{fmtPrice(parseFloat(job.price as string))}</span>
             {job.min_price && job.max_price && (
-              <span className="text-xs text-gray-400">₦{Number(job.min_price).toLocaleString()}–₦{Number(job.max_price).toLocaleString()}</span>
+              <span className="text-xs text-gray-400">{fmtPrice(Number(job.min_price))}–{fmtPrice(Number(job.max_price))}</span>
             )}
           </div>
           {job.escrow_address && <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Escrowed</span>}
@@ -1362,7 +1363,7 @@ function JobCard({
                               )}
                             </div>
                           )}
-                          {app.proposed_price && <p className="text-xs font-medium mt-1">Proposed: ₦{parseFloat(app.proposed_price).toLocaleString()}</p>}
+                          {app.proposed_price && <p className="text-xs font-medium mt-1">Proposed: {fmtPrice(parseFloat(app.proposed_price))}</p>}
                         </div>
                         {app.portfolio_url && (
                           <div className="ml-2">

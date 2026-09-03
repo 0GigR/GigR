@@ -274,22 +274,6 @@ export default function LandingPage() {
           transition={{ duration: 1, ease: 'easeOut' }}
           className="relative z-10"
         >
-          {/* Badge */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
-            className="inline-flex items-center gap-2 bg-white border border-gray-200 rounded-full pl-2 pr-4 py-1.5 shadow-sm mb-8"
-          >
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700">
-              <span className="relative flex w-2 h-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-fuchsia-400 opacity-75" />
-                <span className="relative inline-flex rounded-full w-2 h-2 bg-gradient-to-r from-indigo-500 to-fuchsia-500" />
-              </span>
-              Now live — escrow-protected neighborhood marketplace
-            </span>
-          </motion.div>
-
           <h1 className="text-5xl md:text-8xl font-black tracking-tight leading-tight">
             Trust works
             <br />

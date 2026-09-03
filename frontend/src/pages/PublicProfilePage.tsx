@@ -1,3 +1,4 @@
+import { fmtPrice } from '@/store/currencyStore'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
@@ -226,7 +227,7 @@ export default function PublicProfilePage() {
                 <div key={s.id} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
                   <p className="font-medium text-sm">{s.title}</p>
                   {s.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{s.description}</p>}
-                  <p className="text-sm font-semibold text-black mt-1.5">₦{parseFloat(s.price as string).toLocaleString()}</p>
+                  <p className="text-sm font-semibold text-black mt-1.5">{fmtPrice(parseFloat(s.price as string))}</p>
                 </div>
               ))}
             </div>
