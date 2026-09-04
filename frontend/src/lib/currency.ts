@@ -37,7 +37,8 @@ export function symbolFor(code: CurrencyCode): string {
   return CURRENCIES.find((c) => c.code === code)?.symbol ?? '₦'
 }
 
-/** Rates expressed as "1 NGN = X units of <code>" (i.e. divide NGN by the rate). */
+/** Rates as open.er-api returns them for base NGN: "1 NGN = X units of <code>".
+ *  A Naira amount converts by multiplying by the rate (15000 NGN × 0.000755 USD ≈ $11.30). */
 export type NgnRates = Partial<Record<CurrencyCode, number>>
 
 /**
@@ -57,7 +58,8 @@ export function formatAmount(ngn: number, code: CurrencyCode, rate?: number): st
     return `₦${Math.round(amount).toLocaleString()}`
   }
   const meta = CURRENCIES.find((c) => c.code === code)
-  const converted = amount / rate
+  // rate is "units of <code> per 1 NGN" → multiply the Naira amount.
+  const converted = amount * rate
   const decimals = meta?.decimals ?? 0
   const formatted = converted.toLocaleString(undefined, {
     minimumFractionDigits: decimals,

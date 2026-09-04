@@ -13,6 +13,9 @@ import { useAuthStore } from '@/store/authStore'
 import { Clock, Coins, RefreshCw } from 'lucide-react'
 import { FundWalletButton } from '@/components/FundWalletButton'
 import { Turnstile } from '@marsidev/react-turnstile'
+import { CurrencySelect } from '@/components/CurrencySelect'
+import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
+import { symbolFor } from '@/lib/currency'
 
 import {
   Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff
@@ -116,7 +119,28 @@ export default function ProfilePage() {
 
   const usdcFloat = parseFloat(walletBalance?.usdc ?? '0')
   const ngnRate = rateData?.ngn_per_usd ?? null
-  const ngnBalance = ngnRate ? usdcFloat * ngnRate : null
+  const displayCode = useCurrencyStore((s) => s.code)
+  const displayRates = useCurrencyStore((s) => s.rates)
+
+  // NGN value of the USDC balance. The backend rate is primary; while it's
+  // loading, derive NGN from the cached USD rate (USDC is pegged 1:1 to USD) so
+  // the wallet still converts without a page reload.
+  const ngnBalance =
+    ngnRate != null
+      ? usdcFloat * ngnRate
+      : displayRates?.USD && displayRates.USD > 0
+        ? usdcFloat / displayRates.USD
+        : null
+
+  // Currency the balance is rendered in: the chosen display currency once a rate
+  // is available for it, otherwise Naira — never guess a number.
+  const fiatCode = displayCode !== 'NGN' && displayRates?.[displayCode] != null ? displayCode : 'NGN'
+  const fiatValue =
+    fiatCode === 'NGN'
+      ? ngnBalance
+      : ngnBalance != null
+        ? ngnBalance * (displayRates?.[fiatCode] as number)
+        : null
 
   const completedJobs = myJobs?.filter(j => j.status === 'completed') || []
   const pendingJobs = myJobs?.filter(j => !['completed', 'cancelled'].includes(j.status)) || []
@@ -318,9 +342,18 @@ export default function ProfilePage() {
             <Skeleton className="h-10 w-full" />
           )}
 
-          {/* Live balance */}
+          {/* Display currency — how prices across Gigr are shown */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-800">Display currency</p>
+              <p className="text-xs text-gray-500">Prices are stored in Naira — shown converted.</p>
+            </div>
+            <CurrencySelect />
+          </div>
+
+          {/* Live balance — rendered in the display currency (Naira until rates load) */}
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
                 <Coins className="w-4 h-4 text-green-600" />
                 <span className="text-xs font-medium text-green-700">Wallet Balance</span>
@@ -330,7 +363,7 @@ export default function ProfilePage() {
                 className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
               >
                 <RefreshCw className="w-3 h-3" />
-                {showUSDC ? 'Show NGN' : 'Show USDC'}
+                {showUSDC ? `Show ${fiatCode}` : 'Show USDC'}
               </button>
             </div>
             {balanceLoading ? (
@@ -342,10 +375,14 @@ export default function ProfilePage() {
               </p>
             ) : (
               <p className="text-2xl font-bold text-green-900">
-                {ngnBalance != null
-                  ? `₦${ngnBalance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : `₦—`}
-                {ngnRate && (
+                {fiatValue != null
+                  ? fiatCode === 'NGN'
+                    ? `₦${fiatValue.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `${symbolFor(fiatCode)}${fiatValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : fiatCode === 'NGN'
+                    ? '₦—'
+                    : `${symbolFor(fiatCode)}—`}
+                {fiatValue != null && (
                   <span className="text-xs font-normal text-green-600 ml-2">
                     ≈ {usdcFloat.toFixed(2)} USDC
                   </span>
@@ -606,7 +643,7 @@ function ActivityHistory({ userId }: { userId?: string }) {
                     <span className="text-sm font-medium truncate">{item.title}</span>
                   </div>
                   {item.detail && <p className="text-xs text-gray-500 mt-0.5 truncate">{item.detail}</p>}
-                  {item.price && <p className="text-xs text-gray-600 mt-0.5">₦{parseFloat(item.price).toLocaleString()}</p>}
+                  {item.price && <p className="text-xs text-gray-600 mt-0.5">{fmtPrice(parseFloat(item.price))}</p>}
                 </div>
                 <div className="shrink-0 text-right">
                   {item.status && <Badge variant="outline" className="text-[10px] mb-1">{item.status}</Badge>}

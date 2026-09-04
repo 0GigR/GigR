@@ -8,7 +8,7 @@ import { useUnreadStore } from '@/store/unreadStore'
 import { useMessageNotifications } from '@/hooks/useMessageNotifications'
 import AgentBell from '@/components/agent/AgentBell'
 import NotificationBell from '@/components/NotificationBell'
-import { CurrencySelect } from '@/components/CurrencySelect'
+import { useCurrencyStore } from '@/store/currencyStore'
 import PushPromptBanner from '@/components/PushPromptBanner'
 import LocationPromptBanner from '@/components/LocationPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
@@ -59,6 +59,13 @@ export default function DashboardLayout() {
     updateServiceWorker,
   } = useRegisterSW()
   const location = useLocation()
+
+  // Subscribe to the display currency so this shell (and the route page it
+  // hosts) re-renders in place when the user switches currency — no reload.
+  // The store value itself is read inside `fmtPrice`, so only the subscription
+  // is needed here to keep every mounted price node in sync.
+  useCurrencyStore((s) => s.code)
+  useCurrencyStore((s) => s.rates)
 
   const { latitude, longitude } = useGeolocation()
 
@@ -158,7 +165,6 @@ export default function DashboardLayout() {
             <span className="font-bold text-lg">Gigr</span>
           </div>
           <div className="flex items-center gap-2">
-            <CurrencySelect />
             <NotificationBell />
             {aiEnabled && <AgentBell />}
             <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh data">

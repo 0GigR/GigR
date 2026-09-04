@@ -6,10 +6,11 @@
  * the user picks a display currency, we cache NGN exchange rates (localStorage),
  * and every price node renders converted via `fmtPrice`.
  *
- * Reload discipline: only `applyDisplayCurrency` reloads (once) to re-render the
- * whole UI in the new currency. Boot (`initCurrencyDisplay`) NEVER reloads — it
- * loads rates in the background so the persisted code + cached rates are already
- * present on the next reload. Without this, a boot-time reload would loop.
+ * Reactivity — no reloads: the DashboardLayout shell subscribes to `code`/`rates`
+ * and re-renders in place when they change, so every mounted price node
+ * re-formats instantly. `applyDisplayCurrency` just updates the store (fetching
+ * rates first only if the chosen currency isn't cached yet). `initCurrencyDisplay`
+ * warms the rate cache in the background at boot and never reloads.
  */
 
 import { create } from 'zustand'
@@ -113,30 +114,39 @@ export function fmtPrice(ngn: number | string): string {
 }
 
 /**
- * Switch the display currency. Loads (and caches) fresh rates, then reloads ONCE
- * so the whole UI re-renders in the new currency. If rates can't be fetched we
- * stay in NGN rather than showing unconverted numbers.
+ * Switch the display currency. Updates the store in place — mounted prices
+ * re-render via the layout's store subscription, no page reload. If the chosen
+ * currency's rate isn't cached yet it fetches (and caches) fresh rates first;
+ * if rates can't be fetched we stay in NGN rather than showing unconverted
+ * numbers, and return false so callers can tell the user.
  */
-export async function applyDisplayCurrency(code: CurrencyCode): Promise<void> {
-  useCurrencyStore.getState().setCode(code)
-  await useCurrencyStore.getState().loadRates()
+export async function applyDisplayCurrency(code: CurrencyCode): Promise<boolean> {
+  const store = useCurrencyStore.getState()
+  if (code === 'NGN') {
+    store.setCode('NGN')
+    return true
+  }
+  // Rates for every currency arrive in a single API call and are cached, so
+  // this only needs a network round-trip the first time a non-NGN currency is
+  // picked (or after the cache expires).
+  if (store.rates?.[code] == null) {
+    await store.loadRates()
+  }
   const { rates } = useCurrencyStore.getState()
-  if (code !== 'NGN' && rates?.[code] == null) {
-    // No rate available — don't show wrong conversions; revert to Naira.
+  if (rates?.[code] == null) {
+    // Rate service unreachable and nothing cached — stay in Naira.
     useCurrencyStore.getState().setCode(DEFAULT_CURRENCY)
+    return false
   }
-  // Reload a beat later so a caller (e.g. a WebMCP tool) can still return its
-  // response before the page navigates.
-  if (typeof window !== 'undefined') {
-    window.setTimeout(() => window.location.reload(), 350)
-  }
+  useCurrencyStore.getState().setCode(code)
+  return true
 }
 
 /**
  * Called once at boot. If the user previously chose a non-NGN display currency
  * but the rates are stale/missing (e.g. first run on this device), fetch them in
- * the background. Never reloads here — the cached rates mean the NEXT navigation
- * converts immediately, and only applyDisplayCurrency triggers reloads.
+ * the background. Never reloads — when the rates land, the layout's store
+ * subscription re-renders prices into the chosen currency automatically.
  */
 export function initCurrencyDisplay(): void {
   const { code, rates } = useCurrencyStore.getState()
