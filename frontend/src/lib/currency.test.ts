@@ -11,13 +11,14 @@ describe('formatAmount', () => {
   })
 
   it('converts to the chosen currency using the NGN rate', () => {
-    // rate = "1 NGN = rate USD", so 15000 NGN ≈ $10 at 1500
-    expect(formatAmount(15000, 'USD', 1500)).toBe('$10')
+    // rate = "units of <code> per 1 NGN" (the shape open.er-api returns),
+    // so 15,000 NGN ≈ $15 when 1 NGN = 0.001 USD.
+    expect(formatAmount(15000, 'USD', 0.001)).toBe('$15')
   })
 
-  it('rounds whole-dollar/whole-currency amounts cleanly', () => {
-    expect(formatAmount(15000, 'USD', 1500)).toBe('$10')
-    expect(formatAmount(30000, 'GBP', 2000)).toBe('£15')
+  it('rounds whole-currency amounts cleanly', () => {
+    expect(formatAmount(15000, 'USD', 0.001)).toBe('$15')
+    expect(formatAmount(30000, 'GBP', 0.0005)).toBe('£15')
   })
 
   it('falls back to Naira when a rate is missing (never shows a wrong number)', () => {
@@ -25,7 +26,7 @@ describe('formatAmount', () => {
   })
 
   it('handles zero and garbage amounts safely', () => {
-    expect(formatAmount(0, 'USD', 1500)).toBe('$0')
+    expect(formatAmount(0, 'USD', 0.001)).toBe('$0')
   })
 })
 
@@ -40,7 +41,7 @@ describe('currency metadata', () => {
   })
 
   it('converts into rupee and rand too', () => {
-    expect(formatAmount(15000, 'INR', 1)).toBe('₹15,000')
+    expect(formatAmount(15000, 'INR', 0.07)).toBe('₹1,050')
     expect(formatAmount(15000, 'ZAR', 1)).toBe('R15,000')
   })
 })
