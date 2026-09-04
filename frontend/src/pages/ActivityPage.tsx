@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/PriceInput'
 import { Textarea } from '@/components/ui/textarea'
 // import { Separator } from '@/components/ui/separator'
 // import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -1002,12 +1003,7 @@ export default function ActivityPage() {
                   value={amendReason}
                   onChange={(e) => setAmendReason(e.target.value)}
                 />
-                <Input
-                  placeholder="New total price"
-                  type="number"
-                  value={amendNewPrice}
-                  onChange={(e) => setAmendNewPrice(e.target.value)}
-                />
+                <PriceInput placeholder="New total price" value={amendNewPrice} onChange={setAmendNewPrice} />
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"

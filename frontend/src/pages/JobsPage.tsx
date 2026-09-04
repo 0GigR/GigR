@@ -1,4 +1,4 @@
-import { fmtPrice } from '@/store/currencyStore'
+import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
 import { useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/PriceInput'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -130,6 +131,7 @@ import { LocationPicker } from '@/components/LocationPicker'
 export default function JobsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
+  const displayCode = useCurrencyStore((s) => s.code)
   const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>('open')
   const geo = useGeolocation()
 
@@ -891,9 +893,10 @@ export default function JobsPage() {
               </SelectContent>
             </Select>
             <Textarea placeholder="Describe what you want done." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-            <Input placeholder="Price (₦) *" type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
-            {/* Live NGN → USDC conversion hint */}
-            {ngnRate && formData.price && parseFloat(formData.price) > 0 && (
+            <PriceInput placeholder="Price *" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
+            {/* Live NGN → USDC conversion hint (only when entering in Naira; the
+                PriceInput already shows the ₦ equivalent in other currencies) */}
+            {displayCode === 'NGN' && ngnRate && formData.price && parseFloat(formData.price) > 0 && (
               <p className="text-xs text-gray-500 -mt-2">
                 {fmtPrice(parseFloat(formData.price))} ≈{' '}
                 <span className="font-medium text-green-700">
@@ -903,8 +906,8 @@ export default function JobsPage() {
               </p>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Min Price" type="number" value={formData.min_price} onChange={e => setFormData({...formData, min_price: e.target.value})} />
-              <Input placeholder="Max Price" type="number" value={formData.max_price} onChange={e => setFormData({...formData, max_price: e.target.value})} />
+              <PriceInput placeholder="Min price" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} showEquivalent={false} />
+              <PriceInput placeholder="Max price" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} showEquivalent={false} />
             </div>
             {/* Image upload */}
             <div>
@@ -967,7 +970,7 @@ export default function JobsPage() {
           {applyTargetJob?.image_url && <img src={applyTargetJob.image_url} className="rounded-lg max-h-48 object-cover mb-4" />}
           <div className="space-y-4 py-4">
             <Textarea placeholder="Why are you a good fit?" value={applyMessage} onChange={e => setApplyMessage(e.target.value)} rows={4} />
-            <Input placeholder="Proposed price (optional)" type="number" value={applyPrice} onChange={e => setApplyPrice(e.target.value)} />
+            <PriceInput placeholder="Proposed price (optional)" value={applyPrice} onChange={setApplyPrice} />
             <Input placeholder="Portfolio URL (optional)" value={applyPortfolioUrl} onChange={e => setApplyPortfolioUrl(e.target.value)} />
             <Button onClick={() => applyMutation.mutate()} disabled={applyMutation.isPending} className="w-full bg-black text-white">
               {applyMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
@@ -1073,7 +1076,7 @@ export default function JobsPage() {
           ) : (
             <div className="border-t pt-2 space-y-2">
               <Textarea placeholder="Reason for amendment..." value={amendReason} onChange={e => setAmendReason(e.target.value)} />
-              <Input placeholder="New total price" type="number" value={amendNewPrice} onChange={e => setAmendNewPrice(e.target.value)} />
+              <PriceInput placeholder="New total price" value={amendNewPrice} onChange={setAmendNewPrice} />
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={() => document.getElementById('amendImageInput')?.click()}>
                   <ImagePlus className="w-4 h-4 mr-1" /> Attach Image

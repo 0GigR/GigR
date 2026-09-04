@@ -1,18 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Briefcase, Shield, Star, ArrowRight, ArrowLeft, Wallet, Bot, MessageSquare, Bell } from 'lucide-react'
+import { Briefcase, Shield, Star, ArrowRight, ArrowLeft, Wallet, Bot, MessageSquare, Bell, Coins, Loader2, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { FundWalletButton } from '@/components/FundWalletButton'
+import { CURRENCIES, type CurrencyCode } from '@/lib/currency'
+import { useCurrencyStore, applyDisplayCurrency } from '@/store/currencyStore'
 
-const BASE_STEPS = [
+type Step = {
+  icon: LucideIcon
+  title: string
+  desc: string
+  isFundWallet: boolean
+  isCurrency?: boolean
+}
+
+const BASE_STEPS: Step[] = [
   {
     icon: Briefcase,
     title: 'Welcome to Gigr',
     desc: 'Your neighborhood marketplace for trusted local services. Post a job or offer a service in minutes — no middlemen, no percentages.',
     isFundWallet: false,
+  },
+  {
+    icon: Coins,
+    title: 'Pick your currency',
+    desc: 'How would you like prices shown? Everything stays stored & settled in Naira — this only changes how amounts are displayed to you.',
+    isFundWallet: false,
+    isCurrency: true,
   },
   {
     icon: MessageSquare,
@@ -46,7 +63,7 @@ const BASE_STEPS = [
   },
 ]
 
-const FUND_WALLET_STEP = {
+const FUND_WALLET_STEP: Step = {
   icon: Wallet,
   title: 'Fund your wallet to get started',
   desc: 'Add funds to your Gigr wallet so you can post jobs with escrow or get paid instantly as a worker.',
@@ -56,7 +73,7 @@ const FUND_WALLET_STEP = {
 // Persistence is versioned so a future product change can re-show onboarding
 // deliberately (bump ONBOARD_VERSION), while a user who said "never again"
 // stays silenced forever.
-const ONBOARD_VERSION = 'v2'
+const ONBOARD_VERSION = 'v3'
 const RE_SHOW_AFTER_MS = 7 * 24 * 60 * 60 * 1000 // 7 days when "do not show" is off
 
 function storageKey(kind: 'seen' | 'never', userId?: string) {
@@ -68,6 +85,8 @@ export default function OnboardingOverlay() {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(0)
   const [doNotShowAgain, setDoNotShowAgain] = useState(true)
+  const [currencyPick, setCurrencyPick] = useState<CurrencyCode>(() => useCurrencyStore.getState().code)
+  const [currencySaving, setCurrencySaving] = useState(false)
 
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
@@ -138,6 +157,20 @@ export default function OnboardingOverlay() {
     else finish()
   }
 
+  // Advancing from the currency step persists the choice (fetching rates first
+  // if needed) so the dashboard behind already shows the picked currency.
+  const goNext = async () => {
+    if (STEPS[step]?.isCurrency) {
+      setCurrencySaving(true)
+      try {
+        await applyDisplayCurrency(currencyPick)
+      } finally {
+        setCurrencySaving(false)
+      }
+    }
+    next()
+  }
+
   const back = () => {
     if (step > 0) setStep((s) => s - 1)
   }
@@ -203,6 +236,35 @@ export default function OnboardingOverlay() {
                 </motion.div>
               </AnimatePresence>
 
+              {/* Currency picker step */}
+              {current.isCurrency && (
+                <div className="mt-5 text-left">
+                  <div className="grid grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+                    {CURRENCIES.map((c) => {
+                      const active = currencyPick === c.code
+                      return (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => setCurrencyPick(c.code)}
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
+                            active
+                              ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-black'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:text-gray-200'
+                          }`}
+                        >
+                          <span className="text-base leading-none">{c.symbol}</span>
+                          <span className="font-semibold">{c.code}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[11px] text-gray-400 mt-2">
+                    Prices are stored &amp; settled in Naira and shown in this currency. You can change it anytime on your Profile.
+                  </p>
+                </div>
+              )}
+
               {/* Progress dots */}
               <div className="flex justify-center gap-2 mt-6 mb-6">
                 {STEPS.map((_, i) => (
@@ -251,9 +313,13 @@ export default function OnboardingOverlay() {
                     {current.isFundWallet ? 'Maybe later' : 'Skip'}
                   </button>
                 </div>
-                <Button onClick={next} className="bg-black text-white rounded-full px-6">
-                  {step < STEPS.length - 1 ? 'Next' : 'Done'}
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
+                <Button onClick={goNext} disabled={currencySaving} className="bg-black text-white rounded-full px-6">
+                  {currencySaving ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <ArrowRight className="ml-1.5 h-4 w-4" />
+                  )}
+                  {currencySaving ? 'Applying…' : step < STEPS.length - 1 ? 'Next' : 'Done'}
                 </Button>
               </div>
             </div>

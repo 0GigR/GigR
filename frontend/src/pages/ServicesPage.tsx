@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/PriceInput'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -522,7 +523,7 @@ export default function ServicesPage() {
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                 <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">
-                  <Input type="number" placeholder="Price (₦) *" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} />
+                  <PriceInput placeholder="Price *" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
                   <div>
                     <div className="relative">
                       <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
