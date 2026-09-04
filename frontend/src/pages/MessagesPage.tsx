@@ -7,6 +7,7 @@ import UserChip from '@/components/UserChip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PriceInput } from '@/components/PriceInput'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { processImageFile } from '@/lib/imageUtils'
@@ -666,12 +667,7 @@ export default function MessagesPage() {
                     value={amendReason}
                     onChange={(e) => setAmendReason(e.target.value)}
                   />
-                  <Input
-                    placeholder="New total price"
-                    type="number"
-                    value={amendNewPrice}
-                    onChange={(e) => setAmendNewPrice(e.target.value)}
-                  />
+                  <PriceInput placeholder="New total price" value={amendNewPrice} onChange={setAmendNewPrice} />
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"

@@ -114,6 +114,36 @@ export function fmtPrice(ngn: number | string): string {
 }
 
 /**
+ * Convert a typed DISPLAY-currency amount into the canonical Naira amount that
+ * is stored/settled, using the user's current display currency + cached rate.
+ * NGN (the default) is the identity. Returns null when the input isn't a number
+ * or the display currency has no usable rate — callers must not invent a value.
+ */
+export function displayToNaira(display: number | string): number | null {
+  const num = typeof display === 'string' ? parseFloat(display) : display
+  if (!Number.isFinite(num)) return null
+  const { code, rates } = useCurrencyStore.getState()
+  if (code === 'NGN') return num
+  const rate = rates?.[code]
+  if (!rate || rate <= 0) return null
+  const naira = num / rate
+  return Number.isFinite(naira) ? Math.round(naira) : null
+}
+
+/** The inverse of `displayToNaira`: how a stored Naira amount reads in the
+ *  user's display currency (null when no rate is available). */
+export function nairaToDisplay(ngn: number | string): number | null {
+  const num = typeof ngn === 'string' ? parseFloat(ngn) : ngn
+  if (!Number.isFinite(num)) return null
+  const { code, rates } = useCurrencyStore.getState()
+  if (code === 'NGN') return num
+  const rate = rates?.[code]
+  if (!rate || rate <= 0) return null
+  const converted = num * rate
+  return Number.isFinite(converted) ? converted : null
+}
+
+/**
  * Switch the display currency. Updates the store in place — mounted prices
  * re-render via the layout's store subscription, no page reload. If the chosen
  * currency's rate isn't cached yet it fetches (and caches) fresh rates first;
