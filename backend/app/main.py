@@ -72,6 +72,14 @@ async def on_startup():
     # dying for weeks because the send path swallowed the exception.
     settings.validate_vapid_key()
 
+    # Same class of problem for the LLM: a retired model name silently degrades
+    # every AI feature to its fallback. Validate and self-heal at boot.
+    try:
+        from .services import groq_client
+        await groq_client.ensure_working_model()
+    except Exception as e:  # never block startup on an LLM check
+        logger.warning("[groq] model validation skipped: %s", e)
+
     if settings.RUN_STARTUP_CLEANUP:
         try:
             await _dedup_duplicate_jobs()

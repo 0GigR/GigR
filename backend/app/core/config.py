@@ -174,7 +174,11 @@ class Settings(BaseSettings):
     # Leave blank to use the built-in rule-based NLP fallback instead.
     GROQ_API_KEY: str = Field(default="", env="GROQ_API_KEY")
     GROQ_API_KEYS: str = Field(default="", env="GROQ_API_KEYS")
-    GROQ_MODEL: str = Field(default="llama-3.1-8b-instant", env="GROQ_MODEL")  # llama3-8b-8192 was decommissioned by Groq
+    # NOTE: Groq retires models regularly. The previous default
+    # (llama-3.1-8b-instant) no longer exists on their API, which silently
+    # degraded every AI feature to its fallback. groq_client.ensure_working_model()
+    # validates this at startup and self-heals if it goes away again.
+    GROQ_MODEL: str = Field(default="openai/gpt-oss-120b", env="GROQ_MODEL")
     GROQ_WHISPER_MODEL: str = Field(default="whisper-large-v3-turbo", env="GROQ_WHISPER_MODEL")
 
     @property
