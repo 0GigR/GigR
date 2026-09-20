@@ -10,12 +10,13 @@ import { Badge } from '@/components/ui/badge'
 // import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/store/authStore'
-import { Clock, Coins, RefreshCw } from 'lucide-react'
+import { Clock, Coins, RefreshCw, Trash2 } from 'lucide-react'
 import { FundWalletButton } from '@/components/FundWalletButton'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { CurrencySelect } from '@/components/CurrencySelect'
 import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
 import { symbolFor } from '@/lib/currency'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 import {
   Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff
@@ -44,8 +45,21 @@ async function uploadFile(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
-  const { user, fetchUser } = useAuthStore()
+  const { user, fetchUser, logout } = useAuthStore()
   const queryClient = useQueryClient()
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false)
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      await api.delete('/users/me')
+    },
+    onSuccess: async () => {
+      toast.success('Your account and data have been deleted. Goodbye!')
+      setConfirmDeleteAccount(false)
+      await logout()
+      window.location.href = '/'
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Could not delete account')),
+  })
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user?.display_name || '')
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
@@ -532,6 +546,41 @@ export default function ProfilePage() {
 
       {/* Full Activity History */}
       <ActivityHistory userId={user?.id} />
+
+      {/* Danger Zone — users own their data, including the right to leave. */}
+      <Card className="border-red-200 dark:border-red-900">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+            <Trash2 className="w-5 h-5" /> Danger Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Delete account</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Permanently deletes your profile, jobs, services, messages and vouches. This cannot be undone.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+            onClick={() => setConfirmDeleteAccount(true)}
+          >
+            <Trash2 className="w-4 h-4 mr-1" /> Delete my account
+          </Button>
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={confirmDeleteAccount}
+        onOpenChange={setConfirmDeleteAccount}
+        title="Delete your account?"
+        description="This permanently deletes your profile, your jobs, services, messages and vouches. Your wallet remains yours, but everything on Gigr goes away. This cannot be undone."
+        confirmLabel="Delete forever"
+        cancelLabel="Keep my account"
+        loading={deleteAccountMutation.isPending}
+        onConfirm={() => deleteAccountMutation.mutate()}
+      />
     </div>
   )
 }

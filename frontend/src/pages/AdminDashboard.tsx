@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuthStore } from '@/store/authStore'
-import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save } from 'lucide-react'
+import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save, Users, Wallet, CheckCircle, Gavel, LayoutDashboard } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -48,6 +48,15 @@ export default function AdminDashboard() {
   const [msgImageFile, setMsgImageFile] = useState<File | null>(null)
   const [msgImagePreview, setMsgImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Overview stats (any admin can see these — just counts)
+  const { data: stats } = useQuery({
+    queryKey: ['admin-stats'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/stats')
+      return data
+    },
+  })
 
   // Fetch all disputes
   const { data: disputes, isLoading } = useQuery({
@@ -111,14 +120,22 @@ export default function AdminDashboard() {
 
   // IAM-style permission catalog (mirrors the backend PERMISSION_SLUGS)
   const PERMISSIONS = [
+    { slug: 'jobs:view', label: 'View all jobs' },
     { slug: 'jobs:manage', label: 'Delete jobs' },
+    { slug: 'services:view', label: 'View all services' },
     { slug: 'services:manage', label: 'Delete services' },
+    { slug: 'users:view', label: 'View all users' },
     { slug: 'users:manage', label: 'Delete users' },
     { slug: 'messages:manage', label: 'Delete messages (forgery risk)' },
     { slug: 'disputes:manage', label: 'Resolve disputes' },
     { slug: 'announce:manage', label: 'Send announcements' },
+    { slug: 'stats:view', label: 'View admin statistics' },
   ]
   const hasPerm = (slug: string) => isSuperadmin || (user?.permissions || []).includes(slug)
+  const hasAnyModeration = [
+    'jobs:view', 'jobs:manage', 'services:view', 'services:manage',
+    'users:view', 'users:manage', 'messages:manage',
+  ].some(hasPerm)
 
   // New-admin permission selection + per-admin edits
   const [newAdminPerms, setNewAdminPerms] = useState<string[]>([])
@@ -320,13 +337,49 @@ export default function AdminDashboard() {
         </h1>
         <p className="text-gray-500">Manage disputes and administrators.</p>
       </div>
-      <Tabs defaultValue={hasPerm('disputes:manage') ? 'disputes' : 'moderation'}>
-        <TabsList>
-          {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Active</TabsTrigger>}
+      <Tabs defaultValue="overview">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="overview">
+            <LayoutDashboard className="w-3.5 h-3.5 mr-1.5" /> Overview
+          </TabsTrigger>
+          {hasPerm('announce:manage') && <TabsTrigger value="announce">Announce</TabsTrigger>}
+          {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Open Disputes</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="resolved">Resolved</TabsTrigger>}
-          <TabsTrigger value="moderation">Moderation</TabsTrigger>
+          {hasAnyModeration && <TabsTrigger value="moderation">Moderation</TabsTrigger>}
           {isSuperadmin && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
+
+        {/* Overview — at-a-glance numbers for every admin */}
+        <TabsContent value="overview" className="mt-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[
+              { icon: <Users className="w-4 h-4" />, label: 'Total users', value: stats?.total_users, color: 'bg-indigo-600' },
+              { icon: <Briefcase className="w-4 h-4" />, label: 'Open jobs', value: stats?.open_jobs, color: 'bg-blue-600' },
+              { icon: <Wrench className="w-4 h-4" />, label: 'Active services', value: stats?.active_services, color: 'bg-emerald-600' },
+              { icon: <Gavel className="w-4 h-4" />, label: 'Open disputes', value: stats?.open_disputes, color: 'bg-amber-600' },
+              { icon: <Wallet className="w-4 h-4" />, label: 'In escrow', value: stats ? `₦${Number(stats.escrow_in_flight).toLocaleString()}` : undefined, color: 'bg-violet-600' },
+              { icon: <CheckCircle className="w-4 h-4" />, label: 'Completed jobs', value: stats?.completed_jobs, color: 'bg-gray-800' },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 shadow-sm">
+                <div className={`w-10 h-10 rounded-lg ${s.color} text-white flex items-center justify-center shrink-0`}>{s.icon}</div>
+                <div className="min-w-0">
+                  <p className="text-xs text-gray-500">{s.label}</p>
+                  <p className="text-xl font-bold leading-tight">{s.value ?? '—'}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-600">
+            <p className="font-medium text-gray-800 mb-1">Your powers</p>
+            {isSuperadmin ? (
+              <p>Superadmin — everything on this dashboard is unlocked.</p>
+            ) : (user?.permissions || []).length ? (
+              <p className="capitalize">{(user?.permissions ?? []).join(', ')}</p>
+            ) : (
+              <p>None yet — ask the superadmin to tag you with the abilities you need.</p>
+            )}
+          </div>
+        </TabsContent>
 
         <TabsContent value="disputes" className="mt-6">
           {isLoading ? <Skeleton className="h-24 w-full" /> : 

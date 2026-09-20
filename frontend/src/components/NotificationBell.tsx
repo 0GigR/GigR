@@ -45,6 +45,8 @@ function getTypeMeta(type?: string) {
   return TYPE_META[type || 'system'] || TYPE_META.system
 }
 
+import { safeAppLink } from '@/lib/appLinks'
+
 function getPushState(): 'unsupported' | 'denied' | 'granted' | 'default' | 'ios-browser' | 'disconnected' {
   // iOS Safari in regular browser doesn't support Web Push at all
   // Only works when installed as a PWA (home screen app) on iOS 16.4+
@@ -191,14 +193,17 @@ export default function NotificationBell() {
     }
   }
 
-  const unreadCount = notifications.filter(n => !n.is_read).length
+  // Defensive: never trust the API response shape. A non-array here would
+  // crash the whole dashboard, since the bell mounts on every page.
+  const notifs = Array.isArray(notifications) ? notifications : []
+  const unreadCount = notifs.filter(n => !n.is_read).length
 
   const filtered = filter === 'all'
-    ? notifications
-    : notifications.filter(n => (FILTER_GROUPS[filter] || []).includes(n.type || ''))
-  const counts: Record<string, number> = { all: notifications.length }
+    ? notifs
+    : notifs.filter(n => (FILTER_GROUPS[filter] || []).includes(n.type || ''))
+  const counts: Record<string, number> = { all: notifs.length }
   for (const key of Object.keys(FILTER_GROUPS)) {
-    counts[key] = notifications.filter(n => FILTER_GROUPS[key].includes(n.type || '')).length
+    counts[key] = notifs.filter(n => FILTER_GROUPS[key].includes(n.type || '')).length
   }
 
   // A notification counts as a "failure" if its text signals something went wrong.
@@ -207,7 +212,7 @@ export default function NotificationBell() {
     /\b(fail(?:ed|ure)?|error|unable|couldn'?t|could not|declined|rejected|cancell?ed)\b/i.test(
       `${n.title} ${n.message}`
     )
-  const hasUnreadFailure = notifications.some(n => !n.is_read && isFailure(n))
+  const hasUnreadFailure = notifs.some(n => !n.is_read && isFailure(n))
 
   // Mark ONE notification read when the user taps it. Opening the panel does
   // NOT clear the badge anymore — unread dots stay until each item is actually
@@ -382,7 +387,7 @@ export default function NotificationBell() {
                         }`}
                       >
                         <Link
-                          to={n.link || '#'}
+                          to={safeAppLink(n.link)}
                           onClick={() => { setOpen(false); if (!n.is_read) markOneRead(n.id) }}
                           className="block"
                         >

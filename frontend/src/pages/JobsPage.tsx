@@ -22,7 +22,7 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
   ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search,
-  Flame, Clock, Briefcase, MapPin, Zap, Inbox
+  Flame, Clock, Briefcase, MapPin, Zap, Inbox, Trash2
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { components } from '@/types/api'
@@ -522,6 +522,19 @@ export default function JobsPage() {
     onError: (err: any) => toast.error(extractError(err, 'Cancel failed')),
   })
 
+  // Users own their data — the job poster can delete their own job as long as
+  // no money is in escrow yet (open/requested/cancelled).
+  const deleteJobMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      await api.delete(`/jobs/${jobId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Job deleted')
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Delete failed')),
+  })
+
   // Handlers
   const handlePostJob = async () => {
     if (!formData.title || !formData.price) return toast.error('Title and price required')
@@ -762,6 +775,7 @@ export default function JobsPage() {
                     if (j) setConfirmAction({ type: 'accept', jobId, title: j.title })
                   }}
                   onCancel={(jobId: string, title: string) => setConfirmAction({ type: 'cancel', jobId, title })}
+                  onDelete={(jobId, title) => setConfirmAction({ type: 'delete', jobId, title })}
                   onVouch={vouchMutation.mutate}
                   onDetail={setDetailJob}
                   onContractRoom={openContractRoom}
@@ -838,6 +852,7 @@ export default function JobsPage() {
                             onOpenThread={openDiscussionThread}
                             onAccept={handleAccept}
                             onCancel={(jobId, title) => setConfirmAction({ type: 'cancel', jobId, title })}
+                            onDelete={(jobId, title) => setConfirmAction({ type: 'delete', jobId, title })}
                             hasApplied={appliedJobIds.has(job.id)}
                             hasVouched={vouchedJobIds.has(job.id)}
                             onImageClick={setLightboxSrc}
@@ -1126,7 +1141,8 @@ export default function JobsPage() {
           confirmAction?.type === 'fund' ? 'Fund Escrow' :
           confirmAction?.type === 'release' ? 'Release Payment' :
           confirmAction?.type === 'accept' ? 'Accept Request' :
-          confirmAction?.type === 'cancel' ? 'Cancel Job' : ''
+          confirmAction?.type === 'cancel' ? 'Cancel Job' :
+          confirmAction?.type === 'delete' ? 'Delete Job' : ''
         }
         description={
           confirmAction?.type === 'fund'
@@ -1137,6 +1153,8 @@ export default function JobsPage() {
             ? `Accept "${confirmAction?.title}"? The client can then fund the escrow.`
             : confirmAction?.type === 'cancel'
             ? `Are you sure you want to cancel "${confirmAction?.title}"? This action cannot be undone.`
+            : confirmAction?.type === 'delete'
+            ? `Delete "${confirmAction?.title}"? This permanently removes the job, its applications and its messages. This cannot be undone.`
             : ''
         }
         onConfirm={() => {
@@ -1146,6 +1164,7 @@ export default function JobsPage() {
           else if (type === 'release') releaseMutation.mutate(jobId)
           else if (type === 'accept') acceptMutation.mutate(jobId)
           else if (type === 'cancel') cancelMutation.mutate(jobId)
+          else if (type === 'delete') deleteJobMutation.mutate(jobId)
           setConfirmAction(null)
         }}
         confirmLabel="Proceed"
@@ -1155,6 +1174,7 @@ export default function JobsPage() {
           confirmAction?.type === 'release' ? releaseMutation.isPending :
           confirmAction?.type === 'accept' ? acceptMutation.isPending :
           confirmAction?.type === 'cancel' ? cancelMutation.isPending :
+          confirmAction?.type === 'delete' ? deleteJobMutation.isPending :
           false
         }
       />
@@ -1168,7 +1188,7 @@ export default function JobsPage() {
 // ─── JobCard ─────────────────────────────────────────
 function JobCard({
   job, user,
-  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onOpenThread, onAccept, onCancel,
+  onApply, onAssign, onFund, onRelease, onVouch, onDetail, onContractRoom, onOpenThread, onAccept, onCancel, onDelete,
   hasApplied, hasVouched, onImageClick,
   distanceKm, categoryName,
   applyPending, assignPending, fundPending, releasePending, vouchPending, acceptPending,
@@ -1185,6 +1205,7 @@ function JobCard({
   onOpenThread: (job: Job, applicantId: string) => void
   onAccept: (jobId: string) => void
   onCancel: (jobId: string, title: string) => void
+  onDelete?: (jobId: string, title: string) => void
   hasApplied?: boolean
   hasVouched?: boolean
   onImageClick?: (url: string) => void
@@ -1441,6 +1462,18 @@ function JobCard({
               {acceptPending ? 'Accepting...' : 'Accept'}
             </Button>
           </>
+        )}
+        {/* Users own their data: the poster can delete their own job while no
+            money is in escrow (open / requested / cancelled). */}
+        {isClient && ['open', 'requested', 'cancelled'].includes(job.status) && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-red-300 text-red-600 hover:bg-red-50 ml-auto"
+            onClick={() => onDelete?.(job.id, job.title)}
+          >
+            <Trash2 className="w-3 h-3 mr-1" /> Delete
+          </Button>
         )}
       </CardFooter>
     </Card>

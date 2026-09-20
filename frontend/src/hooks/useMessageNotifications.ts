@@ -32,7 +32,7 @@ export function useMessageNotifications() {
   })
 
   const jobIds = useMemo(
-    () => (jobs || [])
+    () => (Array.isArray(jobs) ? jobs : [])
       .filter((j) => !['completed', 'cancelled'].includes(j.status))
       .map((j) => j.id),
     [jobs]
