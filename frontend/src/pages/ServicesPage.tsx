@@ -485,6 +485,9 @@ export default function ServicesPage() {
       {/* Header */}
       {/* One segmented switcher instead of three same-weight buttons competing
           with the primary action. */}
+      {/* Pinned while scrolling: on a long list the view switcher used to scroll
+          away, so you had to go back to the top to change view. */}
+      <div className="sticky top-14 z-30 -mx-4 px-4 py-2 bg-white/90 dark:bg-gray-950/90 backdrop-blur border-b border-gray-100 dark:border-gray-800">
       <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900">
         {([
           ['browse', 'Browse', Search],
@@ -498,7 +501,7 @@ export default function ServicesPage() {
             aria-pressed={activeTab === value}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               activeTab === value
-                ? 'bg-white dark:bg-gray-800 shadow-sm text-black dark:text-white'
+                ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm'
                 : 'text-gray-500 hover:text-black dark:hover:text-white'
             }`}
           >
@@ -506,6 +509,7 @@ export default function ServicesPage() {
             {label}
           </button>
         ))}
+      </div>
       </div>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -532,7 +536,7 @@ export default function ServicesPage() {
           </Button>
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm() }}>
             <DialogTrigger asChild>
-              <Button className="bg-black text-white hover:bg-gray-800"><Plus className="w-4 h-4 mr-2" /> New</Button>
+              <Button className="gigr-cta border-0"><Plus className="w-4 h-4 mr-2" /> New</Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editService ? 'Edit Service' : 'Create Service'}</DialogTitle></DialogHeader>

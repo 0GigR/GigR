@@ -48,11 +48,16 @@ function makeAvatarIcon(
   name: string | null | undefined,
   ring: string,
   highlighted = false,
+  /** Jobs are square, services are round — shape reads faster than colour. */
+  shape: 'square' | 'round' = 'round',
 ): L.DivIcon {
+  const headRadius = shape === 'square' ? '10px' : '9999px'
+  const innerRadius = shape === 'square' ? '7px' : '9999px'
+  const pointRadius = shape === 'square' ? '2px' : '9999px'
   const initials = (name || '?').slice(0, 2).toUpperCase()
   const inner = avatarUrl
-    ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px" />`
-    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;border-radius:9999px">${initials}</div>`
+    ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:${innerRadius}" />`
+    : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;border-radius:${innerRadius}">${initials}</div>`
 
   const halo = highlighted
     ? `<div class="gigr-ring" style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};"></div>`
@@ -61,10 +66,10 @@ function makeAvatarIcon(
   const html = `
     <div class="gigr-pin" style="position:relative;width:40px;height:52px;">
       ${halo}
-      <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;${highlighted ? `outline:3px solid #fff;outline-offset:1px;` : ''}">
-        <div style="width:32px;height:32px;border-radius:9999px;overflow:hidden;background:#fff;">${inner}</div>
+      <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:${headRadius};background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;${highlighted ? `outline:3px solid #fff;outline-offset:1px;` : ''}">
+        <div style="width:32px;height:32px;border-radius:${innerRadius};overflow:hidden;background:#fff;">${inner}</div>
       </div>
-      <div style="position:absolute;top:35px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:15px solid ${ring};"></div>
+      <div style="position:absolute;top:35px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:15px solid ${ring};border-radius:${pointRadius};"></div>
     </div>`
   return L.divIcon({
     html,
@@ -127,6 +132,15 @@ function MapUpdater({ center, focus }: { center: [number, number]; focus: [numbe
     map.flyTo(focus, Math.max(map.getZoom(), 15), { duration: 0.7 })
   }, [map, focus])
 
+  // Cancel any in-flight animation when the map unmounts (switching tabs, or
+  // navigating away). A pending flyTo resolving against a disposed map is a
+  // classic way to trip Leaflet's internals during teardown.
+  useEffect(() => {
+    return () => {
+      map.stop()
+    }
+  }, [map])
+
   return null
 }
 
@@ -186,11 +200,14 @@ function ClusterLayer({
   owners,
   selectedId,
   onSelect,
+  mode = 'pins',
 }: {
   points: MapPoint[]
   owners: Map<string, { display_name?: string | null; profile_image_url?: string | null }>
   selectedId?: string | null
   onSelect?: (kind: 'job' | 'service', id: string) => void
+  /** 'heat' draws density blobs instead of pins. */
+  mode?: 'pins' | 'heat'
 }) {
   const map = useMap()
   const [revision, setRevision] = useState(0)
@@ -211,6 +228,34 @@ function ClusterLayer({
     <>
       {clusters.map((cluster) => {
         const first = cluster.points[0]
+
+        if (mode === 'heat') {
+          // Density blob: warmer and larger where more listings overlap, which
+          // is what makes a heat map readable at a glance.
+          const n = cluster.points.length
+          const jobsOnly = cluster.points.every((p) => p.kind === 'job')
+          const servicesOnly = cluster.points.every((p) => p.kind === 'service')
+          const color = jobsOnly ? JOB_COLOR : servicesOnly ? SERVICE_COLOR : MIXED_COLOR
+          return (
+            <Circle
+              key={`heat-${first.id}-${n}`}
+              center={[cluster.lat, cluster.lng]}
+              radius={Math.min(160 + n * 45, 900)}
+              pathOptions={{
+                stroke: false,
+                fillColor: color,
+                fillOpacity: Math.min(0.14 + n * 0.05, 0.5),
+              }}
+              eventHandlers={{
+                click: () =>
+                  map.flyTo([cluster.lat, cluster.lng], Math.min(map.getZoom() + 2, 18), {
+                    duration: 0.5,
+                  }),
+              }}
+            />
+          )
+        }
+
         if (cluster.points.length > 1) {
           const kinds = new Set(cluster.points.map((p) => p.kind))
           const kind = kinds.size > 1 ? 'mixed' : first.kind
@@ -244,6 +289,7 @@ function ClusterLayer({
               owner?.display_name,
               first.kind === 'job' ? JOB_COLOR : SERVICE_COLOR,
               highlighted,
+              first.kind === 'job' ? 'square' : 'round',
             )}
             zIndexOffset={highlighted ? 1000 : 0}
             eventHandlers={{ click: () => onSelect?.(first.kind, first.id) }}
@@ -274,6 +320,10 @@ export function NeighborhoodMap({
   selectedId,
   onSelect,
   onResults,
+  kindFilter = 'all',
+  onKindFilterChange,
+  showHeat = false,
+  onShowHeatChange,
 }: {
   latitude: number
   longitude: number
@@ -287,6 +337,12 @@ export function NeighborhoodMap({
   onSelect?: (kind: 'job' | 'service', id: string) => void
   /** Reports the fetched points so a parent can render a synced result list. */
   onResults?: (points: MapPoint[]) => void
+  /** 'all' shows jobs and services together, which is the point of the map. */
+  kindFilter?: 'all' | 'job' | 'service'
+  onKindFilterChange?: (kind: 'all' | 'job' | 'service') => void
+  /** Draw density blobs instead of pins. */
+  showHeat?: boolean
+  onShowHeatChange?: (on: boolean) => void
 }) {
   const [internalRadius, setInternalRadius] = useState(10)
   const [internalSelected, setInternalSelected] = useState<{ kind: 'job' | 'service'; id: string } | null>(null)
@@ -368,18 +424,24 @@ export function NeighborhoodMap({
     return out
   }, [nearbyJobs, nearbyServices])
 
+  // The map fetches both kinds; the chips decide what is drawn.
+  const visiblePoints = useMemo(
+    () => (kindFilter === 'all' ? points : points.filter((p) => p.kind === kindFilter)),
+    [points, kindFilter],
+  )
+
   // Hand the fetched points to the parent so it can render a synced result list.
   // Kept in a ref so an inline callback from the parent can't retrigger the effect.
   const onResultsRef = useRef(onResults)
   onResultsRef.current = onResults
   useEffect(() => {
-    onResultsRef.current?.(points)
-  }, [points])
+    onResultsRef.current?.(visiblePoints)
+  }, [visiblePoints])
 
   // One batched, cached lookup per distinct owner instead of a hook per marker.
   const ownerIds = useMemo(
-    () => Array.from(new Set(points.map((p) => p.ownerId).filter(Boolean))) as string[],
-    [points],
+    () => Array.from(new Set(visiblePoints.map((p) => p.ownerId).filter(Boolean))) as string[],
+    [visiblePoints],
   )
   const ownerQueries = useQueries({
     queries: ownerIds.map((id) => ({
@@ -398,8 +460,8 @@ export function NeighborhoodMap({
   }, [ownerIds, ownerQueries])
 
   const selectedPoint = useMemo(
-    () => (activeSelectedId ? points.find((p) => p.id === activeSelectedId) ?? null : null),
-    [activeSelectedId, points],
+    () => (activeSelectedId ? visiblePoints.find((p) => p.id === activeSelectedId) ?? null : null),
+    [activeSelectedId, visiblePoints],
   )
 
   if (!validCenter) {
@@ -461,7 +523,8 @@ export function NeighborhoodMap({
         </Marker>
 
         <ClusterLayer
-          points={points}
+          points={visiblePoints}
+          mode={showHeat ? 'heat' : 'pins'}
           owners={owners}
           selectedId={activeSelectedId}
           onSelect={handleSelect}
@@ -497,19 +560,54 @@ export function NeighborhoodMap({
           </div>
         </div>
 
-        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
-          <div className="flex items-center gap-3">
+        {/* Jobs and services are different things, so the map shows both and lets
+            you separate them. Jobs draw as squares with a blue ring, services as
+            round pins with a green one. "Heat" swaps pins for density blobs. */}
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs space-y-2">
+          <div className="flex items-center gap-1">
+            {([
+              ['all', 'All', jobCount + serviceCount],
+              ['job', 'Jobs', jobCount],
+              ['service', 'Services', serviceCount],
+            ] as const).map(([value, label, count]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => onKindFilterChange?.(value)}
+                aria-pressed={kindFilter === value}
+                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
+                  kindFilter === value
+                    ? 'bg-black text-white dark:bg-white dark:text-black'
+                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                {label} {count}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onShowHeatChange?.(!showHeat)}
+              aria-pressed={showHeat}
+              title="Density view"
+              className={`ml-1 px-2 py-1 rounded-lg font-semibold transition-colors ${
+                showHeat
+                  ? 'bg-amber-500 text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+              }`}
+            >
+              Heat
+            </button>
+          </div>
+          <div className="flex items-center gap-3 text-gray-500">
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: JOB_COLOR }} />
-              {jobCount} jobs
+              <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: JOB_COLOR }} /> jobs
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: SERVICE_COLOR }} />
-              {serviceCount} services
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: SERVICE_COLOR }} /> services
             </span>
             {loading && <span className="text-gray-400">updating…</span>}
           </div>
-          {!loading && points.length === 0 && (
+          {!loading && visiblePoints.length === 0 && (
             <p className="mt-1.5 text-gray-500 flex items-center gap-1">
               <Flame className="w-3 h-3 text-amber-500" />
               Nothing within {radius} km — try a wider radius.

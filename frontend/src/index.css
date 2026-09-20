@@ -150,6 +150,34 @@
   }
 }
 
+/* ── Brand life ──────────────────────────────────────────────────────────────
+   Minimal should not mean monochrome. A single accent (indigo -> violet) is
+   used for primary actions and selected states, and a very soft wash behind the
+   dashboard keeps large white areas from reading as flat. */
+
+.gigr-cta {
+  background-image: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  color: #fff;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gigr-cta:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 20px -8px rgba(99, 102, 241, 0.7);
+}
+
+.gigr-page-wash {
+  background-image:
+    radial-gradient(60rem 30rem at 100% -10%, rgba(124, 58, 237, 0.07), transparent 60%),
+    radial-gradient(45rem 25rem at -10% 0%, rgba(79, 70, 229, 0.06), transparent 55%);
+}
+
+.dark .gigr-page-wash {
+  background-image:
+    radial-gradient(60rem 30rem at 100% -10%, rgba(124, 58, 237, 0.16), transparent 60%),
+    radial-gradient(45rem 25rem at -10% 0%, rgba(79, 70, 229, 0.14), transparent 55%);
+}
+
 /* ── Map experience ──────────────────────────────────────────────────────────
    All free + keyless: the dark basemap is the standard OSM raster tile run
    through a CSS filter on Leaflet's tile pane only, so markers, popups and

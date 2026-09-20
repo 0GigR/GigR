@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Briefcase, Wrench, MapPin } from 'lucide-react'
 import { fmtPrice } from '@/store/currencyStore'
 import { NeighborhoodMap, type MapPoint } from '@/components/NeighborhoodMap'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 /**
  * The neighbourhood map plus its result list, sharing one selection.
@@ -29,6 +30,12 @@ export function MapExplorer({
 }) {
   const [points, setPoints] = useState<MapPoint[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Jobs and services are both drawn by default — seeing them together is the
+  // whole point of a neighbourhood map — with chips to separate them.
+  const [kindFilter, setKindFilter] = useState<'all' | 'job' | 'service'>(
+    type === 'jobs' ? 'job' : type === 'services' ? 'service' : 'all',
+  )
+  const [showHeat, setShowHeat] = useState(false)
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   const handleResults = useCallback((next: MapPoint[]) => setPoints(next), [])
@@ -47,17 +54,23 @@ export function MapExplorer({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-      <NeighborhoodMap
-        latitude={latitude}
+      <ErrorBoundary compact label="The map" resetKey={`${latitude},${longitude}`}>
+        <NeighborhoodMap
+          latitude={latitude}
         longitude={longitude}
-        type={type}
+        type="all"
         radiusKm={radiusKm}
         onRadiusChange={onRadiusChange}
         height={height}
         selectedId={selectedId}
         onSelect={(_kind, id) => setSelectedId(id)}
-        onResults={handleResults}
-      />
+          onResults={handleResults}
+          kindFilter={kindFilter}
+          onKindFilterChange={setKindFilter}
+          showHeat={showHeat}
+          onShowHeatChange={setShowHeat}
+        />
+      </ErrorBoundary>
 
       <div
         className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-y-auto"

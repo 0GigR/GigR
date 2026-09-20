@@ -44,6 +44,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { useLocationStore } from '@/store/locationStore'
 
 export default function DashboardLayout() {
@@ -315,11 +316,15 @@ export default function DashboardLayout() {
       {/* Main Content Area */}
       {/* pb-24 on mobile keeps page content clear of the fixed bottom nav;
           md:pb-6 restores normal padding on desktop where the nav is hidden */}
-      <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72 relative">
+      <main className="max-w-7xl mx-auto px-4 pt-6 pb-24 md:pb-6 md:pl-72 relative gigr-page-wash">
         {/* Route transition — CSS-based (tw-animate-css) instead of framer-motion
             so the shell doesn't pull framer-motion into the initial bundle. */}
         <div key={location.pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <Outlet />
+          {/* A page-level crash keeps the shell (header, nav) alive, so the user
+              can navigate away instead of facing a dead app. */}
+          <ErrorBoundary resetKey={location.pathname} label="This page">
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
 
