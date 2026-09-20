@@ -331,6 +331,7 @@ export default function ServicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myServices'] })
       queryClient.invalidateQueries({ queryKey: ['nearbyServices'] })
+      queryClient.invalidateQueries({ queryKey: ['map-nearby-services'] })
       toast.success('Service created')
       setDialogOpen(false)
       resetForm()
@@ -350,6 +351,7 @@ export default function ServicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myServices'] })
       queryClient.invalidateQueries({ queryKey: ['nearbyServices'] })
+      queryClient.invalidateQueries({ queryKey: ['map-nearby-services'] })
       toast.success('Service updated')
       setDialogOpen(false)
       resetForm()
@@ -362,6 +364,7 @@ export default function ServicesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myServices'] })
       queryClient.invalidateQueries({ queryKey: ['nearbyServices'] })
+      queryClient.invalidateQueries({ queryKey: ['map-nearby-services'] })
       toast.success('Service deleted')
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed to delete service')),

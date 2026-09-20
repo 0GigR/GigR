@@ -93,3 +93,5 @@ backend/test_dedup.py
 backend/test_init.py
 backend/test_init_full.py
 backend/test_sa.py
+# Demo recordings (large binaries)
+frontend/recordings/

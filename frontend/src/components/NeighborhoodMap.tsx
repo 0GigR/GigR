@@ -27,6 +27,17 @@ const SERVICE_COLOR = '#16a34a'
 const MIXED_COLOR = '#7c3aed'
 
 /** A marker candidate, normalised from either a Job or a ServiceListing. */
+/**
+ * Only ever iterate something that is really an array.
+ *
+ * React Query keys are global: anything asking for the same key receives the
+ * same cached value, whatever shape its own query function produced. That is
+ * exactly how the map crashed — see the namespaced keys below.
+ */
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : []
+}
+
 export interface MapPoint {
   id: string
   kind: 'job' | 'service'
@@ -369,7 +380,11 @@ export function NeighborhoodMap({
   const servicesEnabled = validCenter && (type === 'services' || type === 'all')
 
   const { data: nearbyJobs, isFetching: jobsFetching } = useQuery<Job[]>({
-    queryKey: ['nearbyJobs', latitude, longitude, radius],
+    // Namespaced deliberately: ServicesPage holds an INFINITE query under
+    // ['nearbyServices', lat, lon, radius] whose cached value is {pages, pageParams}.
+    // Sharing that key meant this query received an object and the render loop
+    // below threw "is not iterable" whenever the map and the list were both mounted.
+    queryKey: ['map-nearby-jobs', latitude, longitude, radius],
     queryFn: async () => {
       const { data } = await api.get('/jobs/search/nearby', {
         params: { lat: latitude, lon: longitude, radius },
@@ -380,7 +395,7 @@ export function NeighborhoodMap({
   })
 
   const { data: nearbyServices, isFetching: servicesFetching } = useQuery<Service[]>({
-    queryKey: ['nearbyServices', latitude, longitude, radius],
+    queryKey: ['map-nearby-services', latitude, longitude, radius],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
         params: { lat: latitude, lon: longitude, radius },
@@ -392,7 +407,7 @@ export function NeighborhoodMap({
 
   const points: MapPoint[] = useMemo(() => {
     const out: MapPoint[] = []
-    for (const job of nearbyJobs ?? []) {
+    for (const job of asArray<Job>(nearbyJobs)) {
       // `== null` not falsy: 0 is a legitimate coordinate.
       if (job.latitude == null || job.longitude == null) continue
       out.push({
@@ -407,7 +422,7 @@ export function NeighborhoodMap({
         distanceKm: (job as Job & { distance_km?: number | null }).distance_km ?? null,
       })
     }
-    for (const service of nearbyServices ?? []) {
+    for (const service of asArray<Service>(nearbyServices)) {
       if (service.latitude == null || service.longitude == null) continue
       out.push({
         id: service.id,
