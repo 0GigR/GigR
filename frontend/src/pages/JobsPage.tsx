@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuthStore } from '@/store/authStore'
 import UserChip from '@/components/UserChip'
-import { NeighborhoodMap } from '@/components/NeighborhoodMap'
+import { MapExplorer } from '@/components/map/MapExplorer'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
@@ -886,7 +886,7 @@ export default function JobsPage() {
         {/* Map Tab */}
         <TabsContent value="map" className="mt-6">
           {geo.latitude && geo.longitude ? (
-            <NeighborhoodMap
+            <MapExplorer
               latitude={geo.latitude}
               longitude={geo.longitude}
               type="jobs"
