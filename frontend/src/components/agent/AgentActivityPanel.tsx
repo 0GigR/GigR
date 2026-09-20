@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,35 @@ import { motion, AnimatePresence } from 'framer-motion'
 
 // ─── Main Panel ───────────────────────────────────────────────────────────────
 
+const HANDLED_NAV_KEY = 'gigr_agent_handled_nav'
+/** How long a "take me there" intent stays actionable after it is written. */
+const NAV_INTENT_TTL_MS = 2 * 60 * 1000
+
+function loadHandledNavIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(HANDLED_NAV_KEY)
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+function saveHandledNavIds(ids: Set<string>) {
+  try {
+    // Keep only the tail: these ids are worthless once stale.
+    sessionStorage.setItem(HANDLED_NAV_KEY, JSON.stringify([...ids].slice(-200)))
+  } catch {
+    /* storage unavailable — navigation still works for this mount */
+  }
+}
+
+function isFreshNavIntent(createdAt?: string | null): boolean {
+  if (!createdAt) return false
+  const ts = Date.parse(createdAt)
+  if (Number.isNaN(ts)) return false
+  return Date.now() - ts < NAV_INTENT_TTL_MS
+}
+
 export default function AgentActivityPanel() {
   const { isPanelOpen, closePanel, tasks, clearHistory, submitCommand, isSubmitting } = useAgentStore()
   const [input, setInput] = useState('')
@@ -27,8 +56,8 @@ export default function AgentActivityPanel() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  // Track log IDs we've already acted on so navigate doesn't re-fire every poll
-  const handledLogIds = useRef<Set<string>>(new Set())
+  // Log ids we have already acted on, persisted for the session.
+  const handledLogIds = useRef<Set<string>>(loadHandledNavIds())
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -45,17 +74,27 @@ export default function AgentActivityPanel() {
     return () => clearTimeout(id)
   }, [isPanelOpen])
 
-  // Listen for navigate_to in logs and redirect — only once per log entry
+  // Honour the agent's "take me there" intents.
+  //
+  // A navigate_to is ephemeral: it exists so the agent can move you somewhere
+  // right after you ask. Because the handled-ids set used to be an in-memory ref,
+  // every mount replayed every old intent — which is why refreshing hours later
+  // still threw you back to the jobs page. Now the set survives a refresh, and an
+  // intent is only acted on while it is fresh.
   useEffect(() => {
+    let changed = false
     for (const task of tasks) {
       for (const log of task.logs ?? []) {
-        if (log.data?.navigate_to && !handledLogIds.current.has(log.id)) {
-          handledLogIds.current.add(log.id)
-          navigate(log.data.navigate_to as string)
-          closePanel()
-        }
+        const target = log.data?.navigate_to
+        if (!target || handledLogIds.current.has(log.id)) continue
+        handledLogIds.current.add(log.id)
+        changed = true
+        if (!isFreshNavIntent(log.created_at)) continue
+        navigate(target as string)
+        closePanel()
       }
     }
+    if (changed) saveHandledNavIds(handledLogIds.current)
   }, [tasks, navigate, closePanel])
 
   const handleSend = async () => {
@@ -399,7 +438,8 @@ function DialogOptions({ options, onSelect }: {
               selected && !isSelected && 'opacity-40 cursor-not-allowed'
             )}
           >
-            {isSelected ? '✓ ' : ''}{opt.label}
+            {isSelected && <Check className="inline w-3 h-3 mr-1 -mt-0.5" />}
+            {opt.label}
           </button>
         )
       })}

@@ -85,15 +85,15 @@ async def create_user_from_google(db: AsyncSession, email: str, google_id: str, 
 async def update_user(db: AsyncSession, user: User, user_in: UserUpdate) -> User:
     data = user_in.model_dump(exclude_unset=True)
     for field, value in data.items():
-        if field == "ai_settings" and isinstance(value, dict):
+        if field in ("ai_settings", "ui_settings") and isinstance(value, dict):
             # MERGE, don't replace. The client PATCHes just the switches it knows
             # about (autonomyLevel, voiceEnabled, voiceLanguage), so a blind
             # setattr wiped the sibling keys the client never sends — namely
             # ai_settings["call"] (phone-call preferences) and
             # ai_settings["memory"] (what the agent remembers about the user).
-            merged = dict(user.ai_settings or {})
+            merged = dict(getattr(user, field) or {})
             merged.update(value)
-            user.ai_settings = merged
+            setattr(user, field, merged)
         else:
             setattr(user, field, value)
     await db.commit()

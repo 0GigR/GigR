@@ -30,6 +30,9 @@ class UserOut(BaseModel):
     role: Optional[str] = None
     created_at: datetime
     ai_settings: Optional[Dict[str, Any]] = None
+    # UI preferences (onboarding dismissal, etc.) — server-side so they survive
+    # cleared browser storage.
+    ui_settings: Optional[Dict[str, Any]] = None
     ai_enabled: bool = True
     location_public: bool = False
     # Saved home/neighbourhood location — returned to the user themselves so the
@@ -73,6 +76,7 @@ class UserUpdate(BaseModel):
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     ai_settings: Optional[Dict[str, Any]] = None
+    ui_settings: Optional[Dict[str, Any]] = None
     location_public: Optional[bool] = None
     bio: Optional[str] = Field(None, max_length=500)
     skills: Optional[List[str]] = None

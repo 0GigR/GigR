@@ -1,23 +1,55 @@
 /**
- * AgentBell.tsx — Zap icon in the header showing AI Agent status.
- * Badge colors: green=pending dialog, blue pulse=running, red=fresh failure, violet=unread
+ * AgentBell.tsx — the Zap icon in the header, showing AI Agent status.
+ *
+ * Badge colours: green = a dialog needs an answer, blue pulse = working,
+ * red = a fresh failure, violet = unread results.
+ *
+ * The badge is derived from the tasks on every render rather than trusted from a
+ * stored counter, so it cannot keep demanding attention for work the user has
+ * already seen. "Working" also expires, because a task left queued or running by
+ * a server restart should not pulse forever.
  */
 import { Zap } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 
-export default function AgentBell() {
-  const { unreadCount, togglePanel, isPanelOpen, tasks } = useAgentStore()
+/** After this long, a queued/running task is treated as stale, not active. */
+const RUNNING_STALE_MS = 15 * 60 * 1000
 
-  const isRunning = tasks.some((t) => t.status === 'queued' || t.status === 'running')
+function firstTime(...candidates: (string | null | undefined)[]): number | null {
+  for (const value of candidates) {
+    if (!value) continue
+    const ts = Date.parse(value)
+    if (!Number.isNaN(ts)) return ts
+  }
+  return null
+}
+
+export default function AgentBell() {
+  const { unreadCount, togglePanel, isPanelOpen, tasks, lastReadAt } = useAgentStore()
+  const now = Date.now()
+  const sinceRead = lastReadAt ?? 0
+
+  const isRunning = tasks.some((task) => {
+    if (task.status !== 'queued' && task.status !== 'running') return false
+    const ts = firstTime(task.updated_at, task.created_at)
+    return ts === null || now - ts < RUNNING_STALE_MS
+  })
+
+  // A dialog only demands attention while it is new. Once the user has opened the
+  // panel it stays actionable in there, but the badge stops nagging.
   const hasPendingDialog = tasks.some((task) => {
     const lastLog = task.logs?.[task.logs.length - 1]
-    return !!lastLog?.data?.action_payload
+    if (!lastLog?.data?.action_payload) return false
+    const ts = firstTime(task.updated_at, task.created_at)
+    return ts === null ? false : ts > sinceRead
   })
-  // Tasks are stored newest-first, so the unread ones are the first `unreadCount`.
-  // Only light up red if one of those fresh, unseen tasks actually failed.
-  const hasFreshFailure =
-    unreadCount > 0 && tasks.slice(0, unreadCount).some((t) => t.status === 'failed')
+
+  const freshFinishes = tasks.filter((task) => {
+    const ts = firstTime(task.completed_at)
+    return ts !== null && ts > sinceRead
+  })
+  const hasFreshFailure = freshFinishes.some((task) => task.status === 'failed')
 
   const showBadge = unreadCount > 0 || hasPendingDialog || isRunning
   const badgeClass = hasPendingDialog

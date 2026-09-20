@@ -96,6 +96,8 @@ interface AgentState {
   // Task data
   tasks: AgentTask[]
   unreadCount: number
+  /** Epoch ms of the last time the user opened the agent panel. */
+  lastReadAt: number | null
   isPanelOpen: boolean
   isSubmitting: boolean
 
@@ -192,6 +194,7 @@ export const useAgentStore = create<AgentState>()(
     (set, get) => ({
       tasks: [],
       unreadCount: 0,
+      lastReadAt: null,
       isPanelOpen: false,
       isSubmitting: false,
       engineInfo: null,
@@ -232,20 +235,20 @@ export const useAgentStore = create<AgentState>()(
           // Never trust the response shape — a non-array here would crash every
           // render of the agent panel (and this polls on EVERY dashboard page).
           const list = Array.isArray(data) ? data : []
-          const prev = get().tasks
-
-          // Count newly completed/failed tasks as unread
-          const newUnread = list.filter((t) => {
-            const existing = prev.find((p) => p.id === t.id)
-            const justFinished = existing &&
-              existing.status !== t.status &&
-              (t.status === 'completed' || t.status === 'failed')
-            return justFinished
-          }).length
 
           set((s) => ({
             tasks: list,
-            unreadCount: s.isPanelOpen ? 0 : s.unreadCount + newUnread,
+            // Unread is DERIVED, never accumulated. A task counts only while it
+            // finished after the last time the user looked. The old code added
+            // to a persisted counter that could outlive the tasks it described,
+            // which is why the badge kept demanding attention for nothing.
+            unreadCount: s.isPanelOpen
+              ? 0
+              : list.filter((task) => {
+                  if (!task.completed_at) return false
+                  const finishedAt = Date.parse(task.completed_at)
+                  return !Number.isNaN(finishedAt) && finishedAt > (s.lastReadAt ?? 0)
+                }).length,
           }))
         } catch (err) {
           // Silently fail — user might not be logged in
@@ -267,7 +270,7 @@ export const useAgentStore = create<AgentState>()(
       },
 
       openPanel: () => {
-        set({ isPanelOpen: true, unreadCount: 0 })
+        set({ isPanelOpen: true, unreadCount: 0, lastReadAt: Date.now() })
         // Refresh tasks when opening panel
         get().fetchTasks()
       },
@@ -280,7 +283,7 @@ export const useAgentStore = create<AgentState>()(
         else openPanel()
       },
 
-      markAllRead: () => set({ unreadCount: 0 }),
+      markAllRead: () => set({ unreadCount: 0, lastReadAt: Date.now() }),
 
       fetchEngineInfo: async () => {
         try {
@@ -458,7 +461,9 @@ export const useAgentStore = create<AgentState>()(
       // Only persist user settings and unread count — not tasks or WS state
       partialize: (s) => ({
         aiSettings: s.aiSettings,
-        unreadCount: s.unreadCount,
+        // Persist WHEN the user last looked, not a counter. The count is
+        // recomputed from the tasks on every load, so it can never drift.
+        lastReadAt: s.lastReadAt,
       }),
     }
   )
