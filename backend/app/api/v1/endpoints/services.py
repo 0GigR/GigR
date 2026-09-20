@@ -65,7 +65,7 @@ async def list_my_services(
 async def search_nearby_services(
     lat: float = Query(..., description="Latitude"),
     lon: float = Query(..., description="Longitude"),
-    radius: float = Query(5.0, description="Radius in km"),
+    radius: float = Query(5.0, ge=0, description="Radius in km; 0 means no limit"),
     category_id: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),

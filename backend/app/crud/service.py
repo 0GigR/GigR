@@ -54,16 +54,22 @@ async def get_services_nearby(
         .subquery()
     )
 
-    query = select(ServiceListing, distance_col, vouch_counts.c.cnt).where(
-        geo_func.ST_DWithin(
-            ServiceListing.location,
-            func.ST_GeogFromText(point),
-            radius_km * 1000
-        ),
-        # Never surface paused listings on the map or in "nearby" results.
-        # `isnot(False)` rather than `== True` so rows written before the column
-        # existed (NULL) are treated as active instead of silently vanishing.
+    conditions = [
+        # radius_km <= 0 means "no limit": the map shows everything with a
+        # coordinate and draws the radius as an indicator instead of a filter.
         ServiceListing.is_active.isnot(False),
+    ]
+    if radius_km and radius_km > 0:
+        conditions.append(
+            geo_func.ST_DWithin(
+                ServiceListing.location,
+                func.ST_GeogFromText(point),
+                radius_km * 1000,
+            )
+        )
+
+    query = select(ServiceListing, distance_col, vouch_counts.c.cnt).where(
+        *conditions,
     )
     query = query.outerjoin(vouch_counts, vouch_counts.c.vouchee_id == ServiceListing.provider_id)
 

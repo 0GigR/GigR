@@ -92,13 +92,14 @@ async def get_open_jobs_nearby(
         Job.location, func.ST_GeogFromText(point)
     ).label("distance")
 
-    conditions = [
-        Job.status == "open",
-        Job.location.isnot(None),
-        geo_func.ST_DWithin(
-            Job.location, func.ST_GeogFromText(point), radius_km * 1000
-        ),
-    ]
+    conditions = [Job.status == "open", Job.location.isnot(None)]
+    # radius_km <= 0 means "no limit" (see get_services_nearby).
+    if radius_km and radius_km > 0:
+        conditions.append(
+            geo_func.ST_DWithin(
+                Job.location, func.ST_GeogFromText(point), radius_km * 1000
+            )
+        )
     if exclude_user_id:
         conditions.append(Job.client_id != exclude_user_id)
     if category_id:

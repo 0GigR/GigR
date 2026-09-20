@@ -360,6 +360,12 @@ export function NeighborhoodMap({
   onShowHeatChange?: (on: boolean) => void
 }) {
   const [internalRadius, setInternalRadius] = useState(10)
+  // On a phone the map eats every swipe, so the page cannot be scrolled past it.
+  // Gestures start off on touch devices and switch on when the user taps in.
+  const [mapActive, setMapActive] = useState(false)
+  const isTouchDevice =
+    typeof window !== 'undefined' && (window.matchMedia?.('(pointer: coarse)').matches ?? false)
+  const gesturesOn = !isTouchDevice || mapActive
   const [internalSelected, setInternalSelected] = useState<{ kind: 'job' | 'service'; id: string } | null>(null)
   const radius = radiusKm ?? internalRadius
 
@@ -388,10 +394,12 @@ export function NeighborhoodMap({
     // ['nearbyServices', lat, lon, radius] whose cached value is {pages, pageParams}.
     // Sharing that key meant this query received an object and the render loop
     // below threw "is not iterable" whenever the map and the list were both mounted.
-    queryKey: ['map-nearby-jobs', latitude, longitude, radius],
+    queryKey: ['map-nearby-jobs', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/jobs/search/nearby', {
-        params: { lat: latitude, lon: longitude, radius },
+        // radius 0 = no limit. The circle on the map shows your neighbourhood;
+        // it should not hide everyone outside it.
+        params: { lat: latitude, lon: longitude, radius: 0, limit: 300 },
       })
       return Array.isArray(data) ? data : []
     },
@@ -399,10 +407,10 @@ export function NeighborhoodMap({
   })
 
   const { data: nearbyServices, isFetching: servicesFetching } = useQuery<Service[]>({
-    queryKey: ['map-nearby-services', latitude, longitude, radius],
+    queryKey: ['map-nearby-services', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
-        params: { lat: latitude, lon: longitude, radius },
+        params: { lat: latitude, lon: longitude, radius: 0, limit: 300 },
       })
       return Array.isArray(data) ? data : []
     },
@@ -512,6 +520,9 @@ export function NeighborhoodMap({
         center={[latitude, longitude]}
         zoom={13}
         scrollWheelZoom={false}
+        dragging={gesturesOn}
+        touchZoom={gesturesOn}
+        doubleClickZoom={gesturesOn}
         className="h-full w-full"
       >
         <TileLayer
@@ -550,6 +561,19 @@ export function NeighborhoodMap({
           onSelect={handleSelect}
         />
       </MapContainer>
+
+      {isTouchDevice && !mapActive && (
+        <button
+          type="button"
+          onClick={() => setMapActive(true)}
+          className="absolute inset-0 z-[900] flex items-end justify-center pb-24"
+          aria-label="Tap to explore the map"
+        >
+          <span className="rounded-full bg-black/80 text-white text-xs font-semibold px-4 py-2 shadow-lg">
+            Tap to explore the map
+          </span>
+        </button>
+      )}
 
       {/* Controls overlay */}
       <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 max-w-[calc(100%-1.5rem)]">
@@ -607,7 +631,7 @@ export function NeighborhoodMap({
           {!loading && visiblePoints.length === 0 && (
             <p className="mt-1.5 text-gray-500 flex items-center gap-1">
               <Flame className="w-3 h-3 text-amber-500" />
-              Nothing within {radius} km — try a wider radius.
+              No listings with a location yet.
             </p>
           )}
         </div>

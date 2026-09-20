@@ -379,7 +379,7 @@ async def delete_my_job(
 async def search_nearby_jobs(
     lat: float = Query(..., ge=-90, le=90, description="Latitude"),
     lon: float = Query(..., ge=-180, le=180, description="Longitude"),
-    radius: float = Query(10.0, gt=0, le=500, description="Radius in kilometres"),
+    radius: float = Query(10.0, ge=0, le=500, description="Radius in km; 0 means no limit"),
     category_id: Optional[str] = Query(None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
