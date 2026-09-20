@@ -27,7 +27,7 @@ const SERVICE_COLOR = '#16a34a'
 const MIXED_COLOR = '#7c3aed'
 
 /** A marker candidate, normalised from either a Job or a ServiceListing. */
-interface MapPoint {
+export interface MapPoint {
   id: string
   kind: 'job' | 'service'
   lat: number
@@ -271,6 +271,9 @@ export function NeighborhoodMap({
   radiusKm,
   onRadiusChange,
   height = 500,
+  selectedId,
+  onSelect,
+  onResults,
 }: {
   latitude: number
   longitude: number
@@ -279,10 +282,23 @@ export function NeighborhoodMap({
   radiusKm?: number
   onRadiusChange?: (km: number) => void
   height?: number
+  /** Controlled selection, so a list beside the map can drive it (and vice versa). */
+  selectedId?: string | null
+  onSelect?: (kind: 'job' | 'service', id: string) => void
+  /** Reports the fetched points so a parent can render a synced result list. */
+  onResults?: (points: MapPoint[]) => void
 }) {
   const [internalRadius, setInternalRadius] = useState(10)
-  const [selected, setSelected] = useState<{ kind: 'job' | 'service'; id: string } | null>(null)
+  const [internalSelected, setInternalSelected] = useState<{ kind: 'job' | 'service'; id: string } | null>(null)
   const radius = radiusKm ?? internalRadius
+
+  // Controlled when the parent passes selectedId, uncontrolled otherwise.
+  const activeSelectedId = selectedId !== undefined ? selectedId : internalSelected?.id ?? null
+
+  const handleSelect = (kind: 'job' | 'service', id: string) => {
+    setInternalSelected({ kind, id })
+    onSelect?.(kind, id)
+  }
 
   const validCenter = Number.isFinite(latitude) && Number.isFinite(longitude)
 
@@ -352,6 +368,14 @@ export function NeighborhoodMap({
     return out
   }, [nearbyJobs, nearbyServices])
 
+  // Hand the fetched points to the parent so it can render a synced result list.
+  // Kept in a ref so an inline callback from the parent can't retrigger the effect.
+  const onResultsRef = useRef(onResults)
+  onResultsRef.current = onResults
+  useEffect(() => {
+    onResultsRef.current?.(points)
+  }, [points])
+
   // One batched, cached lookup per distinct owner instead of a hook per marker.
   const ownerIds = useMemo(
     () => Array.from(new Set(points.map((p) => p.ownerId).filter(Boolean))) as string[],
@@ -374,8 +398,8 @@ export function NeighborhoodMap({
   }, [ownerIds, ownerQueries])
 
   const selectedPoint = useMemo(
-    () => (selected ? points.find((p) => p.id === selected.id && p.kind === selected.kind) ?? null : null),
-    [selected, points],
+    () => (activeSelectedId ? points.find((p) => p.id === activeSelectedId) ?? null : null),
+    [activeSelectedId, points],
   )
 
   if (!validCenter) {
@@ -437,8 +461,8 @@ export function NeighborhoodMap({
         <ClusterLayer
           points={points}
           owners={owners}
-          selectedId={selected?.id ?? null}
-          onSelect={(kind, id) => setSelected({ kind, id })}
+          selectedId={activeSelectedId}
+          onSelect={handleSelect}
         />
       </MapContainer>
 

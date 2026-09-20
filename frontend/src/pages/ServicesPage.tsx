@@ -21,7 +21,7 @@ import {
   MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { NeighborhoodMap } from '@/components/NeighborhoodMap'
+import { MapExplorer } from '@/components/map/MapExplorer'
 import { ImageViewer } from '@/components/ImageViewer'
 import { LocationPicker } from '@/components/LocationPicker'
 import { useInView } from 'react-intersection-observer'
@@ -669,7 +669,7 @@ export default function ServicesPage() {
         {activeTab === 'map' ? (
           <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {latitude && longitude ? (
-              <NeighborhoodMap
+              <MapExplorer
                 latitude={latitude}
                 longitude={longitude}
                 type="services"
