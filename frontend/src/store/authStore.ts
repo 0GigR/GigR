@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import api, { saveToken, clearToken } from '@/lib/api'
+import api, { saveToken, saveRefreshToken, clearTokens } from '@/lib/api'
 
 interface User {
   id: string
@@ -14,6 +14,8 @@ interface User {
   ai_enabled?: boolean
   location_public?: boolean
   permissions?: string[] | null
+  /** Server-side UI preferences (onboarding dismissal and similar). */
+  ui_settings?: Record<string, unknown> | null
 }
 
 interface AuthState {
@@ -52,6 +54,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (res.data?.access_token) {
       saveToken(res.data.access_token)
     }
+    // Persist the rotating refresh token too, so the session survives even where
+    // third-party cookies are blocked.
+    if (res.data?.refresh_token) {
+      saveRefreshToken(res.data.refresh_token)
+    }
     const userRes = await api.get('/auth/me')
     set({ user: userRes.data })
   },
@@ -62,6 +69,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       const res = await api.post('/auth/login', { email: data.email, password: data.password })
       if (res.data?.access_token) {
         saveToken(res.data.access_token)
+      }
+      if (res.data?.refresh_token) {
+        saveRefreshToken(res.data.refresh_token)
       }
     }
     const userRes = await api.get('/auth/me')
@@ -76,6 +86,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (res.data?.access_token) {
       saveToken(res.data.access_token)
     }
+    if (res.data?.refresh_token) {
+      saveRefreshToken(res.data.refresh_token)
+    }
     const userRes = await api.get('/auth/me')
     set({ user: userRes.data })
   },
@@ -84,7 +97,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await api.post('/auth/logout')
     } catch {}
-    clearToken()
+    clearTokens()
     set({ user: null })
   },
 }))
