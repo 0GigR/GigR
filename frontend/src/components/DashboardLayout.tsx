@@ -41,7 +41,7 @@ import {
   ChevronLeft,
 } from 'lucide-react'
 
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useLocationStore } from '@/store/locationStore'
@@ -109,17 +109,54 @@ export default function DashboardLayout() {
     }
   }
 
-  const navItems = [
+  // `end` is optional: only the dashboard root needs exact matching.
+  type NavItem = { to: string; icon: typeof LayoutDashboard; label: string; end?: boolean }
+
+  // Navigation is split so a first-time user sees the few things that matter and
+  // nothing else. Every route still exists and still works — this only changes
+  // what is advertised.
+  //
+  // "Disputes" is the clearest example: a beginner should never have to wonder
+  // what it is. It appears only once the user actually has one.
+  const { data: myDisputes } = useQuery<unknown[]>({
+    queryKey: ['disputes', 'mine'],
+    queryFn: async () => {
+      const { data } = await api.get('/disputes/my-disputes')
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  })
+  const hasDisputes = (myDisputes?.length ?? 0) > 0
+
+  const primaryNav: NavItem[] = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Home', end: true },
     { to: '/dashboard/jobs', icon: Briefcase, label: 'Jobs' },
     { to: '/dashboard/services', icon: Wrench, label: 'Services' },
-    { to: '/dashboard/activity', icon: Clock, label: 'Activity' },
     { to: '/dashboard/messages', icon: MessageSquare, label: 'Messages' },
-    { to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' },
+    { to: '/dashboard/activity', icon: Clock, label: 'Activity' },
     { to: '/dashboard/profile', icon: User, label: 'Profile' },
+  ]
+  const secondaryNav: NavItem[] = [
+    ...(hasDisputes ? [{ to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' }] : []),
     ...(aiEnabled ? [{ to: '/dashboard/ai-settings', icon: Bot, label: 'AI Settings' }] : []),
     ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),
   ]
+  const navItems = [...primaryNav, ...secondaryNav]
+
+  // The four destinations worth a permanent thumb slot on a phone. Messages is
+  // here on purpose: it carries the unread badge, which was previously invisible
+  // on mobile because the item only existed in the More sheet.
+  const BOTTOM_NAV_PATHS = [
+    '/dashboard',
+    '/dashboard/jobs',
+    '/dashboard/services',
+    '/dashboard/messages',
+  ]
+  const bottomNav = BOTTOM_NAV_PATHS.map(
+    (path) => navItems.find((item) => item.to === path)!,
+  ).filter(Boolean)
+  const moreNav = navItems.filter((item) => !BOTTOM_NAV_PATHS.includes(item.to))
 
   // Global live message notifications (light + toast on any page)
   useMessageNotifications()
@@ -289,7 +326,7 @@ export default function DashboardLayout() {
       {/* Bottom Navigation (mobile) */}
       <nav className="fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 md:hidden z-50">
         <div className="flex justify-around py-2">
-          {navItems.slice(0, 4).map((item) => (
+          {bottomNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -324,7 +361,7 @@ export default function DashboardLayout() {
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-14 md:left-0 md:bottom-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4 z-40">
         <nav className="flex flex-col gap-1">
-          {navItems.map((item) => (
+          {primaryNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -344,6 +381,31 @@ export default function DashboardLayout() {
               )}
             </NavLink>
           ))}
+
+          {secondaryNav.length > 0 && (
+            <>
+              <div className="mt-4 mb-1 px-4 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-600">
+                More
+              </div>
+              {secondaryNav.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      isActive
+                        ? 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white'
+                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`
+                  }
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </NavLink>
+              ))}
+            </>
+          )}
         </nav>
       </aside>
 
@@ -361,7 +423,7 @@ export default function DashboardLayout() {
               </button>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              {navItems.slice(4).map((item) => (
+              {moreNav.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
