@@ -18,7 +18,7 @@ import { useAuthStore } from '@/store/authStore'
 import UserChip from '@/components/UserChip'
 import { Link } from 'react-router-dom'
 import {
-  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck
+  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MapExplorer } from '@/components/map/MapExplorer'
@@ -483,9 +483,34 @@ export default function ServicesPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* Header */}
+      {/* One segmented switcher instead of three same-weight buttons competing
+          with the primary action. */}
+      <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900">
+        {([
+          ['browse', 'Browse', Search],
+          ['map', 'Map', MapPin],
+          ['mine', 'My Services', Wrench],
+        ] as const).map(([value, label, Icon]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setActiveTab(value)}
+            aria-pressed={activeTab === value}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === value
+                ? 'bg-white dark:bg-gray-800 shadow-sm text-black dark:text-white'
+                : 'text-gray-500 hover:text-black dark:hover:text-white'
+            }`}
+          >
+            <Icon className="w-4 h-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Services & Neighborhood</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Services</h1>
           <p className="text-gray-500">{activeTab === 'browse' ? 'Discover services in your neighborhood' : activeTab === 'map' ? 'See activity around you' : 'Manage your offerings'}</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
@@ -501,17 +526,9 @@ export default function ServicesPage() {
               </SelectContent>
             </Select>
           )}
-          <Button variant={activeTab === 'browse' ? 'default' : 'outline'} onClick={() => setActiveTab('browse')} className={activeTab === 'browse' ? 'bg-black text-white' : 'border-gray-200'}>
-            <Search className="w-4 h-4 mr-2" /> Browse
-          </Button>
-          <Button variant={activeTab === 'map' ? 'default' : 'outline'} onClick={() => setActiveTab('map')} className={activeTab === 'map' ? 'bg-black text-white' : 'border-gray-200'}>
-            <MapPin className="w-4 h-4 mr-2" /> Map
-          </Button>
-          <Button variant={activeTab === 'mine' ? 'default' : 'outline'} onClick={() => setActiveTab('mine')} className={activeTab === 'mine' ? 'bg-black text-white' : 'border-gray-200'}>
-            My Services
-          </Button>
           <Button variant="outline" onClick={handleNearbySearch} disabled={locLoading} className="border-gray-200" title="Refresh nearby search">
-            <MapPin className="w-4 h-4 mr-2" /> Nearby
+            <MapPin className="w-4 h-4" />
+            <span className="sr-only">Refresh nearby search</span>
           </Button>
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm() }}>
             <DialogTrigger asChild>
