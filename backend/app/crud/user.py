@@ -193,6 +193,17 @@ async def update_user_location(db: AsyncSession, user: User, latitude: float, lo
     user.last_seen_at = text("NOW()")
     user.location_lat = latitude
     user.location_lng = longitude
+
+    # Keep the provider's listings with them. A service carried its own copy of
+    # the coordinates, so after moving, the pin stayed at the old neighbourhood
+    # forever and nearby clients stopped finding them.
+    from sqlalchemy import update as _update
+    from ..models.service import ServiceListing
+    await db.execute(
+        _update(ServiceListing)
+        .where(ServiceListing.provider_id == user.id)
+        .values(location=f"SRID=4326;POINT({longitude} {latitude})")
+    )
     await db.commit()
     await db.refresh(user)
     return user
