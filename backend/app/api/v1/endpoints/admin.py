@@ -19,12 +19,16 @@ ADMIN_SECRET = settings.ADMIN_SECRET
 # *FullAccess policies). Superadmin always has every permission; regular
 # users have none.
 PERMISSION_SLUGS: dict[str, str] = {
+    "jobs:view": "View all jobs (moderation list)",
     "jobs:manage": "Delete any job",
+    "services:view": "View all services (moderation list)",
     "services:manage": "Delete any service listing",
+    "users:view": "View all users (moderation list)",
     "users:manage": "Delete users",
     "messages:manage": "Delete contract-room messages (forgery risk — grant carefully)",
     "disputes:manage": "Resolve disputes",
     "announce:manage": "Send announcements to users",
+    "stats:view": "See admin overview statistics",
 }
 
 
@@ -93,6 +97,27 @@ def require_perm(perm: str):
     return dependency
 
 
+def require_perm_any(*perms: str):
+    """Dependency factory: admin with ANY of the given slugs (e.g. a list
+    endpoint that 'view' unlocks while 'manage' implies it too)."""
+    async def dependency(
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        user = await _admin_or_secret(request, db)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+        if user.role == "superadmin":
+            return user
+        if user.role == "admin" and any(p in (user.permissions or []) for p in perms):
+            return user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing one of: {', '.join(perms)}",
+        )
+    return dependency
+
+
 # ── Users ────────────────────────────────────────────────────────────────────
 
 @router.get("/users")
@@ -100,7 +125,7 @@ async def list_users(
     offset: int = 0,
     limit: int = 50,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_perm("users:manage")),
+    _: User = Depends(require_perm_any("users:view", "users:manage")),
 ):
     users = await get_users_paginated(db, offset=offset, limit=limit)
     # Raw ORM rows carry PostGIS WKBElement fields that FastAPI can't
@@ -133,6 +158,43 @@ async def remove_user(
     return None
 
 
+@router.get("/stats")
+async def admin_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(verify_admin),
+):
+    """Lightweight overview numbers for the admin dashboard. Any admin can see
+    them — they're just counts, no sensitive data."""
+    from sqlalchemy import func as _func
+    from ....models.job import Job
+    from ....models.service import ServiceListing
+    from ....models.dispute import Dispute
+    from ....models.user import User as _User
+
+    total_users = (await db.execute(select(_func.count(_User.id)))).scalar() or 0
+    open_jobs = (await db.execute(select(_func.count(Job.id)).where(Job.status == "open"))).scalar() or 0
+    active_services = (await db.execute(
+        select(_func.count(ServiceListing.id)).where(ServiceListing.is_active == True)
+    )).scalar() or 0
+    open_disputes = (await db.execute(
+        select(_func.count(Dispute.id)).where(Dispute.status == "open")
+    )).scalar() or 0
+    escrow_in_flight = (await db.execute(
+        select(_func.coalesce(_func.sum(Job.price), 0)).where(Job.status.in_(["funded", "in_progress"]))
+    )).scalar() or 0
+    completed_jobs = (await db.execute(
+        select(_func.count(Job.id)).where(Job.status == "completed")
+    )).scalar() or 0
+    return {
+        "total_users": total_users,
+        "open_jobs": open_jobs,
+        "active_services": active_services,
+        "open_disputes": open_disputes,
+        "escrow_in_flight": float(escrow_in_flight),
+        "completed_jobs": completed_jobs,
+    }
+
+
 # ── Jobs / Services / Messages ───────────────────────────────────────────────
 
 @router.get("/jobs")
@@ -140,7 +202,7 @@ async def all_jobs(
     status: str = None,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_perm("jobs:manage")),
+    _: User = Depends(require_perm_any("jobs:view", "jobs:manage")),
 ):
     jobs = await get_jobs_filtered(db, status=status, limit=limit)
     # Raw ORM rows carry a PostGIS geography column FastAPI can't serialise
@@ -189,7 +251,7 @@ async def delete_job(
 async def all_services(
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_perm("services:manage")),
+    _: User = Depends(require_perm_any("services:view", "services:manage")),
 ):
     from ....models.service import ServiceListing
     result = await db.execute(

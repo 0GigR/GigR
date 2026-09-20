@@ -98,7 +98,82 @@ async def change_password(db: AsyncSession, user: User, old_password: str, new_p
     return True
 
 async def delete_user(db: AsyncSession, user: User) -> None:
-    # This is a hard delete. In production, you might soft delete by setting a is_deleted flag.
+    """Hard-delete a user and everything they own, in FK-safe order.
+
+    The schema has almost no ON DELETE CASCADE (only ratings, push
+    subscriptions, agent tasks, reset tokens, voice calls), so every other
+    row referencing the user must be removed explicitly: their jobs (with
+    messages, applications, scope amendments, vouches, disputes + votes and
+    juries), services, notifications, and messages they sent on other jobs.
+    """
+    from sqlalchemy import delete, or_, update, func as _func
+    from ..models.job import Job
+    from ..models.message import Message
+    from ..models.application import Application
+    from ..models.scope_amendment import ScopeAmendment
+    from ..models.vouch import Vouch
+    from ..models.dispute import Dispute
+    from ..models.vote import Vote
+    from ..models.jury_panel import JuryPanel
+    from ..models.service import ServiceListing
+    from ..models.notification import Notification
+    from ..models.announcement import Announcement
+
+    # Jobs the user owns (as client or provider) — their children must go too.
+    user_job_ids = select(Job.id).where(
+        or_(Job.client_id == user.id, Job.provider_id == user.id)
+    )
+    # Disputes involving the user or their jobs, incl. votes + jury panels.
+    user_dispute_ids = select(Dispute.id).where(or_(
+        Dispute.client_id == user.id,
+        Dispute.provider_id == user.id,
+        Dispute.raised_by == user.id,
+        Dispute.job_id.in_(user_job_ids),
+    ))
+
+    await db.execute(delete(Vote).where(or_(
+        Vote.juror_id == user.id,
+        Vote.dispute_id.in_(user_dispute_ids),
+    )))
+    await db.execute(delete(JuryPanel).where(or_(
+        JuryPanel.juror_id == user.id,
+        JuryPanel.dispute_id.in_(user_dispute_ids),
+    )))
+    await db.execute(delete(Dispute).where(or_(
+        Dispute.client_id == user.id,
+        Dispute.provider_id == user.id,
+        Dispute.raised_by == user.id,
+        Dispute.job_id.in_(user_job_ids),
+    )))
+
+    await db.execute(delete(Message).where(or_(
+        Message.sender_id == user.id,
+        Message.applicant_id == user.id,
+        Message.job_id.in_(user_job_ids),
+    )))
+    await db.execute(delete(Application).where(or_(
+        Application.applicant_id == user.id,
+        Application.job_id.in_(user_job_ids),
+    )))
+    await db.execute(delete(ScopeAmendment).where(ScopeAmendment.job_id.in_(user_job_ids)))
+    await db.execute(delete(Vouch).where(or_(
+        Vouch.voucher_id == user.id,
+        Vouch.vouchee_id == user.id,
+        Vouch.job_id.in_(user_job_ids),
+    )))
+    await db.execute(delete(Job).where(or_(Job.client_id == user.id, Job.provider_id == user.id)))
+    await db.execute(delete(ServiceListing).where(ServiceListing.provider_id == user.id))
+    await db.execute(delete(Notification).where(Notification.user_id == user.id))
+    # Drop other users' notifications pointing at this user's deleted job chats.
+    chat_tags = select(_func.concat("chat:", Job.id)).where(
+        or_(Job.client_id == user.id, Job.provider_id == user.id)
+    )
+    await db.execute(delete(Notification).where(Notification.tag.in_(chat_tags)))
+    # Announcements are broadcast — keep them, just detach the creator.
+    await db.execute(
+        update(Announcement).where(Announcement.created_by == user.id).values(created_by=None)
+    )
+
     await db.delete(user)
     await db.commit()
 
