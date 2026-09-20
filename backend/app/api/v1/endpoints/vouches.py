@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.dependencies import get_db, get_current_user
+from sqlalchemy import select
 from ....crud.vouch import get_vouch_by_id, get_vouches_by_vouchee, create_vouch
 from ....crud.job import get_job_by_id
 from ....crud.user import get_user_by_id
+from ....models.job import Job
+from ....models.vouch import Vouch
 from ....schemas.vouch import VouchCreate, VouchOut
 from ....models.user import User
 from ....services.underdog_client import mint_vouch_cnft, UnderdogNotReady
@@ -93,4 +96,16 @@ async def get_vouch(vouch_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 
 @router.get("/user/{user_id}", response_model=list[VouchOut])
 async def user_vouches(user_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    return await get_vouches_by_vouchee(db, user_id)
+    """All vouches received by a user, each enriched with the title of the job
+    it was earned on (so the UI can show who vouched for what)."""
+    vouches = await get_vouches_by_vouchee(db, user_id)
+    if not vouches:
+        return vouches
+    # One aggregate query for every job title instead of N lookups.
+    rows = (await db.execute(
+        select(Job.id, Job.title).where(Job.id.in_([v.job_id for v in vouches]))
+    )).all()
+    titles = {str(job_id): title for job_id, title in rows}
+    for v in vouches:
+        v.job_title = titles.get(str(v.job_id))
+    return vouches

@@ -314,6 +314,41 @@ async def get_job_route(
     return job
 
 
+@router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_job(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Let the owner delete their OWN job — users own their data. Only allowed
+    before any money is in escrow (open / requested / cancelled), and it cleans
+    up the attached applications, messages, and scope amendments."""
+    from sqlalchemy import delete as _delete
+    from ....models.message import Message
+    from ....models.application import Application
+    from ....models.scope_amendment import ScopeAmendment
+    from ....models.notification import Notification
+
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the job owner can delete it")
+    if job.status not in ("open", "requested", "cancelled"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only jobs without funds in escrow can be deleted — cancel it first if it's active",
+        )
+
+    for model in (Message, Application, ScopeAmendment):
+        await db.execute(_delete(model).where(model.job_id == job_id))
+    # Drop notifications pointing at this job's chat room.
+    await db.execute(_delete(Notification).where(Notification.tag == f"chat:{job_id}"))
+    await db.delete(job)
+    await db.commit()
+    return None
+
+
 @router.get("/", response_model=list[JobOut])
 async def list_jobs(
     status_filter: Optional[str] = Query(None, alias="status"),
