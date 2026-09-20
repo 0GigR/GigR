@@ -15,6 +15,7 @@ Run from the backend/ directory:  venv/bin/python -m pytest
 """
 from __future__ import annotations
 
+import os
 import uuid
 from pathlib import Path
 
@@ -22,8 +23,36 @@ import httpx
 import pytest
 from sqlalchemy import text
 
+from app.core.config import settings
 from app.core.database import engine
 from app.main import app
+
+# ── Safety guard ─────────────────────────────────────────────────────────────
+# This suite WRITES and DELETES rows. If a run is killed mid-flight (timeout, CI
+# cancel) the session-scoped cleanup below never fires and orphaned smoke rows
+# survive in whatever database it pointed at. That is exactly how smoke data
+# ended up in production Supabase. Refuse to run against a managed cloud
+# database unless the operator explicitly opts in.
+_DESTRUCTIVE_HOST_MARKERS = (
+    "supabase", "pooler", "neon.tech", "render.com",
+    "heroku", "amazonaws.com", "azure.com",
+)
+_ALLOW_REMOTE_ENV = "GIGR_SMOKE_TESTS_ALLOW_REMOTE"
+
+
+def _guard_destructive_target() -> None:
+    """Skip (never fail) when the configured DB looks like production."""
+    if os.getenv(_ALLOW_REMOTE_ENV) == "1":
+        return
+    url = str(getattr(settings, "DATABASE_URL", "") or "").lower()
+    for marker in _DESTRUCTIVE_HOST_MARKERS:
+        if marker in url:
+            pytest.skip(
+                f"Refusing to run the destructive smoke suite against what looks "
+                f"like a managed/hosted database (matched {marker!r}). Point "
+                f"DATABASE_URL at a disposable test database, or set "
+                f"{_ALLOW_REMOTE_ENV}=1 to override deliberately."
+            )
 
 # Unique per-run suffix so parallel/repeat runs never collide.
 RUN_ID = uuid.uuid4().hex[:10]
@@ -43,6 +72,7 @@ async def db_ready() -> None:
     Runs init_db() so the suite works against a *fresh* PostGIS database
     (CI containers), not just the dev database that already has tables.
     """
+    _guard_destructive_target()
     try:
         from app.core.database import init_db
         await init_db()
