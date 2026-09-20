@@ -149,3 +149,105 @@
     transform: translateY(-12px);
   }
 }
+
+/* ── Map experience ──────────────────────────────────────────────────────────
+   All free + keyless: the dark basemap is the standard OSM raster tile run
+   through a CSS filter on Leaflet's tile pane only, so markers, popups and
+   controls keep their real colours. This automatically covers every map in the
+   app (neighbourhood map, location picker, service detail). */
+
+.dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.75);
+}
+
+.leaflet-container {
+  background: #e5e7eb;
+  font-family: inherit;
+}
+
+.dark .leaflet-container {
+  background: #0f172a;
+}
+
+.dark .leaflet-popup-content-wrapper,
+.dark .leaflet-popup-tip {
+  background: #1f2937;
+  color: #f3f4f6;
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.6);
+}
+
+.dark .leaflet-bar a,
+.dark .leaflet-control-attribution {
+  background: #1f2937;
+  color: #d1d5db;
+  border-color: #374151;
+}
+
+.dark .leaflet-bar a:hover {
+  background: #374151;
+}
+
+/* Marker entrance — a small spring so pins feel placed, not stamped. */
+@keyframes gigr-pin-in {
+  0% {
+    transform: translateY(-12px) scale(0.55);
+    opacity: 0;
+  }
+  60% {
+    transform: translateY(0) scale(1.07);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.gigr-pin {
+  animation: gigr-pin-in 0.4s cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+/* Cluster bubble pop-in. */
+@keyframes gigr-cluster-pop {
+  0% {
+    transform: scale(0.45);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.gigr-cluster {
+  animation: gigr-cluster-pop 0.28s ease-out both;
+}
+
+/* Expanding confirmation ring, used to highlight the user and the selection. */
+@keyframes gigr-ring-pulse {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.6;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+.gigr-ring {
+  animation: gigr-ring-pulse 2.6s ease-out infinite;
+}
+
+/* Respect reduced-motion: keep the map usable, drop the decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .gigr-pin,
+  .gigr-cluster,
+  .gigr-ring {
+    animation: none;
+  }
+}

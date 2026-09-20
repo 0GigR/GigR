@@ -133,6 +133,8 @@ export default function JobsPage() {
   const { user } = useAuthStore()
   const displayCode = useCurrencyStore((s) => s.code)
   const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>('open')
+  // Radius (km) for the map + the "Near you" stat, so both describe the same area.
+  const [mapRadius, setMapRadius] = useState(10)
   const geo = useGeolocation()
 
   // Create Job dialog state
@@ -720,7 +722,13 @@ export default function JobsPage() {
           label="Near you"
           value={
             geo.latitude && geo.longitude
-              ? openJobs.filter(j => (distanceKm(geo.latitude, geo.longitude, j.latitude, j.longitude) ?? Infinity) <= 10).length
+              ? openJobs.filter(j => {
+                  // Prefer the backend's own distance when the endpoint supplied
+                  // it; only fall back to client maths for plain browse rows.
+                  const km = (j as Job & { distance_km?: number | null }).distance_km
+                    ?? distanceKm(geo.latitude, geo.longitude, j.latitude, j.longitude)
+                  return km != null && km <= mapRadius
+                }).length
               : 0
           }
           hint={geo.latitude ? undefined : 'location off'}
@@ -878,9 +886,13 @@ export default function JobsPage() {
         {/* Map Tab */}
         <TabsContent value="map" className="mt-6">
           {geo.latitude && geo.longitude ? (
-            <div className="rounded-xl overflow-hidden border border-gray-200 h-[500px]">
-              <NeighborhoodMap latitude={geo.latitude} longitude={geo.longitude} type="jobs" />
-            </div>
+            <NeighborhoodMap
+              latitude={geo.latitude}
+              longitude={geo.longitude}
+              type="jobs"
+              radiusKm={mapRadius}
+              onRadiusChange={setMapRadius}
+            />
           ) : (
             <div className="text-center py-16 text-gray-500 border border-dashed rounded-xl">
               <Map className="w-10 h-10 mx-auto mb-3 text-gray-300" />

@@ -1,166 +1,496 @@
 import { fmtPrice } from '@/store/currencyStore'
-import { useQuery } from '@tanstack/react-query'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { useQueries, useQuery } from '@tanstack/react-query'
+import {
+  MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents,
+} from 'react-leaflet'
 import { Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Flame, Layers, Navigation } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import api from '@/lib/api'
 import type { components } from '@/types/api'
 import { Badge } from '@/components/ui/badge'
+
 type Job = components['schemas']['JobOut']
 type Service = components['schemas']['ServiceOut']
 
-// Fix leaflet default icon issue (used for the "You are here" pin)
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-})
+const OSM_FALLBACK_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-// ── Avatar marker: classic location-pin shape — a round head containing the
-//    profile photo, with a triangle point below anchored to the coordinate. ──
-function makeAvatarIcon(avatarUrl: string | null | undefined, name: string | null | undefined, ring: string): L.DivIcon {
+const RADIUS_CHOICES = [1, 5, 10, 25, 50]
+const CLUSTER_CELL_PX = 70
+
+const JOB_COLOR = '#2563eb'
+const SERVICE_COLOR = '#16a34a'
+const MIXED_COLOR = '#7c3aed'
+
+/** A marker candidate, normalised from either a Job or a ServiceListing. */
+interface MapPoint {
+  id: string
+  kind: 'job' | 'service'
+  lat: number
+  lng: number
+  title: string
+  description?: string | null
+  price: number
+  ownerId?: string
+  /** Server-computed distance in km (from /search/nearby). */
+  distanceKm?: number | null
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
+/** Classic location pin: round avatar head + triangular point on the coordinate. */
+function makeAvatarIcon(
+  avatarUrl: string | null | undefined,
+  name: string | null | undefined,
+  ring: string,
+  highlighted = false,
+): L.DivIcon {
   const initials = (name || '?').slice(0, 2).toUpperCase()
   const inner = avatarUrl
     ? `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px" />`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#e5e7eb;color:#374151;font-size:12px;font-weight:700;border-radius:9999px">${initials}</div>`
+
+  const halo = highlighted
+    ? `<div class="gigr-ring" style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};"></div>`
+    : ''
+
   const html = `
-    <div style="position:relative;width:40px;height:52px;">
-      <!-- round head (coloured ring) with the avatar in the centre -->
-      <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">
+    <div class="gigr-pin" style="position:relative;width:40px;height:52px;">
+      ${halo}
+      <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:9999px;background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;${highlighted ? `outline:3px solid #fff;outline-offset:1px;` : ''}">
         <div style="width:32px;height:32px;border-radius:9999px;overflow:hidden;background:#fff;">${inner}</div>
       </div>
-      <!-- downward point in the same colour -->
       <div style="position:absolute;top:35px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-top:15px solid ${ring};"></div>
     </div>`
   return L.divIcon({
     html,
     className: 'gigr-avatar-marker',
     iconSize: [40, 52],
-    iconAnchor: [20, 52], // the tip of the point sits on the exact coordinate
+    iconAnchor: [20, 52],
     popupAnchor: [0, -48],
   })
 }
 
-// Small hook: fetch a public user (cached across the whole map)
-function usePublicUser(userId: string | undefined) {
-  return useQuery({
-    queryKey: ['user', userId],
-    queryFn: async () => { const { data } = await api.get(`/users/${userId}`); return data },
-    enabled: !!userId,
-    staleTime: 5 * 60 * 1000,
+function makeClusterIcon(count: number, kind: 'job' | 'service' | 'mixed'): L.DivIcon {
+  const bg = kind === 'job' ? JOB_COLOR : kind === 'service' ? SERVICE_COLOR : MIXED_COLOR
+  const size = count < 10 ? 40 : count < 100 ? 46 : 54
+  const html = `
+    <div class="gigr-cluster" style="width:${size}px;height:${size}px;border-radius:9999px;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 16px rgba(0,0,0,.3)">${count}</div>`
+  return L.divIcon({
+    html,
+    className: 'gigr-cluster-marker',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   })
 }
 
-// "You are here" — a distinct blue location dot (divIcon so it never depends
-// on the CDN pin PNG, which was silently failing to load).
+// "You are here" — a pulsing dot that never depends on CDN marker PNGs.
 const userLocationIcon = L.divIcon({
   html: `
     <div style="position:relative;width:22px;height:22px;">
-      <div style="position:absolute;inset:0;border-radius:9999px;background:rgba(37,99,235,.25);animation:gigrPulse 2s ease-out infinite;"></div>
+      <div class="gigr-ring" style="position:absolute;inset:0;border-radius:9999px;background:rgba(37,99,235,.35);"></div>
       <div style="position:absolute;top:5px;left:5px;width:12px;height:12px;border-radius:9999px;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>
-    </div>
-    <style>@keyframes gigrPulse{0%{transform:scale(.6);opacity:.8}100%{transform:scale(2.2);opacity:0}}</style>`,
+    </div>`,
   className: 'gigr-user-marker',
   iconSize: [22, 22],
   iconAnchor: [11, 11],
   popupAnchor: [0, -12],
 })
 
-// Center map on the user
-function MapUpdater({ center }: { center: [number, number] }) {
+// ── Map behaviour ─────────────────────────────────────────────────────────────
+
+/**
+ * Re-centre only when the *target* coordinate actually changes.
+ *
+ * The previous version called `map.setView()` on every render, so any state
+ * change (a refetch, a hover, a theme toggle) yanked the viewport back from
+ * wherever the user had panned to.
+ */
+function MapUpdater({ center, focus }: { center: [number, number]; focus: [number, number] | null }) {
   const map = useMap()
-  map.setView(center, map.getZoom())
+  const lastCenter = useRef<string | null>(null)
+
+  useEffect(() => {
+    const key = `${center[0].toFixed(5)},${center[1].toFixed(5)}`
+    if (lastCenter.current === key) return
+    lastCenter.current = key
+    map.flyTo(center, map.getZoom(), { duration: 0.6 })
+  }, [map, center])
+
+  // Selecting a result glides the map to it instead of jumping.
+  useEffect(() => {
+    if (!focus) return
+    map.flyTo(focus, Math.max(map.getZoom(), 15), { duration: 0.7 })
+  }, [map, focus])
+
   return null
 }
 
-function JobMarker({ job }: { job: Job }) {
-  const posterId = (job as any).client_id as string | undefined
-  const { data: poster } = usePublicUser(posterId)
-  if (!job.latitude || !job.longitude) return null
-  const icon = makeAvatarIcon(poster?.profile_image_url, poster?.display_name, '#2563eb')
+function clusterPoints(map: L.Map, points: MapPoint[]) {
+  const zoom = map.getZoom()
+  const buckets = new Map<string, MapPoint[]>()
+  for (const point of points) {
+    const projected = map.project([point.lat, point.lng], zoom)
+    const key = `${Math.floor(projected.x / CLUSTER_CELL_PX)}:${Math.floor(projected.y / CLUSTER_CELL_PX)}`
+    const bucket = buckets.get(key)
+    if (bucket) bucket.push(point)
+    else buckets.set(key, [point])
+  }
+  return Array.from(buckets.values()).map((group) => ({
+    lat: group.reduce((sum, p) => sum + p.lat, 0) / group.length,
+    lng: group.reduce((sum, p) => sum + p.lng, 0) / group.length,
+    points: group,
+  }))
+}
+
+function PointPopup({ point, ownerName, ownerAvatar }: {
+  point: MapPoint
+  ownerName?: string | null
+  ownerAvatar?: string | null
+}) {
+  const isJob = point.kind === 'job'
+  const link = isJob ? '/dashboard/jobs' : '/dashboard/services'
   return (
-    <Marker position={[job.latitude, job.longitude]} icon={icon}>
-      <Popup>
-        <div className="text-sm min-w-[160px]">
-          <Badge className="bg-blue-100 text-blue-800 mb-1">Open Job</Badge>
-          <h3 className="font-bold">{job.title}</h3>
-          <p className="line-clamp-2 text-gray-600">{job.description}</p>
-          <p className="font-semibold mt-1">{fmtPrice(parseFloat(job.price as string))}</p>
-          {posterId && (
-            <Link to={`/dashboard/user/${posterId}`} className="inline-flex items-center gap-1 mt-2 text-blue-600 font-medium hover:underline">
-              {poster?.profile_image_url && <img src={poster.profile_image_url} className="w-4 h-4 rounded-full object-cover" />}
-              {poster?.display_name || 'View poster'} →
-            </Link>
-          )}
-        </div>
-      </Popup>
-    </Marker>
+    <div className="text-sm min-w-[170px]">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <Badge className={isJob ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}>
+          {isJob ? 'Open Job' : 'Service Provider'}
+        </Badge>
+        {point.distanceKm != null && (
+          <span className="text-[11px] font-medium text-gray-500">{point.distanceKm} km</span>
+        )}
+      </div>
+      <h3 className="font-bold leading-tight">{point.title}</h3>
+      {point.description && (
+        <p className="line-clamp-2 text-gray-600 dark:text-gray-300 mt-0.5">{point.description}</p>
+      )}
+      <p className="font-semibold mt-1">{fmtPrice(point.price)}</p>
+      <Link
+        to={link}
+        className={`inline-flex items-center gap-1 mt-2 font-medium hover:underline ${isJob ? 'text-blue-600' : 'text-green-600'}`}
+      >
+        {ownerAvatar && <img src={ownerAvatar} className="w-4 h-4 rounded-full object-cover" />}
+        {ownerName || `View ${isJob ? 'job' : 'provider'}`} →
+      </Link>
+    </div>
   )
 }
 
-function ServiceMarker({ service }: { service: Service }) {
-  const posterId = (service as any).provider_id as string | undefined
-  const { data: provider } = usePublicUser(posterId)
-  if (!service.latitude || !service.longitude) return null
-  const icon = makeAvatarIcon(provider?.profile_image_url, provider?.display_name, '#16a34a')
+/** Renders clustered markers, recomputing as the user pans and zooms. */
+function ClusterLayer({
+  points,
+  owners,
+  selectedId,
+  onSelect,
+}: {
+  points: MapPoint[]
+  owners: Map<string, { display_name?: string | null; profile_image_url?: string | null }>
+  selectedId?: string | null
+  onSelect?: (kind: 'job' | 'service', id: string) => void
+}) {
+  const map = useMap()
+  const [revision, setRevision] = useState(0)
+
+  useMapEvents({
+    zoomend: () => setRevision((r) => r + 1),
+    moveend: () => setRevision((r) => r + 1),
+  })
+
+  const clusters = useMemo(
+    () => clusterPoints(map, points),
+    // `revision` re-clusters after a pan/zoom; `map` is a stable Leaflet instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [map, points, revision],
+  )
+
   return (
-    <Marker position={[service.latitude, service.longitude]} icon={icon}>
-      <Popup>
-        <div className="text-sm min-w-[160px]">
-          <Badge className="bg-green-100 text-green-800 mb-1">Service Provider</Badge>
-          <h3 className="font-bold">{service.title}</h3>
-          <p className="line-clamp-2 text-gray-600">{service.description}</p>
-          <p className="font-semibold mt-1">{fmtPrice(parseFloat(service.price as string))}</p>
-          {posterId && (
-            <Link to={`/dashboard/user/${posterId}`} className="inline-flex items-center gap-1 mt-2 text-green-600 font-medium hover:underline">
-              {provider?.profile_image_url && <img src={provider.profile_image_url} className="w-4 h-4 rounded-full object-cover" />}
-              {provider?.display_name || 'View provider'} →
-            </Link>
-          )}
-        </div>
-      </Popup>
-    </Marker>
+    <>
+      {clusters.map((cluster) => {
+        const first = cluster.points[0]
+        if (cluster.points.length > 1) {
+          const kinds = new Set(cluster.points.map((p) => p.kind))
+          const kind = kinds.size > 1 ? 'mixed' : first.kind
+          return (
+            <Marker
+              key={`cluster-${first.id}-${cluster.points.length}`}
+              position={[cluster.lat, cluster.lng]}
+              icon={makeClusterIcon(cluster.points.length, kind)}
+              eventHandlers={{
+                click: () => {
+                  // Zooming into a cluster is the standard drill-down gesture.
+                  map.flyTo(
+                    [cluster.lat, cluster.lng],
+                    Math.min(map.getZoom() + 2, 18),
+                    { duration: 0.5 },
+                  )
+                },
+              }}
+            />
+          )
+        }
+
+        const owner = first.ownerId ? owners.get(first.ownerId) : undefined
+        const highlighted = selectedId === first.id
+        return (
+          <Marker
+            key={`${first.kind}-${first.id}`}
+            position={[first.lat, first.lng]}
+            icon={makeAvatarIcon(
+              owner?.profile_image_url,
+              owner?.display_name,
+              first.kind === 'job' ? JOB_COLOR : SERVICE_COLOR,
+              highlighted,
+            )}
+            zIndexOffset={highlighted ? 1000 : 0}
+            eventHandlers={{ click: () => onSelect?.(first.kind, first.id) }}
+          >
+            <Popup>
+              <PointPopup
+                point={first}
+                ownerName={owner?.display_name}
+                ownerAvatar={owner?.profile_image_url}
+              />
+            </Popup>
+          </Marker>
+        )
+      })}
+    </>
   )
 }
 
-export function NeighborhoodMap({ latitude, longitude, type = 'all' }: { latitude: number, longitude: number, type?: 'jobs' | 'services' | 'all' }) {
-  const { data: nearbyJobs } = useQuery<Job[]>({
-    queryKey: ['nearbyJobs', latitude, longitude],
-    queryFn: async () => {
-      const { data } = await api.get('/jobs/', { params: { lat: latitude, lon: longitude, radius: 100000 } })
-      return Array.isArray(data) ? data : []
-    },
-    enabled: !!latitude && !!longitude && (type === 'jobs' || type === 'all'),
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function NeighborhoodMap({
+  latitude,
+  longitude,
+  type = 'all',
+  radiusKm,
+  onRadiusChange,
+  height = 500,
+}: {
+  latitude: number
+  longitude: number
+  type?: 'jobs' | 'services' | 'all'
+  /** Controlled radius in km; falls back to internal state when omitted. */
+  radiusKm?: number
+  onRadiusChange?: (km: number) => void
+  height?: number
+}) {
+  const [internalRadius, setInternalRadius] = useState(10)
+  const [selected, setSelected] = useState<{ kind: 'job' | 'service'; id: string } | null>(null)
+  const radius = radiusKm ?? internalRadius
+
+  const validCenter = Number.isFinite(latitude) && Number.isFinite(longitude)
+
+  // Tile config comes from the backend so URLs aren't hardcoded per component.
+  const { data: mapConfig } = useQuery<{ tile_light_url: string; attribution: string }>({
+    queryKey: ['map-config'],
+    queryFn: async () => (await api.get('/location/map-config')).data,
+    staleTime: 24 * 60 * 60 * 1000,
   })
 
-  const { data: nearbyServices } = useQuery<Service[]>({
-    queryKey: ['nearbyServices', latitude, longitude],
+  const jobsEnabled = validCenter && (type === 'jobs' || type === 'all')
+  const servicesEnabled = validCenter && (type === 'services' || type === 'all')
+
+  const { data: nearbyJobs, isFetching: jobsFetching } = useQuery<Job[]>({
+    queryKey: ['nearbyJobs', latitude, longitude, radius],
     queryFn: async () => {
-      const { data } = await api.get('/services/search/nearby', { params: { lat: latitude, lon: longitude, radius: 100000 } })
+      const { data } = await api.get('/jobs/search/nearby', {
+        params: { lat: latitude, lon: longitude, radius },
+      })
       return Array.isArray(data) ? data : []
     },
-    enabled: !!latitude && !!longitude && (type === 'services' || type === 'all'),
+    enabled: jobsEnabled,
   })
 
-  const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  const { data: nearbyServices, isFetching: servicesFetching } = useQuery<Service[]>({
+    queryKey: ['nearbyServices', latitude, longitude, radius],
+    queryFn: async () => {
+      const { data } = await api.get('/services/search/nearby', {
+        params: { lat: latitude, lon: longitude, radius },
+      })
+      return Array.isArray(data) ? data : []
+    },
+    enabled: servicesEnabled,
+  })
+
+  const points: MapPoint[] = useMemo(() => {
+    const out: MapPoint[] = []
+    for (const job of nearbyJobs ?? []) {
+      // `== null` not falsy: 0 is a legitimate coordinate.
+      if (job.latitude == null || job.longitude == null) continue
+      out.push({
+        id: job.id,
+        kind: 'job',
+        lat: Number(job.latitude),
+        lng: Number(job.longitude),
+        title: job.title,
+        description: job.description,
+        price: Number(job.price),
+        ownerId: job.client_id ?? undefined,
+        distanceKm: (job as Job & { distance_km?: number | null }).distance_km ?? null,
+      })
+    }
+    for (const service of nearbyServices ?? []) {
+      if (service.latitude == null || service.longitude == null) continue
+      out.push({
+        id: service.id,
+        kind: 'service',
+        lat: Number(service.latitude),
+        lng: Number(service.longitude),
+        title: service.title,
+        description: service.description,
+        price: Number(service.price),
+        ownerId: service.provider_id ?? undefined,
+        distanceKm: (service as Service & { distance_km?: number | null }).distance_km ?? null,
+      })
+    }
+    return out
+  }, [nearbyJobs, nearbyServices])
+
+  // One batched, cached lookup per distinct owner instead of a hook per marker.
+  const ownerIds = useMemo(
+    () => Array.from(new Set(points.map((p) => p.ownerId).filter(Boolean))) as string[],
+    [points],
+  )
+  const ownerQueries = useQueries({
+    queries: ownerIds.map((id) => ({
+      queryKey: ['user', id],
+      queryFn: async () => (await api.get(`/users/${id}`)).data,
+      staleTime: 5 * 60 * 1000,
+    })),
+  })
+  const owners = useMemo(() => {
+    const map = new Map<string, { display_name?: string | null; profile_image_url?: string | null }>()
+    ownerIds.forEach((id, index) => {
+      const data = ownerQueries[index]?.data
+      if (data) map.set(id, data as { display_name?: string | null; profile_image_url?: string | null })
+    })
+    return map
+  }, [ownerIds, ownerQueries])
+
+  const selectedPoint = useMemo(
+    () => (selected ? points.find((p) => p.id === selected.id && p.kind === selected.kind) ?? null : null),
+    [selected, points],
+  )
+
+  if (!validCenter) {
+    return (
+      <div
+        className="w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center gap-2 text-center px-6"
+        style={{ height }}
+      >
+        <Layers className="w-8 h-8 text-gray-400" />
+        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Location needed</p>
+        <p className="text-xs text-gray-500 max-w-xs">
+          Turn on location access to see jobs and providers around you on the map.
+        </p>
+      </div>
+    )
+  }
+
+  const loading = jobsFetching || servicesFetching
+  const jobCount = points.filter((p) => p.kind === 'job').length
+  const serviceCount = points.filter((p) => p.kind === 'service').length
 
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-sm relative z-0 isolate">
-      <MapContainer center={[latitude, longitude]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-        <TileLayer attribution={attribution} url={tileUrl} />
-        <MapUpdater center={[latitude, longitude]} />
+    <div
+      className="w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm relative isolate"
+      style={{ height }}
+    >
+      <MapContainer
+        center={[latitude, longitude]}
+        zoom={13}
+        scrollWheelZoom={false}
+        className="h-full w-full"
+      >
+        <TileLayer
+          attribution={mapConfig?.attribution ?? OSM_ATTRIBUTION}
+          url={mapConfig?.tile_light_url ?? OSM_FALLBACK_TILE}
+        />
+        <MapUpdater
+          center={[latitude, longitude]}
+          focus={selectedPoint ? [selectedPoint.lat, selectedPoint.lng] : null}
+        />
 
-        {/* User location marker — pulsing blue dot */}
-        <Marker position={[latitude, longitude]} icon={userLocationIcon} zIndexOffset={1000}>
+        {/* Search radius, drawn to scale so "nearby" is visible, not implied. */}
+        <Circle
+          center={[latitude, longitude]}
+          radius={radius * 1000}
+          pathOptions={{
+            color: JOB_COLOR,
+            weight: 1.5,
+            opacity: 0.7,
+            fillColor: JOB_COLOR,
+            fillOpacity: 0.06,
+          }}
+        />
+
+        <Marker position={[latitude, longitude]} icon={userLocationIcon} zIndexOffset={2000}>
           <Popup>You are here</Popup>
         </Marker>
 
-        {nearbyJobs?.map(job => <JobMarker key={`job-${job.id}`} job={job} />)}
-        {nearbyServices?.map(service => <ServiceMarker key={`service-${service.id}`} service={service} />)}
+        <ClusterLayer
+          points={points}
+          owners={owners}
+          selectedId={selected?.id ?? null}
+          onSelect={(kind, id) => setSelected({ kind, id })}
+        />
       </MapContainer>
+
+      {/* Controls overlay */}
+      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 max-w-[calc(100%-1.5rem)]">
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+            <Navigation className="w-3 h-3" /> Radius
+          </div>
+          <div className="flex gap-1">
+            {RADIUS_CHOICES.map((km) => {
+              const active = km === radius
+              return (
+                <button
+                  key={km}
+                  onClick={() => {
+                    setInternalRadius(km)
+                    onRadiusChange?.(km)
+                  }}
+                  className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                    active
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {km} km
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: JOB_COLOR }} />
+              {jobCount} jobs
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: SERVICE_COLOR }} />
+              {serviceCount} services
+            </span>
+            {loading && <span className="text-gray-400">updating…</span>}
+          </div>
+          {!loading && points.length === 0 && (
+            <p className="mt-1.5 text-gray-500 flex items-center gap-1">
+              <Flame className="w-3 h-3 text-amber-500" />
+              Nothing within {radius} km — try a wider radius.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
