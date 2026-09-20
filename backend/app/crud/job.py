@@ -368,14 +368,24 @@ async def search_jobs_by_text(db: AsyncSession, query: str, limit: int = 20, off
     """Word-tokenized search: match jobs containing ANY significant query word
     in title or description, ranked by number of matching words. Fixes the naive
     full-phrase bug (e.g. 'fix my samsung' failing to match 'Samsung screen fix')."""
-    from ..core.text_search import tokenize_query, relevance_score
+    from ..core.text_search import compact, tokenize_query, relevance_score
 
     tokens = tokenize_query(query)
     if tokens:
+        # Separator-stripped copies so word-spanning queries match too (see
+        # core.text_search.compact).
+        compact_title = func.regexp_replace(func.lower(Job.title), r"[^a-z0-9]", "", "g")
+        compact_description = func.regexp_replace(
+            func.lower(func.coalesce(Job.description, "")), r"[^a-z0-9]", "", "g"
+        )
         conditions = []
         for t in tokens:
             conditions.append(Job.title.ilike(f"%{t}%"))
             conditions.append(Job.description.ilike(f"%{t}%"))
+            collapsed = compact(t)
+            if collapsed:
+                conditions.append(compact_title.like(f"%{collapsed}%"))
+                conditions.append(compact_description.like(f"%{collapsed}%"))
     else:
         conditions = [Job.title.ilike(f"%{query}%"), Job.description.ilike(f"%{query}%")]
 

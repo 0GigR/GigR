@@ -137,14 +137,26 @@ async def search_services_by_text(
     Fixes the naive full-phrase bug where 'samsung repair guy' failed to match
     a service titled 'Samsung phone repairs'.
     """
-    from ..core.text_search import tokenize_query, relevance_score
+    from ..core.text_search import compact, tokenize_query, relevance_score
 
     tokens = tokenize_query(query)
     if tokens:
+        # Separator-stripped copies of the searchable text, so a query that spans
+        # a space ("woodworks" vs "Wood Works, Furniture") still matches.
+        compact_title = func.regexp_replace(
+            func.lower(ServiceListing.title), r"[^a-z0-9]", "", "g"
+        )
+        compact_description = func.regexp_replace(
+            func.lower(func.coalesce(ServiceListing.description, "")), r"[^a-z0-9]", "", "g"
+        )
         conditions = []
         for t in tokens:
             conditions.append(ServiceListing.title.ilike(f"%{t}%"))
             conditions.append(ServiceListing.description.ilike(f"%{t}%"))
+            collapsed = compact(t)
+            if collapsed:
+                conditions.append(compact_title.like(f"%{collapsed}%"))
+                conditions.append(compact_description.like(f"%{collapsed}%"))
     else:
         # Nothing meaningful to tokenize — fall back to raw phrase match
         conditions = [
