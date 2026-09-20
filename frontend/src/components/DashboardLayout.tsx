@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
@@ -150,6 +150,15 @@ export default function DashboardLayout() {
     return () => disconnectAgentWS()
   }, [user, aiEnabled, connectAgentWS, disconnectAgentWS])
 
+  // Only ONE banner may occupy the top of the page. Stacked install + push +
+  // location + update bars were the single biggest source of first-look clutter.
+  // Priority: update > install > push > location.
+  const [pushBannerShowing, setPushBannerShowing] = useState(false)
+  const handlePushBannerActive = useCallback((active: boolean) => {
+    setPushBannerShowing(active)
+  }, [])
+  const bannerTaken = needRefresh || Boolean(deferredPrompt)
+
   // The dashboard home is the only place with nothing to go back to.
   const isDashboardRoot = location.pathname === '/dashboard' || location.pathname === '/dashboard/'
 
@@ -212,7 +221,7 @@ export default function DashboardLayout() {
       </header>
 
       {/* Optional Install PWA Banner — sticky under the header, above the fixed sidebar (z-40) */}
-      {deferredPrompt && (
+      {deferredPrompt && !needRefresh && (
         <div className="sticky top-14 z-[60] bg-indigo-600 px-4 py-3 text-white flex justify-between items-center text-sm shadow-sm">
           <div className="flex items-center gap-2">
             <span className="font-semibold">Install Gigr App</span>
@@ -231,11 +240,14 @@ export default function DashboardLayout() {
       {/* Push Notification Banner — sticky under the header. Always asks when
           push is not currently enabled (auto on load, then via the Enable
           button, which is a user gesture the browsers require). */}
-      <PushPromptBanner />
+      <PushPromptBanner
+        enabled={!bannerTaken}
+        onActiveChange={handlePushBannerActive}
+      />
 
       {/* Periodic location-sharing nudge — only when location_public is off,
           re-asks at most every 7 days. */}
-      <LocationPromptBanner />
+      <LocationPromptBanner enabled={!bannerTaken && !pushBannerShowing} />
 
       {/* Update Available Banner — sticky under the header, above the fixed sidebar (z-40) */}
       {needRefresh && (
