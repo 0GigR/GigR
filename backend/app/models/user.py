@@ -57,6 +57,12 @@ class User(Base):
     # AI Settings (e.g. auto_reply_enabled, negotiate_enabled)
     ai_settings = Column(JSONB, nullable=True, default={})
 
+    # Small UI preferences that must survive a reinstall / cleared storage, e.g.
+    # {"onboarding": {"version": "v3", "dismissed": true}}. Stored server-side
+    # because iOS evicts localStorage, which made "do not show again" forget
+    # itself — the onboarding overlay kept coming back.
+    ui_settings = Column(JSONB, nullable=True, default={})
+
     # AI feature gate — set to False to disable the agent for this user (future pro tier)
     ai_enabled = Column(Boolean, nullable=False, default=True, server_default="true")
 

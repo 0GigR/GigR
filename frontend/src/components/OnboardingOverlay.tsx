@@ -72,16 +72,32 @@ const FUND_WALLET_STEP: Step = {
 
 // Persistence is versioned so a future product change can re-show onboarding
 // deliberately (bump ONBOARD_VERSION), while a user who said "never again"
-// stays silenced forever.
+// stays silenced.
 const ONBOARD_VERSION = 'v3'
 const RE_SHOW_AFTER_MS = 7 * 24 * 60 * 60 * 1000 // 7 days when "do not show" is off
+
+type OnboardingPrefs = { version?: string; dismissed?: boolean; seenAt?: number }
 
 function storageKey(kind: 'seen' | 'never', userId?: string) {
   return `gigr_onboarded_${kind}_${ONBOARD_VERSION}_${userId || 'anon'}`
 }
 
+/**
+ * The server's copy of the onboarding preference.
+ *
+ * localStorage alone was not enough: iOS evicts it, so "do not show this again"
+ * forgot itself and the overlay kept coming back. The server record is the
+ * authoritative one; localStorage is only a fast local cache.
+ */
+function serverPrefs(
+  user: { ui_settings?: Record<string, unknown> | null } | null,
+): OnboardingPrefs {
+  const ui = (user?.ui_settings ?? {}) as Record<string, unknown>
+  return (ui.onboarding ?? {}) as OnboardingPrefs
+}
+
 export default function OnboardingOverlay() {
-  const { user } = useAuthStore()
+  const { user, fetchUser } = useAuthStore()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(0)
   const [doNotShowAgain, setDoNotShowAgain] = useState(true)
@@ -114,18 +130,22 @@ export default function OnboardingOverlay() {
   )
 
   // Show unless the user has permanently opted out; if they skipped without
-  // opting out, wait 7 days before asking again.
+  // opting out, wait 7 days before asking again. The server's record wins.
+  const prefs = serverPrefs(user)
+  const serverDismissed = prefs.version === ONBOARD_VERSION && prefs.dismissed === true
+
   useEffect(() => {
     if (!user?.id) return
+    if (serverDismissed) return
     try {
       if (localStorage.getItem(storageKey('never', user.id))) return
       const seenAt = parseInt(localStorage.getItem(storageKey('seen', user.id)) || '0', 10)
       if (seenAt && Date.now() - seenAt < RE_SHOW_AFTER_MS) return
-      setOpen(true)
     } catch {
-      /* localStorage unavailable — skip */
+      /* localStorage unavailable — fall through and show once */
     }
-  }, [user?.id])
+    setOpen(true)
+  }, [user?.id, serverDismissed])
 
   // Escape closes the overlay too (same as Skip — respects the checkbox).
   useEffect(() => {
@@ -138,7 +158,8 @@ export default function OnboardingOverlay() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, step, doNotShowAgain])
 
-  const finish = () => {
+  const finish = async () => {
+    setOpen(false)
     try {
       if (user?.id) {
         // Always record that they've seen it…
@@ -149,7 +170,24 @@ export default function OnboardingOverlay() {
     } catch {
       /* ignore */
     }
-    setOpen(false)
+    // Persist server-side as well. This is the copy that survives iOS clearing
+    // browser storage, which is why "do not show again" previously kept
+    // forgetting itself.
+    if (!user?.id) return
+    try {
+      await api.patch('/users/me', {
+        ui_settings: {
+          onboarding: {
+            version: ONBOARD_VERSION,
+            dismissed: doNotShowAgain,
+            seenAt: Date.now(),
+          },
+        },
+      })
+      await fetchUser()
+    } catch {
+      // Offline or the request failed — the local copy still silences it here.
+    }
   }
 
   const next = () => {

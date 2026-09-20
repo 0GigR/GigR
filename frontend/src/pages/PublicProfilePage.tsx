@@ -9,7 +9,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { Star, Briefcase, Calendar, ArrowLeft, MapPin, Navigation, BadgeCheck } from 'lucide-react'
+import { Star, Briefcase, Calendar, ArrowLeft, MapPin, Navigation, BadgeCheck, Check } from 'lucide-react'
 import OnlineIndicator from '@/components/OnlineIndicator'
 import type { components } from '@/types/api'
 
@@ -45,6 +45,22 @@ interface RatingOut {
 }
 
 // Distance maths lives in @/lib/geo so it exists once, not three times.
+
+/** Filled/empty star row, drawn with icons rather than literal glyphs. */
+function Stars({ value, className = 'w-3.5 h-3.5' }: { value: number; className?: string }) {
+  const rounded = Math.round(value)
+  return (
+    <span className="inline-flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star
+          key={n}
+          className={`${className} ${n <= rounded ? 'text-amber-400' : 'text-gray-300'}`}
+          fill={n <= rounded ? 'currentColor' : 'none'}
+        />
+      ))}
+    </span>
+  )
+}
 
 function VoucherName({ voucherId }: { voucherId: string }) {
   const { data } = useQuery<PublicUser>({
@@ -179,7 +195,10 @@ export default function PublicProfilePage() {
             <div>
               {profile.avg_rating ? (
                 <>
-                  <p className="text-xl font-bold text-amber-500">{profile.avg_rating.toFixed(1)} ★</p>
+                  <p className="text-xl font-bold text-amber-500 flex items-center gap-1 justify-center">
+                    {profile.avg_rating.toFixed(1)}
+                    <Star className="w-4 h-4" fill="currentColor" />
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">{profile.rating_count} rating{profile.rating_count !== 1 ? 's' : ''}</p>
                 </>
               ) : (
@@ -190,7 +209,7 @@ export default function PublicProfilePage() {
               )}
             </div>
             <div>
-              <p className="text-xl font-bold">{profile.is_verified ? '✓' : '—'}</p>
+              <p className="text-xl font-bold flex justify-center">{profile.is_verified ? <Check className="w-5 h-5 text-green-600" /> : <span className="text-gray-300">—</span>}</p>
               <p className="text-xs text-gray-500 mt-0.5">Verified</p>
             </div>
           </div>
@@ -224,7 +243,7 @@ export default function PublicProfilePage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <span className="text-amber-500">★</span> Ratings & Reviews
+              <Star className="w-4 h-4 text-amber-500" fill="currentColor" /> Ratings & Reviews
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -239,14 +258,14 @@ export default function PublicProfilePage() {
                 <div className="flex gap-6 items-center mb-4 pb-4 border-b">
                   <div className="text-center shrink-0">
                     <p className="text-4xl font-bold text-amber-500">{avg.toFixed(1)}</p>
-                    <p className="text-amber-400 text-sm">{'★'.repeat(Math.round(avg))}{'☆'.repeat(5 - Math.round(avg))}</p>
+                    <Stars value={avg} className="w-4 h-4" />
                     <p className="text-xs text-gray-500 mt-1">{ratings.length} review{ratings.length !== 1 ? 's' : ''}</p>
                   </div>
                   <div className="flex-1 space-y-1">
                     {dist.map(({ star, n }) => (
                       <div key={star} className="flex items-center gap-2 text-xs">
                         <span className="w-3 text-gray-500">{star}</span>
-                        <span className="text-amber-400">★</span>
+                        <Star className="w-3 h-3 text-amber-400" fill="currentColor" />
                         <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                           <div className="h-full bg-amber-400 rounded-full" style={{ width: `${(n / ratings.length) * 100}%` }} />
                         </div>
@@ -273,7 +292,7 @@ export default function PublicProfilePage() {
                       )}
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate group-hover:underline">{r.rater_name || 'Someone'}</p>
-                        <p className="text-amber-400 text-xs leading-none">{'★'.repeat(r.score)}{'☆'.repeat(5 - r.score)}</p>
+                        <Stars value={r.score} className="w-3 h-3" />
                       </div>
                     </Link>
                     <span className="text-xs text-gray-400 shrink-0">{new Date(r.created_at).toLocaleDateString()}</span>

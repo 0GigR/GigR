@@ -45,7 +45,11 @@ export default function PushPromptBanner({
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem('gigr-push-prompt-dismissed') === '1'
   )
-  const [state, setState] = useState<PushState>('default')
+  // Resolve the real state before the first paint. Starting at 'default' meant
+  // the banner rendered for a moment on every refresh and then vanished once the
+  // async subscription check finished — a visible flash for users who already
+  // had notifications enabled.
+  const [state, setState] = useState<PushState>(() => currentPushState())
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {

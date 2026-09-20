@@ -1117,9 +1117,9 @@ export default function ActivityPage() {
           <div className="space-y-4 py-4">
             <div className="flex justify-center gap-2">
               {[1,2,3,4,5].map(n => (
-                <button key={n} onClick={() => setRatingScore(n)}
-                  className={`text-3xl transition-transform hover:scale-110 ${n <= ratingScore ? 'text-amber-400' : 'text-gray-200'}`}>
-                  ★
+                <button key={n} onClick={() => setRatingScore(n)} aria-label={`${n} star${n > 1 ? 's' : ''}`}
+                  className={`transition-transform hover:scale-110 ${n <= ratingScore ? 'text-amber-400' : 'text-gray-200'}`}>
+                  <Star className="w-7 h-7" fill="currentColor" />
                 </button>
               ))}
             </div>

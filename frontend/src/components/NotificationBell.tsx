@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Bell, CheckCircle2, BellOff, Loader2, Smartphone,
   MessageSquare, Briefcase, UserPlus, Wallet, ClipboardCheck,
-  XCircle, Bot,
+  XCircle, Bot, X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -345,7 +345,7 @@ export default function NotificationBell() {
                   </button>
                 )}
                 <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setOpen(false)}>
-                  ✕
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>

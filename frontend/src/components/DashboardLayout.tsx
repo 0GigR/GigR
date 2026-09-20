@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
@@ -38,6 +38,7 @@ import {
   MoreHorizontal,
   X,
   RefreshCw,
+  ChevronLeft,
 } from 'lucide-react'
 
 import { useQueryClient } from '@tanstack/react-query'
@@ -59,6 +60,7 @@ export default function DashboardLayout() {
     updateServiceWorker,
   } = useRegisterSW()
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Subscribe to the display currency so this shell (and the route page it
   // hosts) re-renders in place when the user switches currency — no reload.
@@ -148,6 +150,18 @@ export default function DashboardLayout() {
     return () => disconnectAgentWS()
   }, [user, aiEnabled, connectAgentWS, disconnectAgentWS])
 
+  // The dashboard home is the only place with nothing to go back to.
+  const isDashboardRoot = location.pathname === '/dashboard' || location.pathname === '/dashboard/'
+
+  const goBack = () => {
+    const idx = (window.history.state as { idx?: number } | null)?.idx
+    if (typeof idx === 'number' && idx > 0) {
+      navigate(-1)
+    } else {
+      navigate('/dashboard')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
       <Suspense fallback={null}>
@@ -162,6 +176,22 @@ export default function DashboardLayout() {
       <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
+            {/* An installed iOS PWA has no system back gesture or button, so
+                this is the only way back. React Router keeps an index in history
+                state; when there is nothing to return to we go home rather than
+                letting the button close the app. */}
+            {!isDashboardRoot && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="-ml-2"
+                onClick={goBack}
+                title="Back"
+                aria-label="Go back"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            )}
             <Logo className="w-6 h-6" />
             <span className="font-bold text-lg">Gigr</span>
           </div>
