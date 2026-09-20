@@ -57,24 +57,65 @@ async def get_jobs_by_provider(db: AsyncSession, provider_id: UUID, limit: int =
     )
     return result.scalars().all()
 
+def _with_distance(job: Job, distance_m: Optional[float]) -> Job:
+    """Attach a rounded ``distance_km`` to a job instance (transient attribute).
+
+    Exposed through JobOut so the client never has to re-derive distance from
+    raw coordinates.
+    """
+    if distance_m is not None:
+        try:
+            job.distance_km = round(float(distance_m) / 1000, 2)
+        except (TypeError, ValueError):
+            pass
+    return job
+
+
 async def get_open_jobs_nearby(
     db: AsyncSession,
     latitude: float,
     longitude: float,
     radius_km: float = 5.0,
+    exclude_user_id: Optional[UUID] = None,
+    category_id: Optional[UUID] = None,
     limit: int = 20,
     offset: int = 0
 ) -> List[Job]:
+    """Open jobs within ``radius_km`` of a point, nearest first.
+
+    This was dead code (no callers) that mixed the Geography column with a raw
+    SRID string in ``ST_DistanceSphere``, which expects geometry. It now uses
+    ``ST_Distance`` on the geography column, which returns metres.
+    """
     point = f"SRID=4326;POINT({longitude} {latitude})"
-    distance_col = geo_func.ST_DistanceSphere(Job.location, point).label("distance")
+    distance_col = geo_func.ST_Distance(
+        Job.location, func.ST_GeogFromText(point)
+    ).label("distance")
 
-    query = select(Job, distance_col).where(
+    conditions = [
         Job.status == "open",
-        geo_func.ST_DWithin(Job.location, point, radius_km * 1000)
-    ).order_by(distance_col).limit(limit).offset(offset)
+        Job.location.isnot(None),
+        geo_func.ST_DWithin(
+            Job.location, func.ST_GeogFromText(point), radius_km * 1000
+        ),
+    ]
+    if exclude_user_id:
+        conditions.append(Job.client_id != exclude_user_id)
+    if category_id:
+        conditions.append(or_(
+            Job.category_id == category_id,
+            Job.service_listing.has(ServiceListing.category_id == category_id),
+        ))
 
-    result = await db.execute(query)
-    return [row[0] for row in result.all()]
+    query = (
+        select(Job, distance_col)
+        .where(and_(*conditions))
+        .order_by(distance_col)
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await db.execute(query)).all()
+    return [_with_distance(job, dist_m) for job, dist_m in rows]
 
 async def create_job(db: AsyncSession, client_id: UUID, job_in: JobCreate) -> Job:
     job = Job(
@@ -154,7 +195,17 @@ async def get_jobs_filtered(
     limit: int = 20,
     offset: int = 0
 ) -> List[Job]:
-    query = select(Job)
+    # Distance is selected up-front when geo params are present, so every return
+    # path below can expose `distance_km` without a second query.
+    point = None
+    distance_col = None
+    if latitude is not None and longitude is not None:
+        point = f"SRID=4326;POINT({longitude} {latitude})"
+        distance_col = geo_func.ST_Distance(
+            Job.location, func.ST_GeogFromText(point)
+        ).label("distance")
+
+    query = select(Job, distance_col) if distance_col is not None else select(Job)
     conditions = []
 
     if client_id:
@@ -184,13 +235,11 @@ async def get_jobs_filtered(
         conditions.append(Job.price <= max_price)
 
     # ---- GEOGRAPHY -----
-    point = None
-    if latitude is not None and longitude is not None:
-        point = f"SRID=4326;POINT({longitude} {latitude})"
+    if point is not None:
         conditions.append(
             geo_func.ST_DWithin(
                 Job.location,
-                point,
+                func.ST_GeogFromText(point),
                 radius_km * 1000
             )
         )
@@ -213,11 +262,16 @@ async def get_jobs_filtered(
 
     # Default browse list (no search / geo / "my" filters): rank by hotness,
     # which needs per-job application counts before pagination.
+    #
+    # `sort_by is None` matters: hotness re-ranks in Python *after* the SQL
+    # ORDER BY, so without this guard an explicit `sort=price_asc|newest`
+    # request was silently overridden by hotness.
     use_hotness = (
         search_text is None
         and latitude is None
         and client_id is None
         and provider_id is None
+        and sort_by is None
     )
 
     if use_hotness:
@@ -243,14 +297,9 @@ async def get_jobs_filtered(
         query = query.order_by(Job.price.desc())
     elif sort_by == 'newest':
         query = query.order_by(Job.created_at.desc())
-    elif sort_by == 'nearest' and point is not None:
-        # Use ST_Distance on geography for correct spherical distance
-        query = query.order_by(
-            geo_func.ST_Distance(
-                Job.location,
-                point
-            )
-        )
+    elif sort_by == 'nearest' and distance_col is not None:
+        # Spherical distance, nearest first — reuses the selected distance_col.
+        query = query.order_by(distance_col)
     else:
         query = query.order_by(Job.created_at.desc())
 
@@ -258,7 +307,10 @@ async def get_jobs_filtered(
         # Relevance-ranking must happen before pagination: fetch the whole
         # filtered set, rank by how many query words match, then slice.
         result = await db.execute(query)
-        jobs = list(result.scalars().all())
+        if distance_col is not None:
+            jobs = [_with_distance(job, dist_m) for job, dist_m in result.all()]
+        else:
+            jobs = list(result.scalars().all())
         tokens = tokenize_query(search_text)
         if tokens:
             jobs.sort(
@@ -284,6 +336,8 @@ async def get_jobs_filtered(
 
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
+    if distance_col is not None:
+        return [_with_distance(job, dist_m) for job, dist_m in result.all()]
     return result.scalars().all()
 async def transition_job_status(
     db: AsyncSession,

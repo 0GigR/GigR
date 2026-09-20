@@ -996,6 +996,53 @@ async def _auto_price_fallback(task_id: str, kind: str, raw_title: str) -> None:
             pass
 
 
+def _norm_words(text: str) -> set[str]:
+    """Lowercase word set with light suffix stripping.
+
+    Enough to match "Plumber needed" to the "Plumbing" category without pulling
+    in a stemmer dependency.
+    """
+    words: set[str] = set()
+    for word in re.findall(r"[a-z]{3,}", (text or "").lower()):
+        for suffix in ("ings", "ing", "ers", "er", "es", "s"):
+            if len(word) > len(suffix) + 2 and word.endswith(suffix):
+                word = word[: -len(suffix)]
+                break
+        words.add(word)
+    return words
+
+
+async def _pick_category(db: AsyncSession, text: str):
+    """Best-effort category match for an AI-created listing.
+
+    Previously this was ``select(Category).limit(1)`` — literally the first row
+    in the table — so every AI-posted service landed in a random category.
+    Returns ``None`` when nothing matches confidently, so the caller can ask.
+    """
+    from ....models.category import Category
+
+    categories = (await db.execute(select(Category))).scalars().all()
+    if not categories:
+        return None
+
+    haystack = (text or "").lower()
+    text_words = _norm_words(text)
+    best = None
+    best_score = 0.0
+    for category in categories:
+        name = (category.name or "").strip()
+        if not name:
+            continue
+        name_lower = name.lower()
+        if name_lower in haystack:
+            score = 3.0  # whole category name appears verbatim
+        else:
+            score = float(len(text_words & _norm_words(name)))
+        if score > best_score:
+            best, best_score = category, score
+    return best if best_score >= 1.0 else None
+
+
 async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     """Create a new job posting on behalf of the user."""
     from ....crud.job import create_job
@@ -1030,9 +1077,23 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     title = content["title"]
     desc = content["description"] + f"\n\nBudget: ₦{price:,.0f}"
 
+    # Geo: inherit the poster's saved location so the job appears on the map and
+    # in radius search. Left NULL when unknown — never (0, 0).
+    poster = (await db.execute(select(User).where(User.id == task.user_id))).scalar_one_or_none()
+    poster_lat = getattr(poster, "location_lat", None)
+    poster_lng = getattr(poster, "location_lng", None)
+    category = await _pick_category(db, f"{raw_title} {title}")
+
     await _log(db, task.id, "action", f"Posting job: '{title}' — ₦{price:,.0f}")
     try:
-        job_in = JobCreate(title=title, description=desc, price=price)
+        job_in = JobCreate(
+            title=title,
+            description=desc,
+            price=price,
+            latitude=poster_lat,
+            longitude=poster_lng,
+            category_id=category.id if category else None,
+        )
         job = await create_job(db, task.user_id, job_in)
         await db.commit()
         # Notify the user in-app that their job is live (call, if enabled, fires
@@ -1087,23 +1148,62 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         asyncio.create_task(_auto_price_fallback(str(task.id), "service", raw_title))
         return {"created": False, "waiting_for_price": True}
 
-    # Try to match a category from the title
-    cat_result = await db.execute(select(Category).limit(1))
-    category = cat_result.scalar_one_or_none()
-    if not category:
-        await _log(db, task.id, "error", "No service categories in the system. Cannot create service.")
-        return {"created": False, "error": "Missing categories"}
+    # Category: honour an explicit choice (params carry it when the user picked
+    # one from the dialog), otherwise match the text against category names.
+    # This used to be `select(Category).limit(1)` — the first row in the table —
+    # so every AI-posted service landed in an arbitrary category.
+    category = None
+    chosen_id = params.get("category_id")
+    if chosen_id:
+        try:
+            category = (await db.execute(
+                select(Category).where(Category.id == uuid.UUID(str(chosen_id)))
+            )).scalar_one_or_none()
+        except (ValueError, AttributeError, TypeError):
+            category = None
+    if category is None:
+        category = await _pick_category(db, raw_title)
+
+    if category is None:
+        all_categories = (await db.execute(select(Category).limit(10))).scalars().all()
+        if not all_categories:
+            await _log(db, task.id, "error",
+                       "No service categories exist yet. Cannot create a service.")
+            return {"created": False, "error": "Missing categories"}
+        options = [
+            {"label": c.name, "action": f"category:{c.id}"} for c in all_categories
+        ]
+        options.append({"label": "Cancel", "action": "cancel"})
+        await _log(db, task.id, "info",
+                   f"Which category fits '{raw_title}' best?",
+                   data={"action_payload": {
+                       "type": "select_category",
+                       "raw_title": raw_title,
+                       "price": price,
+                       "kind": "service",
+                       "options": options,
+                   }})
+        return {"created": False, "needs_category": True}
 
     await _log(db, task.id, "action", "Writing a professional service listing...")
     content = await _groq_improve_posting(raw_title, "service")
     title = content["title"]
     desc = content["description"]
 
-    # Use user's stored location if available
+    # Geo: ServiceListing.location is NOT NULL and every hyperlocal feature
+    # depends on it. A missing saved location used to silently become (0, 0) —
+    # Null Island, in the Gulf of Guinea — so the listing was invisible to
+    # nearby clients and to the map. Refuse rather than write junk.
     user_res = await db.execute(select(User).where(User.id == task.user_id))
     poster = user_res.scalar_one_or_none()
-    lat = poster.location_lat or 0.0 if poster else 0.0
-    lng = poster.location_lng or 0.0 if poster else 0.0
+    lat = getattr(poster, "location_lat", None)
+    lng = getattr(poster, "location_lng", None)
+    if lat is None or lng is None:
+        await _log(db, task.id, "warning",
+                   "I need your location before I can list a service — listings "
+                   "without one can't be found by nearby clients. Set it in "
+                   "[Profile](/dashboard/profile), then ask me again.")
+        return {"created": False, "needs_location": True}
 
     await _log(db, task.id, "action", f"Posting service: '{title}' — ₦{price:,.0f}")
     try:
@@ -1969,6 +2069,31 @@ async def respond_to_dialog(
         db.add(new_task)
         await _log(db, task.id, "success",
                    f"Got it — ₦{chosen_price:,.0f}. Creating your {'job' if kind == 'job' else 'service'}...")
+        await db.commit()
+        return {"status": "ok", "new_task_id": str(new_task.id)}
+
+    # ── Category chosen for an AI-created service ────────────────────────────
+    if action.startswith("category:") and payload.get("type") == "select_category":
+        try:
+            category_id = uuid.UUID(action.split(":", 1)[1])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid category ID")
+        raw_title = payload.get("raw_title", task.command_text)
+        kind = payload.get("kind", "service")
+        new_task = AgentTask(
+            user_id=current_user.id,
+            command_text=task.command_text,
+            task_type="post_job" if kind == "job" else "post_service",
+            params={
+                "title": raw_title,
+                "price": payload.get("price"),
+                "category_id": str(category_id),
+            },
+            status="queued",
+        )
+        db.add(new_task)
+        await _log(db, task.id, "success",
+                   "Got it — finishing the listing in that category...")
         await db.commit()
         return {"status": "ok", "new_task_id": str(new_task.id)}
 

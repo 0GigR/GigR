@@ -38,6 +38,9 @@ class JobOut(BaseModel):
     # Engagement signal (set by list/detail endpoints): how many providers
     # applied. Drives the marketplace ranking and the card's applicant badge.
     applications_count: Optional[int] = None
+    # Set only by geo-aware list endpoints (lat/lon supplied): spherical
+    # distance from the caller in kilometres. None everywhere else.
+    distance_km: Optional[float] = None
 
     class Config:
         from_attributes = True
