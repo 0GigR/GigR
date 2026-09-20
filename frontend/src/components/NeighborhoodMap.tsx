@@ -115,7 +115,12 @@ const userLocationIcon = L.divIcon({
  */
 function MapUpdater({ center, focus }: { center: [number, number]; focus: [number, number] | null }) {
   const map = useMap()
-  const lastCenter = useRef<string | null>(null)
+  // Seeded with the centre we were mounted with, so the first run is a no-op.
+  // MapContainer already placed the view; flying there again would start an
+  // animation on every mount for no reason.
+  const lastCenter = useRef<string | null>(
+    `${center[0].toFixed(5)},${center[1].toFixed(5)}`,
+  )
 
   useEffect(() => {
     const key = `${center[0].toFixed(5)},${center[1].toFixed(5)}`
@@ -397,9 +402,12 @@ export function NeighborhoodMap({
     queryKey: ['map-nearby-jobs', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/jobs/search/nearby', {
-        // radius 0 = no limit. The circle on the map shows your neighbourhood;
-        // it should not hide everyone outside it.
-        params: { lat: latitude, lon: longitude, radius: 0, limit: 300 },
+        // Deliberately large rather than 0: 0 means "no limit" only on a backend
+        // that accepts ge=0, and against an older one it is rejected outright,
+        // which left the map empty. 500 km is the maximum the older validation
+        // allows, so the map fills either way; the circle still shows the
+        // neighbourhood the user actually picked.
+        params: { lat: latitude, lon: longitude, radius: 500, limit: 300 },
       })
       return Array.isArray(data) ? data : []
     },
@@ -410,7 +418,9 @@ export function NeighborhoodMap({
     queryKey: ['map-nearby-services', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
-        params: { lat: latitude, lon: longitude, radius: 0, limit: 300 },
+        // Same reasoning as the jobs query: 500 km works against both the old and
+        // the new backend, where radius=0 only works once the backend is updated.
+        params: { lat: latitude, lon: longitude, radius: 500, limit: 300 },
       })
       return Array.isArray(data) ? data : []
     },
