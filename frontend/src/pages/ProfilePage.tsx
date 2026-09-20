@@ -19,7 +19,7 @@ import { symbolFor } from '@/lib/currency'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 import {
-  Mail, Phone, Key, Copy, Star, Briefcase, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff
+  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { processImageFile } from '@/lib/imageUtils'
@@ -60,6 +60,8 @@ export default function ProfilePage() {
     },
     onError: (err: any) => toast.error(extractError(err, 'Could not delete account')),
   })
+  // Progressive disclosure: two headline figures, the rest on tap.
+  const [showAllStats, setShowAllStats] = useState(false)
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user?.display_name || '')
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
@@ -408,36 +410,43 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <Star className="w-8 h-8 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{vouchesReceived?.length || 0}</p>
-            <p className="text-xs text-gray-500">Vouches Received</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <Briefcase className="w-8 h-8 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{completedJobs.length}</p>
-            <p className="text-xs text-gray-500">Jobs Completed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <MapPin className="w-8 h-8 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{myServices?.length || 0}</p>
-            <p className="text-xs text-gray-500">Services Listed</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <Clock className="w-8 h-8 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{pendingJobs.length}</p>
-            <p className="text-xs text-gray-500">Active Jobs</p>
-          </CardContent>
-        </Card>
+      {/* Two figures worth a glance; the rest stay one tap away. */}
+      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 sm:gap-10">
+            <div>
+              <p className="text-2xl font-bold leading-none">{vouchesReceived?.length || 0}</p>
+              <p className="text-xs text-gray-500 mt-1">Vouches</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none">{completedJobs.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Jobs completed</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllStats((value) => !value)}
+            aria-expanded={showAllStats}
+            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+          >
+            {showAllStats ? 'Less' : 'More stats'}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+        {showAllStats && (
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{myServices?.length || 0}</span>
+              <span className="text-xs text-gray-500">Services listed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{pendingJobs.length}</span>
+              <span className="text-xs text-gray-500">Active jobs</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Identity Verification */}
