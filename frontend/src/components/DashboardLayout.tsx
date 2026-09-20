@@ -125,12 +125,15 @@ export default function DashboardLayout() {
   useMessageNotifications()
 
   // Start agent polling (only when AI is enabled)
-  const { startPolling, stopPolling, connectAgentWS, disconnectAgentWS } = useAgentStore()
+  const { startPolling, stopPolling, connectAgentWS, disconnectAgentWS, fetchEngineInfo } = useAgentStore()
   useEffect(() => {
     if (!aiEnabled) return
     startPolling()
+    // Pull the engine status AND this user's stored agent settings, so the
+    // autonomy level shown in the UI always matches what the backend enforces.
+    fetchEngineInfo()
     return () => stopPolling()
-  }, [startPolling, stopPolling, aiEnabled])
+  }, [startPolling, stopPolling, aiEnabled, fetchEngineInfo])
 
   // Heartbeat — keep last_seen_at fresh every 60 s
   useEffect(() => {

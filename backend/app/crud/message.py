@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 from typing import List
 from sqlalchemy import select, desc, or_
@@ -6,6 +7,8 @@ from ..models.message import Message
 from ..models.job import Job
 from ..models.user import User
 from ..models.agent_task import AgentTask
+
+logger = logging.getLogger(__name__)
 
 async def get_message_by_id(db: AsyncSession, message_id: UUID) -> Message | None:
     result = await db.execute(select(Message).where(Message.id == message_id))
@@ -79,6 +82,7 @@ async def create_message(
     content: str,
     image_url: str | None = None,
     applicant_id: UUID | None = None,
+    is_agent: bool = False,
 ) -> Message:
     message = Message(
         job_id=job_id,
@@ -90,32 +94,86 @@ async def create_message(
     db.add(message)
     await db.commit()
     await db.refresh(message)
-    
-    # Check if the receiver has AI auto-reply enabled
-    # Find the job to determine the receiver
-    job_result = await db.execute(select(Job).where(Job.id == job_id))
-    job = job_result.scalar_one_or_none()
-    
-    if job:
-        receiver_id = job.provider_id if job.client_id == sender_id else job.client_id
-        if receiver_id:
-            receiver_result = await db.execute(select(User).where(User.id == receiver_id))
-            receiver = receiver_result.scalar_one_or_none()
-            
-            # Assuming AI setting key is "autonomyLevel"
-            if receiver and receiver.ai_settings and receiver.ai_settings.get("autonomyLevel") in ["low", "medium", "high", "total"]:
-                # Spawn an AgentTask for the receiver to auto-reply to this message
-                reply_command = f"Reply to this message: '{content}' (From {job.title})"
-                auto_reply_task = AgentTask(
-                    user_id=receiver.id,
-                    command_text=reply_command,
-                    task_type="pending",
-                    status="queued"
-                )
-                db.add(auto_reply_task)
-                await db.commit()
+
+    # Autonomous auto-reply — skipped for agent-authored messages so two agents
+    # can never ping-pong replies at each other forever.
+    if not is_agent:
+        await _maybe_queue_auto_reply(db, job_id, message)
 
     return message
+
+
+async def _maybe_queue_auto_reply(db: AsyncSession, job_id: UUID, message: Message) -> None:
+    """Queue an autonomous reply for the recipient, honouring their policy.
+
+    Previously this read the autonomy level inline, spawned a `pending` task
+    whose text was re-parsed as NLP, and had no policy gate or rate limit. It
+    also fired for messages the agent itself had just sent, which is how an
+    agent could end up talking to another agent indefinitely.
+    """
+    from ..services.agent_policy import (
+        AUTONOMY_MARKER,
+        resolve_policy,
+        within_guardrails,
+    )
+
+    job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
+    if not job:
+        return
+
+    receiver_id = job.provider_id if job.client_id == message.sender_id else job.client_id
+    if not receiver_id:
+        return
+
+    receiver = (
+        await db.execute(select(User).where(User.id == receiver_id))
+    ).scalar_one_or_none()
+    if not receiver:
+        return
+
+    policy = resolve_policy(receiver.ai_settings)
+    if not policy.can_auto_reply:
+        return
+    if not await within_guardrails(
+        db, receiver.id, feature="auto_reply", cap=policy.daily_action_cap
+    ):
+        return
+
+    # Exactly one autonomous reply per incoming message, no matter how many
+    # times this fires (retries, duplicate deliveries, double sends).
+    already_queued = (await db.execute(
+        select(AgentTask)
+        .where(
+            AgentTask.user_id == receiver.id,
+            AgentTask.params["message_id"].astext == str(message.id),
+        )
+        .limit(1)
+    )).scalar_one_or_none()
+    if already_queued:
+        return
+
+    sender = (
+        await db.execute(select(User).where(User.id == message.sender_id))
+    ).scalar_one_or_none()
+
+    # Structured params: the handler no longer has to re-parse prose to find out
+    # which conversation it is replying into.
+    db.add(AgentTask(
+        user_id=receiver.id,
+        command_text=f"Auto-reply about “{job.title}”",
+        task_type="auto_reply",
+        params={
+            "job_id": str(job_id),
+            "message_id": str(message.id),
+            "incoming": (message.content or "")[:2000],
+            "sender_name": sender.display_name if sender else None,
+            "job_title": job.title,
+            AUTONOMY_MARKER: "auto_reply",
+        },
+        status="queued",
+    ))
+    await db.commit()
+    logger.info("[agent] queued auto-reply user=%s job=%s", receiver.id, job_id)
 
 async def delete_message(db: AsyncSession, message: Message) -> None:
     await db.delete(message)

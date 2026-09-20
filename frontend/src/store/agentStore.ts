@@ -29,7 +29,7 @@ export interface AgentTask {
   id: string
   user_id: string
   command_text: string
-  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'generic' | 'pending'
+  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'auto_reply' | 'apply_job' | 'generic' | 'pending'
   params: Record<string, unknown> | null
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_reply'
   result: Record<string, unknown> | null
@@ -105,6 +105,9 @@ interface AgentState {
     groq_model: string | null
     agent_enabled: boolean
     nlp_engine: 'groq' | 'rule-based'
+    /** The server's copy of this user's agent settings (authoritative). */
+    ai_settings?: Record<string, unknown>
+    autonomy_level?: string
   } | null
 
   // User AI settings (persisted in localStorage)
@@ -283,6 +286,29 @@ export const useAgentStore = create<AgentState>()(
         try {
           const { data } = await api.get('/ai/settings')
           set({ engineInfo: data })
+
+          // Hydrate from the server, which is authoritative. The store used to
+          // persist settings to localStorage and push them up, but never read
+          // them back — so a new browser showed "off" while the backend was
+          // enforcing something completely different.
+          const server = (data?.ai_settings ?? null) as Record<string, unknown> | null
+          if (server && typeof server === 'object') {
+            const merged: Partial<AISettings> = {}
+            if (typeof server.autonomyLevel === 'string') {
+              merged.autonomyLevel = server.autonomyLevel as AISettings['autonomyLevel']
+            }
+            if (typeof server.voiceEnabled === 'boolean') {
+              merged.voiceEnabled = server.voiceEnabled
+            }
+            if (typeof server.voiceLanguage === 'string') {
+              merged.voiceLanguage = server.voiceLanguage
+            }
+            // Only adopt keys we recognise, so ai_settings.call / .memory don't
+            // leak into the persisted client settings.
+            if (Object.keys(merged).length > 0) {
+              set((s) => ({ aiSettings: { ...s.aiSettings, ...merged } }))
+            }
+          }
         } catch {
           // Backend might not have AI settings endpoint yet
         }
@@ -290,9 +316,11 @@ export const useAgentStore = create<AgentState>()(
 
       updateAISetting: (key, value) => {
         set((s) => {
-          const newSettings = { ...s.aiSettings, [key]: value };
-          // Sync with backend async
-          api.patch('/users/me', { ai_settings: newSettings }).catch(err => {
+          const newSettings = { ...s.aiSettings, [key]: value }
+          // Send ONLY the changed key. The backend merges ai_settings, so this
+          // can never clobber sibling keys such as `call` or `memory` even if
+          // the merge is ever removed.
+          api.patch('/users/me', { ai_settings: { [key]: value } }).catch(err => {
             console.error('[agentStore] Failed to sync AI settings with backend:', err)
           })
           return { aiSettings: newSettings }

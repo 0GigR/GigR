@@ -77,7 +77,8 @@ Rules:
 - "find_job" = user is a freelancer looking for open jobs to apply to
 - "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
 - Numbers: convert "5k" → 5000, "10k" → 10000, "₦5,000" → 5000, "five thousand" → 5000
-- If unclear, default to "search" with whatever query you can extract
+- If the intent is unclear, use "generic" — NOT "search", which is not a
+  supported task type and silently degrades to a chat reply
 - Return ONLY the JSON, no markdown, no explanation"""
 
 
@@ -845,7 +846,11 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
         desc = f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"
         return {"title": title, "description": desc}
 
-    if not settings.GROQ_API_KEY:
+    # Gate on the full key list, not just the single GROQ_API_KEY, and route
+    # through the fallback helper so multi-key rotation applies here too. This
+    # used to bypass rotation entirely, so a deployment configured with only
+    # GROQ_API_KEYS silently fell back to dumb title-casing.
+    if not settings.groq_keys_list:
         return _fallback()
 
     system = (
@@ -872,9 +877,10 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
+            resp = await _call_groq_with_fallback(
+                client,
                 "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"},
+                headers={"Content-Type": "application/json"},
                 json={
                     "model": settings.GROQ_MODEL,
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_prompt}],
@@ -883,7 +889,6 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
                     "response_format": {"type": "json_object"},
                 },
             )
-            resp.raise_for_status()
             content = resp.json()["choices"][0]["message"]["content"].strip()
             content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
             parsed = json.loads(content)
@@ -925,7 +930,7 @@ WAIT_FOR_REPLY_TIME = 10  # seconds to wait for a user's price before the AI pic
 async def _suggest_price(raw_title: str, kind: str) -> float:
     """Ask Groq for a fair price (naira); fall back to a sensible default."""
     default = 5000.0
-    if not settings.GROQ_API_KEY:
+    if not settings.groq_keys_list:
         return default
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
@@ -1236,38 +1241,139 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
 
 
 async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
-    """Handle AI payments using either autonomous placeholder logic or interactive dialog."""
-    params = task.params or {}
-    
-    # 1. Check if AI Autonomous Payment is enabled via env var
-    if settings.AI_AUTONOMOUS_PAYMENT_ENABLED:
-        await _log(db, task.id, "action", "Initiating autonomous payment via Solana smart contract...")
-        # In a real production system, this would call get_platform_payer() and submit a transaction.
-        await _log(db, task.id, "success", "Autonomous payment completed successfully.")
-        return {"payment_method": "autonomous", "status": "success"}
-    
-    # 2. Fallback to interactive dialog
-    await _log(db, task.id, "action", "Preparing payment for approval...")
-    
-    dialog_payload = {
-        "type": "approve_payment",
-        "title": "Payment Request",
-    }
-    
-    await _log(db, task.id, "warning", 
-               "I cannot securely sign Solana transactions on your behalf. "
-               "I have prepared the payment. Please approve it to continue.", 
-               data={"action_payload": dialog_payload})
-               
-    return {"payment_method": "manual_dialog_requested", "status": "pending_user_approval"}
+    """Payment is deliberately NOT autonomous.
 
-async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
-    """Handle AI auto-replies to incoming messages."""
-    await _log(db, task.id, "action", "Analyzing incoming message...")
-    
-    reply_content = "Hi! I am the AI assistant. My human is currently away but they have received your message and will get back to you soon."
-    
-    if settings.GROQ_API_KEY:
+    This handler used to log "Autonomous payment completed successfully" without
+    moving a single lamport, and the dialog variant confirmed "Payment approved
+    (simulated)". Anyone reading their own activity feed would believe money had
+    actually moved. Funding escrow stays a deliberate human action: the agent
+    finds the job, explains exactly what is needed, and hands over a link. It
+    never claims a success it cannot prove.
+    """
+    from ....models.job import Job
+
+    params = task.params or {}
+    job = None
+
+    job_id_raw = params.get("job_id")
+    if job_id_raw:
+        try:
+            job = (await db.execute(
+                select(Job).where(
+                    and_(
+                        Job.id == uuid.UUID(str(job_id_raw)),
+                        or_(Job.client_id == task.user_id, Job.provider_id == task.user_id),
+                    )
+                )
+            )).scalar_one_or_none()
+        except (ValueError, AttributeError, TypeError):
+            job = None
+
+    if job is None:
+        # Best effort: their most recent job that is still waiting on funding.
+        job = (await db.execute(
+            select(Job)
+            .where(
+                or_(Job.client_id == task.user_id, Job.provider_id == task.user_id),
+                Job.status.in_(["assigned", "requested"]),
+            )
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+
+    if job is None:
+        await _log(db, task.id, "info",
+                   "I couldn't find a job waiting on payment. Open "
+                   "[My Jobs](/dashboard/jobs) and tell me which one.")
+        return {"status": "no_job_found", "payment_moved": False}
+
+    if str(job.client_id) != str(task.user_id):
+        await _log(db, task.id, "info",
+                   f"Funding “{job.title}” is the client's side of the deal — "
+                   f"you'll be paid automatically when they release escrow.")
+        return {"status": "not_payer", "payment_moved": False}
+
+    await _log(
+        db, task.id, "warning",
+        f"I can't move money for you — funding escrow is the one thing I won't "
+        f"do without your say-so. “{job.title}” (₦{float(job.price):,.0f}) is "
+        f"ready to fund. [Open the job to fund it](/dashboard/jobs?jobId={job.id})",
+        data={"action_payload": {
+            "type": "approve_payment",
+            "job_id": str(job.id),
+            "options": [
+                {"label": "Open job to fund", "action": f"open_job:{job.id}"},
+                {"label": "Cancel", "action": "cancel"},
+            ],
+        }},
+    )
+    return {
+        "status": "pending_user_approval",
+        "payment_moved": False,
+        "job_id": str(job.id),
+    }
+
+
+async def _resolve_conversation(db: AsyncSession, task: AgentTask):
+    """The job a reply task belongs to: explicit id, else the newest live one."""
+    from ....models.job import Job
+
+    params = task.params or {}
+    job_id_raw = params.get("job_id")
+    if job_id_raw:
+        try:
+            job = (await db.execute(
+                select(Job).where(
+                    and_(
+                        Job.id == uuid.UUID(str(job_id_raw)),
+                        or_(Job.client_id == task.user_id, Job.provider_id == task.user_id),
+                    )
+                )
+            )).scalar_one_or_none()
+            if job:
+                return job
+        except (ValueError, AttributeError, TypeError):
+            pass
+
+    return (await db.execute(
+        select(Job)
+        .where(
+            or_(Job.client_id == task.user_id, Job.provider_id == task.user_id),
+            Job.status.notin_(["completed", "cancelled"]),
+        )
+        .order_by(Job.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+
+async def _handle_auto_reply(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Draft AND send a reply into the right conversation.
+
+    The previous version logged "Drafted and sent auto-reply" but never called
+    create_message, so nothing was ever sent — the whole "low autonomy" level
+    was a no-op that claimed success.
+    """
+    params = task.params or {}
+    incoming = params.get("incoming") or task.command_text
+    sender_name = params.get("sender_name") or "them"
+
+    job = await _resolve_conversation(db, task)
+    if not job:
+        await _log(db, task.id, "info",
+                   "I couldn't find a live conversation to reply in.")
+        return {"status": "no_conversation", "sent": False}
+
+    me = (await db.execute(select(User).where(User.id == task.user_id))).scalar_one_or_none()
+    my_name = (me.display_name if me else None) or "your contact"
+
+    await _log(db, task.id, "action", f"Drafting a reply to {sender_name}...")
+
+    reply_content = (
+        f"Hi! This is {my_name}'s Gigr assistant. They've seen your message about "
+        f"“{job.title}” and will get back to you shortly."
+    )
+
+    if settings.groq_keys_list:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await _call_groq_with_fallback(
@@ -1277,20 +1383,161 @@ async def _handle_reply_message(task: AgentTask, db: AsyncSession) -> Dict[str, 
                     json={
                         "model": settings.GROQ_MODEL,
                         "messages": [
-                            {"role": "system", "content": "You are a helpful AI assistant for a user on Gigr, a freelance marketplace. The user is away. Draft a polite auto-reply to the following message. Keep it to 1-2 sentences."},
-                            {"role": "user", "content": task.command_text},
+                            {"role": "system", "content": (
+                                "You are the assistant replying on behalf of a Gigr user "
+                                "(a Nigerian services marketplace) who is away. Write a warm, "
+                                "professional reply of 1-2 short sentences, specific to what "
+                                "was asked. Never invent prices or commitments, and never "
+                                "claim a payment or booking is done."
+                            )},
+                            {"role": "user", "content": (
+                                f"Conversation about “{job.title}”.\n"
+                                f"{sender_name} wrote: {incoming}"
+                            )},
                         ],
-                        "temperature": 0.5,
+                        "temperature": 0.4,
                         "max_tokens": 150,
                     },
                 )
                 reply_content = response.json()["choices"][0]["message"]["content"].strip()
         except Exception as exc:
-            await _log(db, task.id, "warning", f"Failed to generate dynamic AI reply ({exc}), using fallback.")
-            
-    await _log(db, task.id, "success", f"Drafted and sent auto-reply: '{reply_content}'")
-    
-    return {"status": "success", "reply": reply_content}
+            await _log(db, task.id, "warning",
+                       f"Couldn't reach the language model ({exc}); sent a short holding reply.")
+
+    # Actually deliver it. is_agent=True stops the other party's agent from
+    # auto-replying to this reply, so two agents can't ping-pong forever.
+    try:
+        sent = await create_message(db, job.id, task.user_id, reply_content, is_agent=True)
+        try:
+            await _ws_manager.broadcast_new_message(sent)
+        except Exception:
+            pass
+    except Exception as exc:
+        await _log(db, task.id, "error", f"Failed to send the reply: {exc}")
+        return {"status": "error", "sent": False}
+
+    await _log(db, task.id, "success", f"Replied to {sender_name}: “{reply_content}”")
+    return {"status": "success", "sent": True, "reply": reply_content, "job_id": str(job.id)}
+
+
+async def _handle_apply_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Apply to a job on the user's behalf (autonomy level high and above).
+
+    The proactive path used to queue `task_type="generic"` with the text
+    "select_job:<id>". Because NLP parsing only runs for `pending` tasks, that
+    fell through to the chat fallback and answered conversationally — it never
+    applied to anything.
+    """
+    from ....models.job import Job
+    from ....crud.application import (
+        create_application,
+        get_application_by_applicant_and_job,
+    )
+    from ....crud.notification import create_notification
+    from ....schemas.application import ApplicationCreate
+    from ....services.agent_policy import AUTONOMY_MARKER, resolve_policy
+
+    params = task.params or {}
+    job_id_raw = params.get("job_id") or params.get("query")
+    if not job_id_raw:
+        await _log(db, task.id, "error", "No job was specified to apply to.")
+        return {"applied": False, "error": "missing job_id"}
+
+    try:
+        job_id = uuid.UUID(str(job_id_raw))
+    except (ValueError, AttributeError, TypeError):
+        await _log(db, task.id, "error", "That job id was malformed.")
+        return {"applied": False, "error": "bad job_id"}
+
+    job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
+    if not job:
+        await _log(db, task.id, "warning", "That job is no longer available.")
+        return {"applied": False, "error": "job not found"}
+    if str(job.client_id) == str(task.user_id):
+        await _log(db, task.id, "info", "That's your own job — nothing to apply to.")
+        return {"applied": False, "error": "own job"}
+    if job.status != "open":
+        await _log(db, task.id, "info",
+                   f"“{job.title}” is no longer open ({job.status}).")
+        return {"applied": False, "error": f"status={job.status}"}
+
+    me = (await db.execute(select(User).where(User.id == task.user_id))).scalar_one_or_none()
+    policy = resolve_policy(me.ai_settings if me else None)
+
+    # An autonomous application must still be permitted by the current level.
+    if params.get(AUTONOMY_MARKER) and not policy.can_auto_apply:
+        await _log(db, task.id, "info",
+                   f"Your autonomy level ({policy.level}) doesn't cover auto-applying, "
+                   f"so I left “{job.title}” for you to review. [Open it]"
+                   f"(/dashboard/jobs?jobId={job.id})")
+        return {"applied": False, "error": "autonomy"}
+
+    existing = await get_application_by_applicant_and_job(db, task.user_id, job_id)
+    if existing:
+        await _log(db, task.id, "info", f"You've already applied to “{job.title}”.")
+        return {"applied": False, "error": "already applied"}
+
+    await _log(db, task.id, "action", f"Applying to “{job.title}”...")
+
+    message = (
+        f"Hi! I'm interested in “{job.title}”. I've read the brief and I'm "
+        f"available to start — happy to discuss the details. "
+        f"(Applied by my Gigr assistant.)"
+    )
+    if settings.groq_keys_list:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await _call_groq_with_fallback(
+                    client,
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "model": settings.GROQ_MODEL,
+                        "messages": [
+                            {"role": "system", "content": (
+                                "Write a short, credible 2-sentence application message for a "
+                                "Nigerian services marketplace. Invent no experience and "
+                                "promise no price. End by noting a Gigr assistant applied."
+                            )},
+                            {"role": "user", "content": (
+                                f"Job: {job.title}\nDescription: {job.description}\n"
+                                f"Budget: ₦{float(job.price):,.0f}"
+                            )},
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": 160,
+                    },
+                )
+                message = resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            logger.warning("[agent] apply message generation failed: %s", exc)
+
+    try:
+        await create_application(
+            db, task.user_id, ApplicationCreate(job_id=job.id, message=message)
+        )
+    except Exception as exc:
+        await _log(db, task.id, "error", f"Couldn't apply to “{job.title}”: {exc}")
+        return {"applied": False, "error": str(exc)}
+
+    try:
+        await create_notification(
+            db,
+            user_id=job.client_id,
+            title="New applicant",
+            message=f"{(me.display_name if me else 'Someone')} applied to “{job.title}”.",
+            link=f"/dashboard/jobs?jobId={job.id}",
+            type="application",
+        )
+        await db.commit()
+    except Exception as exc:
+        logger.warning("[agent] apply notification failed: %s", exc)
+
+    await _log(db, task.id, "success",
+               f"Applied to “{job.title}” for ₦{float(job.price):,.0f}. "
+               f"I'll watch for a response. [View in Jobs](/dashboard/jobs)")
+    return {"applied": True, "job_id": str(job.id), "title": job.title}
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 3: Agent loop — background asyncio coroutine
@@ -1465,8 +1712,12 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_negotiate(task, db)
                 elif task.task_type == "pay":
                     task.result = await _handle_payment(task, db)
-                elif task.task_type == "reply_message":
-                    task.result = await _handle_reply_message(task, db)
+                elif task.task_type in ("auto_reply", "reply_message"):
+                    # `auto_reply` is scheduled by the autonomy policy;
+                    # `reply_message` comes from a spoken "reply to this message".
+                    task.result = await _handle_auto_reply(task, db)
+                elif task.task_type == "apply_job":
+                    task.result = await _handle_apply_job(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
                     page_routes = {
@@ -1482,7 +1733,7 @@ async def _execute_task(task_id: str):
                 else:  # generic
                     # Try to get a real conversational response from Groq
                     groq_reply = None
-                    if settings.GROQ_API_KEY:
+                    if settings.groq_keys_list:
                         try:
                             async with httpx.AsyncClient(timeout=10.0) as client:
                                 resp = await _call_groq_with_fallback(
@@ -1621,8 +1872,14 @@ async def _check_negotiation_reply(task_id: str):
 
         # There's a reply — call Groq to analyse it
         provider_reply = new_msgs[-1].content
-        if not settings.GROQ_API_KEY or round_num >= 3:
-            print("No GROK KEY FOUND (or max rounds reached?", round_num, ">=3)", settings.GROQ_API_KEY)
+        if not settings.groq_keys_list or round_num >= 3:
+            # Max rounds reached, or no LLM available — log the outcome and close
+            # the negotiation instead of leaving it dangling. (This used to be a
+            # stray debug `print`, which spammy-logged in production.)
+            if round_num >= 3:
+                logger.info("[agent] negotiation hit the 3-round cap for task %s", task.id)
+            else:
+                logger.info("[agent] negotiation closed: no Groq keys configured")
             # Max rounds reached or no Groq — log outcome and close
             async with async_session() as db2:
                 t = (await db2.execute(select(AgentTask).where(AgentTask.id == task.id))).scalar_one_or_none()
@@ -1975,22 +2232,37 @@ async def respond_to_dialog(
             last_log_with_dialog = log
             break
 
-    if not last_log_with_dialog:
+    action = response.action
+
+    # Actions that name their own target don't need a pending payload. This is
+    # what made the "Apply" button on job cards fail with 400 "No pending
+    # dialog": find_job renders Apply buttons straight from its result cards,
+    # but this endpoint demanded an action_payload the handler never wrote.
+    self_describing = action.startswith(("select_service:", "select_job:", "open_job:"))
+    if not last_log_with_dialog and not self_describing:
         raise HTTPException(status_code=400, detail="No pending dialog for this task")
 
-    payload = last_log_with_dialog.data["action_payload"]
+    payload = (last_log_with_dialog.data.get("action_payload") if last_log_with_dialog else None) or {}
 
-    # Clear the action_payload so the dialog goes away on next poll
-    new_data = dict(last_log_with_dialog.data)
-    new_data.pop("action_payload", None)
-    last_log_with_dialog.data = new_data
-
-    action = response.action
+    if last_log_with_dialog is not None:
+        # Clear the action_payload so the dialog goes away on next poll
+        new_data = dict(last_log_with_dialog.data)
+        new_data.pop("action_payload", None)
+        last_log_with_dialog.data = new_data
 
     if action == "cancel":
         await _log(db, task.id, "info", "Okay, action cancelled.")
         await db.commit()
         return {"status": "cancelled"}
+
+    # ── Open a job in the UI (used by the honest payment prompt) ─────────────
+    if action.startswith("open_job:"):
+        job_ref = action.split(":", 1)[1]
+        route = f"/dashboard/jobs?jobId={job_ref}"
+        await _log(db, task.id, "info", "Opening the job for you...",
+                   data={"navigate_to": route})
+        await db.commit()
+        return {"status": "ok", "navigate_to": route}
 
     # ── Select a specific service ────────────────────────────────────────────
     if action.startswith("select_service:"):
@@ -2114,9 +2386,14 @@ async def respond_to_dialog(
         return {"status": "ok", "new_task_id": str(new_task.id)}
 
     if payload.get("type") == "approve_payment" and action == "confirm":
-        await _log(db, task.id, "success", "Payment approved (simulated).")
+        # Never claim money moved. The agent prepares, the human transfers.
+        job_ref = payload.get("job_id")
+        link = f"/dashboard/jobs?jobId={job_ref}" if job_ref else "/dashboard/jobs"
+        await _log(db, task.id, "info",
+                   f"Approved — but the transfer itself is yours to make. "
+                   f"[Open the job and tap Fund Escrow]({link}).")
         await db.commit()
-        return {"status": "ok"}
+        return {"status": "ok", "payment_moved": False}
 
     await db.commit()
     return {"status": "ok"}
@@ -2143,11 +2420,21 @@ async def recent_logs(
 async def get_ai_settings(
     current_user: User = Depends(get_current_user),
 ):
-    """Return the current AI engine status and user-facing config info."""
+    """AI engine status + the caller's own agent settings.
+
+    Returning ``ai_settings`` here is what lets the client hydrate from the
+    server. The frontend used to persist settings to localStorage and push them
+    up, but never read them back — so a new browser showed "off" while the
+    backend enforced whatever was actually stored.
+    """
+    groq_on = bool(settings.groq_keys_list)
+    ai_settings = dict(current_user.ai_settings or {})
     return {
-        "groq_enabled": bool(settings.GROQ_API_KEY),
-        "groq_model": settings.GROQ_MODEL if settings.GROQ_API_KEY else None,
+        "groq_enabled": groq_on,
+        "groq_model": settings.GROQ_MODEL if groq_on else None,
         "agent_enabled": settings.AI_AGENT_ENABLED,
         "poll_interval_seconds": settings.AI_AGENT_POLL_INTERVAL_SECONDS,
-        "nlp_engine": "groq" if settings.GROQ_API_KEY else "rule-based",
+        "nlp_engine": "groq" if groq_on else "rule-based",
+        "ai_settings": ai_settings,
+        "autonomy_level": ai_settings.get("autonomyLevel", "off"),
     }
