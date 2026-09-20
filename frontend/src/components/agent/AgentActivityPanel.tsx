@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
@@ -297,6 +297,17 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
       : log.level === 'success'
         ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900'
         : 'bg-gray-100 dark:bg-gray-800'
+
+  // A tool call is the agent showing its work, not talking to you, so it reads as
+  // a compact trace line instead of a chat bubble.
+  if (data?.tool) {
+    return (
+      <div className="flex items-center gap-2 pl-9 text-xs text-gray-500 dark:text-gray-400">
+        <Wrench className="w-3 h-3 shrink-0 text-indigo-500" />
+        <span className="truncate">{log.message}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-start gap-2.5">

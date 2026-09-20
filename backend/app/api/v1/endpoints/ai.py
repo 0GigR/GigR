@@ -65,6 +65,7 @@ Extract the user's intent from their message and return ONLY a JSON object with 
     "min_price": 5000,          // number in naira
     "title": "title",           // for post_job or post_service
     "price": 5000,              // number in naira
+    "radius_km": 10,            // distance in km, only if the user says one
     "job_id": "optional id",    // for pay
     "page": "jobs|services|messages|activity|disputes|profile|home"  // for navigate
   },
@@ -77,6 +78,8 @@ Rules:
 - "find_service" = user wants to look for someone to hire
 - "find_job" = user is a freelancer looking for open jobs to apply to
 - "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
+- "within 20km" / "in 10 km" → params.radius_km = 20 / 10. Only set it when the
+  user actually mentions a distance.
 - Numbers: convert "5k" → 5000, "10k" → 10000, "₦5,000" → 5000, "five thousand" → 5000
 - If the intent is unclear, use "generic" — NOT "search", which is not a
   supported task type and silently degrades to a chat reply
@@ -174,6 +177,22 @@ def _extract_price(text: str) -> Optional[float]:
                     return val * 1000
     return None
 
+def _extract_radius_km(text: str) -> Optional[float]:
+    """Pull an explicit distance out of a command ("within 20km", "in 5 km")."""
+    match = re.search(
+        r"(?:within|inside|in|under|about|around)\s+(\d+(?:\.\d+)?)\s*(?:km|kms|kilomet(?:er|re)s?)",
+        text or "",
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    try:
+        value = float(match.group(1))
+    except ValueError:
+        return None
+    return value if 0 < value <= 500 else None
+
+
 def _extract_search_query(text: str) -> Optional[str]:
     """Extract the core search intent from a command string."""
     patterns = [
@@ -239,7 +258,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         query = _extract_search_query(text_lower)
         return {
             "task_type": "find_job",
-            "params": {"query": query or text, "min_price": price},
+            "params": {"query": query or text, "min_price": price, "radius_km": _extract_radius_km(text)},
             "response": f"Searching for open jobs matching '{query or text}'" + (f" above ₦{price:,.0f}" if price else ""),
         }
 
@@ -289,7 +308,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         query = _extract_search_query(text_lower)
         return {
             "task_type": "find_service",
-            "params": {"query": query or text, "max_price": price},
+            "params": {"query": query or text, "max_price": price, "radius_km": _extract_radius_km(text)},
             "response": f"Searching for services matching '{query or text}'" + (f" under ₦{price:,.0f}" if price else ""),
         }
 
@@ -466,19 +485,28 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
     user_lng = getattr(searcher, "location_lng", None) if searcher else None
     location_note = " near you" if user_lat else ""
 
-    await _log(db, task.id, "action", f"Searching for services: '{query}'{location_note}" + (f" (max ₦{max_price:,.0f})" if max_price else ""))
+    await _log(db, task.id, "action",
+               f"Searching for services: '{query}'{location_note} (within {float(params.get('radius_km') or 10):g} km)"
+               + (f" (max ₦{max_price:,.0f})" if max_price else ""))
 
     services = await search_services_by_text(db, query, limit=50)
     services = [s for s in services if s.provider_id != task.user_id]
 
-    # Proximity filter: prefer results within 20 km, fall back to all if too few
+    # Respect the distance the user asked for. This used to silently fall back to
+    # every match in the country whenever fewer than three were nearby, which made
+    # "near you" mean nothing and hid why a result appeared.
+    radius_km = params.get("radius_km") or 10.0
+    distances: Dict[str, float] = {}
     if user_lat and user_lng:
-        nearby = [
-            s for s in services
-            if s.latitude and s.longitude
-            and _haversine_km(user_lat, user_lng, float(s.latitude), float(s.longitude)) <= 20
-        ]
-        services = nearby if len(nearby) >= 3 else services
+        within = []
+        for service in services:
+            if service.latitude is None or service.longitude is None:
+                continue
+            km = _haversine_km(user_lat, user_lng, float(service.latitude), float(service.longitude))
+            if km <= radius_km:
+                within.append(service)
+                distances[str(service.id)] = round(km, 1)
+        services = within
 
     if max_price:
         filtered = [s for s in services if float(s.price) <= max_price]
@@ -487,7 +515,13 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
 
     if filtered:
         service_cards = [
-            {"id": str(s.id), "title": s.title, "price": float(s.price), "description": s.description or ""}
+            {
+                "id": str(s.id),
+                "title": s.title,
+                "price": float(s.price),
+                "description": s.description or "",
+                "distance_km": distances.get(str(s.id)),
+            }
             for s in filtered[:5]
         ]
         dialog_options = [
@@ -552,16 +586,16 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
 
     # Real proximity filter: compute Haversine distance from the searcher to each
     # job that has a location. Keep those within 25 km (fall back to all if <3).
+    job_radius_km = params.get("radius_km") or 15.0
     if user_lat and user_lng:
         with_distance = []
         for j in jobs:
             jlat, jlng = j.latitude, j.longitude
             if jlat is not None and jlng is not None:
                 d = _haversine_km(user_lat, user_lng, float(jlat), float(jlng))
-                with_distance.append((d, j))
-        nearby = sorted([(d, j) for d, j in with_distance if d <= 25], key=lambda x: x[0])
-        if len(nearby) >= 3:
-            jobs = [j for _, j in nearby]
+                if d <= job_radius_km:
+                    with_distance.append((d, j))
+        jobs = [j for _, j in sorted(with_distance, key=lambda x: x[0])]
         # else: keep the full text-matched list (location_note already reflects intent)
 
     if min_price:
