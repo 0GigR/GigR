@@ -58,6 +58,21 @@ async function main() {
     if (msg.type() === 'error') problems.push({ kind: 'console', message: msg.text().slice(0, 400) })
   })
 
+
+  /**
+   * First-run overlays sit on top of everything and swallow clicks. The demo
+   * account has never dismissed onboarding, so it always appears once.
+   */
+  const dismissOverlays = async () => {
+    for (const label of [/^skip$/i, /not now/i, /^maybe later$/i, /^got it$/i, /^close$/i]) {
+      const btn = page.getByRole('button', { name: label }).first()
+      if (await btn.count().catch(() => 0)) {
+        await btn.click({ timeout: 3000 }).catch(() => {})
+        await sleep(700)
+      }
+    }
+  }
+
   const step = async (name, fn) => {
     process.stdout.write(`  - ${name}\n`)
     try {
@@ -90,11 +105,14 @@ async function main() {
     await page.waitForURL(/dashboard/, { timeout: 30000 })
     await sleep(3000)
     console.log('    signed in as', EMAIL)
+    await dismissOverlays()
   })
 
   await step('dashboard home', async () => {
     await page.goto(`${BASE}/dashboard`, { waitUntil: 'domcontentloaded' })
-    await sleep(2000)
+    await sleep(2500)
+    await dismissOverlays()
+    await sleep(800)
     await page.mouse.wheel(0, 400)
     await sleep(800)
     await page.mouse.wheel(0, -400)
