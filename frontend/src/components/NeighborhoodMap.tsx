@@ -135,15 +135,6 @@ function MapUpdater({ center, focus }: { center: [number, number]; focus: [numbe
     map.flyTo(focus, Math.max(map.getZoom(), 15), { duration: 0.7 })
   }, [map, focus])
 
-  // Cancel any in-flight animation when the map unmounts (switching tabs, or
-  // navigating away). A pending flyTo resolving against a disposed map is a
-  // classic way to trip Leaflet's internals during teardown.
-  useEffect(() => {
-    return () => {
-      map.stop()
-    }
-  }, [map])
-
   return null
 }
 
@@ -579,7 +570,7 @@ export function NeighborhoodMap({
         <button
           type="button"
           onClick={() => setMapActive(true)}
-          className="absolute inset-0 z-[900] flex items-end justify-center pb-24"
+          className="absolute inset-0 z-[640] flex items-end justify-center pb-24"
           aria-label="Tap to explore the map"
         >
           <span className="rounded-full bg-black/80 text-white text-xs font-semibold px-4 py-2 shadow-lg">
@@ -589,7 +580,7 @@ export function NeighborhoodMap({
       )}
 
       {/* Controls overlay */}
-      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-2 max-w-[calc(100%-1.5rem)]">
+      <div className="absolute top-3 left-3 z-[650] flex flex-col gap-1.5 max-w-[calc(100%-1.5rem)]">
         <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
             <Navigation className="w-3 h-3" /> Radius
