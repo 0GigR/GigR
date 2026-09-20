@@ -43,6 +43,9 @@ class ServiceOut(BaseModel):
     longitude: float
     radius_km: Decimal
     image_url: Optional[str] = None
+    # Set only by the geo-aware nearby endpoint: spherical distance from the
+    # caller in kilometres. None for text/nearby-less responses.
+    distance_km: Optional[float] = None
 
     class Config:
         from_attributes = True

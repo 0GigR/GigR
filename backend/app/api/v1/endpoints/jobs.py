@@ -10,6 +10,7 @@ from ....crud.job import (
     update_job_status,
     cancel_job_offchain,
     get_jobs_filtered,
+    get_open_jobs_nearby,
     transition_job_status,
 )
 from ....crud.notification import create_notification
@@ -176,6 +177,13 @@ async def request_service(
     if existing_job:
         return existing_job
 
+    # Carry the listing's location onto the job so requested jobs appear on the
+    # map and in radius search. These jobs used to be created location-less and
+    # were therefore invisible to every geo feature.
+    request_location = None
+    if service.latitude is not None and service.longitude is not None:
+        request_location = f"SRID=4326;POINT({service.longitude} {service.latitude})"
+
     job = Job(
         client_id=current_user.id,
         provider_id=service.provider_id,
@@ -185,6 +193,7 @@ async def request_service(
         status="requested",
         service_listing_id=service.id,
         category_id=service.category_id,
+        location=request_location,
         contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
     )
     db.add(job)
@@ -347,6 +356,40 @@ async def delete_my_job(
     await db.delete(job)
     await db.commit()
     return None
+
+
+@router.get("/search/nearby", response_model=list[JobOut])
+async def search_nearby_jobs(
+    lat: float = Query(..., ge=-90, le=90, description="Latitude"),
+    lon: float = Query(..., ge=-180, le=180, description="Longitude"),
+    radius: float = Query(10.0, gt=0, le=500, description="Radius in kilometres"),
+    category_id: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Open jobs within a radius of a point, nearest first.
+
+    The job-side twin of ``/services/search/nearby``. ``radius`` is in
+    KILOMETRES (the map used to send 100000 here, which disabled filtering
+    entirely). The caller's own jobs are excluded — they belong under "My Jobs".
+    """
+    try:
+        cat = uuid.UUID(category_id) if category_id else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid category_id")
+
+    return await get_open_jobs_nearby(
+        db,
+        latitude=lat,
+        longitude=lon,
+        radius_km=radius,
+        exclude_user_id=current_user.id,
+        category_id=cat,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/", response_model=list[JobOut])

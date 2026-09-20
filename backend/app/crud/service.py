@@ -59,7 +59,11 @@ async def get_services_nearby(
             ServiceListing.location,
             func.ST_GeogFromText(point),
             radius_km * 1000
-        )
+        ),
+        # Never surface paused listings on the map or in "nearby" results.
+        # `isnot(False)` rather than `== True` so rows written before the column
+        # existed (NULL) are treated as active instead of silently vanishing.
+        ServiceListing.is_active.isnot(False),
     )
     query = query.outerjoin(vouch_counts, vouch_counts.c.vouchee_id == ServiceListing.provider_id)
 
@@ -70,6 +74,9 @@ async def get_services_nearby(
     ranked = []
     for svc, dist_m, vouch_count in rows:
         dist_km = (dist_m or 0) / 1000
+        # Expose the true distance (not the vouch-boosted ranking value) so the
+        # UI can show "1.2 km away" honestly.
+        svc.distance_km = round(dist_km, 2)
         effective_km = dist_km + (SERVICE_VOUCH_DISTANCE_BOOST_KM if (vouch_count or 0) == 0 else 0)
         created = svc.created_at.replace(tzinfo=timezone.utc) if svc.created_at and svc.created_at.tzinfo is None else svc.created_at
         ranked.append((effective_km, created, svc))
@@ -147,7 +154,9 @@ async def search_services_by_text(
 
     # Pull a wider candidate set, then rank + trim in Python
     result = await db.execute(
-        select(ServiceListing).where(or_(*conditions)).limit(max(limit * 3, 30))
+        select(ServiceListing)
+        .where(or_(*conditions), ServiceListing.is_active.isnot(False))
+        .limit(max(limit * 3, 30))
     )
     services = list(result.scalars().all())
 

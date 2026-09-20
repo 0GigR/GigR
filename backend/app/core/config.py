@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -22,9 +23,42 @@ class Settings(BaseSettings):
     BREVO_API_KEY: str = Field(..., env="BREVO_API_KEY")
     BREVO_SENDER_EMAIL: str = Field(..., env="BREVO_SENDER_EMAIL")
 
-    # Stadia Maps
-    STADIA_MAPS_API_KEY: str = Field(..., env="STADIA_MAPS_API_KEY")
-    STADIA_MAPS_BASE_URL: str = "https://tiles.stadiamaps.com"
+    # ── Free OpenStreetMap geo stack — no API keys, no billing ───────────────
+    # Nominatim does forward/reverse geocoding, OSRM does routing/ETA, and the
+    # raster tiles come straight from OSM. Nominatim's usage policy REQUIRES a
+    # descriptive User-Agent that identifies the deployment, so set
+    # GEO_USER_AGENT to something with a contact (email or URL) before launch.
+    NOMINATIM_BASE_URL: str = Field(
+        default="https://nominatim.openstreetmap.org", env="NOMINATIM_BASE_URL"
+    )
+    OSRM_BASE_URL: str = Field(
+        default="https://router.project-osrm.org", env="OSRM_BASE_URL"
+    )
+    # Raster tile template, served to the client so tile URLs are not hardcoded
+    # in six places. `{s}` is the OSM subdomain placeholder.
+    TILE_LIGHT_URL: str = Field(
+        default="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        env="TILE_LIGHT_URL",
+    )
+    GEO_USER_AGENT: str = Field(
+        default="Gigr/1.0 (hyperlocal services marketplace)",
+        env="GEO_USER_AGENT",
+    )
+    GEO_HTTP_TIMEOUT_SECONDS: float = Field(default=8.0, env="GEO_HTTP_TIMEOUT_SECONDS")
+    # Geocoding results are effectively permanent; routing is not (traffic-free
+    # but roads change). Cache both in-process to stay well inside the free
+    # services' rate limits.
+    GEO_GEOCODE_CACHE_TTL_SECONDS: int = Field(default=86400, env="GEO_GEOCODE_CACHE_TTL_SECONDS")
+    GEO_ROUTE_CACHE_TTL_SECONDS: int = Field(default=300, env="GEO_ROUTE_CACHE_TTL_SECONDS")
+
+    # ── Deprecated: Stadia Maps is no longer used ────────────────────────────
+    # The Stadia integration was replaced by the free OSM stack above. These are
+    # accepted-but-ignored purely so a stale .env or hosting environment that
+    # still defines them cannot fail settings validation (pydantic-settings
+    # forbids unknown dotenv keys, which would otherwise crash startup). Delete
+    # once the keys are gone from every environment.
+    STADIA_MAPS_API_KEY: Optional[str] = Field(default=None, env="STADIA_MAPS_API_KEY")
+    STADIA_MAPS_BASE_URL: Optional[str] = Field(default=None, env="STADIA_MAPS_BASE_URL")
 
     # Underdog
     UNDERDOG_API_KEY: str = Field(..., env="UNDERDOG_API_KEY")
