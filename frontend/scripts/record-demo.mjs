@@ -64,6 +64,12 @@ async function main() {
       await fn()
     } catch (err) {
       problems.push({ kind: 'step', message: `${name}: ${err.message}` })
+      // A picture beats guessing at selectors: capture what is actually on
+      // screen at the moment a step gives up.
+      try {
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+        await page.screenshot({ path: path.join(OUT_DIR, `fail-${slug}.png`) })
+      } catch { /* screenshot is best effort */ }
     }
   }
 

@@ -38,6 +38,13 @@ if _is_serverless:
         },
     )
 else:
+    # Supabase's SESSION-mode pooler (port 5432) caps a project at ~15 client
+    # connections; the TRANSACTION pooler (6543) multiplexes and allows far more.
+    # Sizing the pool for the transaction pooler while actually pointed at the
+    # session pooler is what produced "(EMAXCONNSESSION) max clients reached" and
+    # turned every request into a 500. Size the pool to the pooler we are on.
+    _is_transaction_pooler = ":6543" in database_url
+
     engine = create_async_engine(
         database_url,
         echo=False,
@@ -49,8 +56,8 @@ else:
         # multiplexes and allows far more client connections than the 15-cap
         # session-mode pooler — so we can size the pool for real concurrency:
         # agent tasks (up to MAX_CONCURRENT) + web requests + WS auth + heartbeats.
-        pool_size=20,
-        max_overflow=10,
+        pool_size=20 if _is_transaction_pooler else 8,
+        max_overflow=10 if _is_transaction_pooler else 4,
         pool_timeout=30,
         pool_pre_ping=True,
         pool_recycle=1800,

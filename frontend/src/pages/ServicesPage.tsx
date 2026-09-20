@@ -20,7 +20,6 @@ import { Link } from 'react-router-dom'
 import {
   MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench
 } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { MapExplorer } from '@/components/map/MapExplorer'
 import { ImageViewer } from '@/components/ImageViewer'
 import { LocationPicker } from '@/components/LocationPicker'
@@ -689,9 +688,10 @@ export default function ServicesPage() {
       )}
 
       {/* Content based on active tab */}
-      <AnimatePresence mode="wait">
+      {/* No exit animation around the map: Leaflet must unmount cleanly. */}
+      <>
         {activeTab === 'map' ? (
-          <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <div key="map" className="animate-in fade-in duration-200">
             {latitude && longitude ? (
               <MapExplorer
                 latitude={latitude}
@@ -706,16 +706,16 @@ export default function ServicesPage() {
                 <p className="text-gray-500">Enable location to view the neighborhood map.</p>
               </div>
             )}
-          </motion.div>
+          </div>
         ) : searchResults ? (
-          <motion.div key="search" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <div key="search" className="animate-in fade-in duration-200">
             <h2 className="text-lg font-semibold mb-4">Search Results ({processedSearch!.length})</h2>
             <div className="grid gap-4 md:grid-cols-2">
               {processedSearch!.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
             </div>
-          </motion.div>
+          </div>
         ) : activeTab === 'browse' ? (
-          <motion.div key="browse" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <div key="browse" className="animate-in fade-in duration-200">
             <h2 className="text-lg font-semibold mb-4">Browse Services</h2>
             {nearbyLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
@@ -742,9 +742,9 @@ export default function ServicesPage() {
                 <p className="text-gray-500">No services found nearby. Try a wider search or create your own.</p>
               </div>
             )}
-          </motion.div>
+          </div>
         ) : (
-          <motion.div key="mine" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <div key="mine" className="animate-in fade-in duration-200">
             <h2 className="text-lg font-semibold mb-4">My Services</h2>
             {myLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
@@ -760,9 +760,9 @@ export default function ServicesPage() {
                 <p className="text-gray-500">You haven't created any services yet.</p>
               </div>
             )}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      </>
 
       {/* Delete confirmation */}
       <ConfirmDialog
