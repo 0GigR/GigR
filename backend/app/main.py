@@ -64,7 +64,7 @@ async def on_startup():
     from .services.auto_release import auto_release_loop
     from .services.vouch_retry import retry_pending_vouches_loop
     from .services.nudge_loop import nudge_loop
-    from .api.v1.endpoints.ai import agent_loop
+    from .api.v1.endpoints.ai import agent_loop, proactive_loop
 
     await init_db()
 
@@ -85,6 +85,9 @@ async def on_startup():
 
     # AI agent background loop — picks up queued tasks and executes them
     asyncio.create_task(agent_loop())
+
+    # Proactive hunt — what "total" autonomy promises; guarded per user per day
+    asyncio.create_task(proactive_loop())
 
     # Retry loop that heals vouch cNFT mints stuck on 'pending'
     asyncio.create_task(retry_pending_vouches_loop())
