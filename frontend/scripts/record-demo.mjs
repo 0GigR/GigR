@@ -72,18 +72,18 @@ async function main() {
   await sleep(1500)
 
   await step('log in', async () => {
-    // Auth is a modal on the landing page, not a /login route.
+    // Auth is a modal opened from the landing page, not a /login route.
     await page.goto(BASE, { waitUntil: 'domcontentloaded' })
-    await sleep(1500)
-    await page.getByRole('button', { name: /^sign in$/i }).first().click()
-    await sleep(1500)
-    const email = page.locator('input[type="email"], input[name="email"]').first()
-    await email.waitFor({ state: 'visible', timeout: 15000 })
-    await email.fill(EMAIL)
-    await page.locator('input[type="password"]').first().fill(PASSWORD)
-    await page.getByRole('button', { name: /^sign in$|^log in$/i }).last().click()
-    await page.waitForURL(/dashboard/, { timeout: 25000 })
     await sleep(2500)
+    await page.getByRole('button', { name: /^sign in$/i }).first().click()
+    const dialog = page.locator('[role="dialog"]').first()
+    await dialog.waitFor({ state: 'visible', timeout: 20000 })
+    await dialog.locator('input[type="email"]').first().fill(EMAIL)
+    await dialog.locator('input[type="password"]').first().fill(PASSWORD)
+    await dialog.getByRole('button', { name: /sign in|log in/i }).first().click()
+    await page.waitForURL(/dashboard/, { timeout: 30000 })
+    await sleep(3000)
+    console.log('    signed in as', EMAIL)
   })
 
   await step('dashboard home', async () => {
