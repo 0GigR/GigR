@@ -61,6 +61,7 @@ export function MapExplorer({
         height={height}
         selectedId={selectedId}
         onSelect={(_kind, id) => setSelectedId(id)}
+        onSelectCleared={() => setSelectedId(null)}
           onResults={handleResults}
           showHeat={showHeat}
           onShowHeatChange={setShowHeat}
