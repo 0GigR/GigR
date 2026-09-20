@@ -1,82 +1,27 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
+import { useLocationStore } from '@/store/locationStore'
 
-interface GeolocationState {
-  latitude: number | null
-  longitude: number | null
-  accuracy: number | null
-  error: string | null
-  loading: boolean
-}
-
+/**
+ * Reads the shared device location.
+ *
+ * The signature is unchanged, but this no longer talks to the browser itself:
+ * mounting it anywhere simply requests a fix from `locationStore`, which
+ * de-duplicates concurrent requests, caches a recent position, and owns the
+ * single server sync. Five components used to mount this hook independently and
+ * each fire their own `getCurrentPosition`.
+ */
 export function useGeolocation() {
-  const [state, setState] = useState<GeolocationState>({
-    latitude: null,
-    longitude: null,
-    accuracy: null,
-    error: null,
-    loading: true,
-  })
-
-  const getPosition = useCallback(() => {
-    if (!navigator.geolocation) {
-      setState({ latitude: null, longitude: null, accuracy: null, error: 'Geolocation not supported', loading: false })
-      return
-    }
-    setState((s) => ({ ...s, loading: true, error: null }))
-
-    const onSuccess = (position: GeolocationPosition) => {
-      setState({
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy,
-        error: null,
-        loading: false,
-      })
-    }
-
-    // iOS Safari: high-accuracy can fail silently or timeout.
-    // Try high-accuracy first; on any error fall back to low-accuracy.
-    const onError = (err: GeolocationPositionError) => {
-      if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
-        // Fallback: low accuracy, longer timeout — works better on iOS
-        navigator.geolocation.getCurrentPosition(
-          onSuccess,
-          (err2) => {
-            setState({
-              latitude: null,
-              longitude: null,
-              accuracy: null,
-              error: err2.code === err2.PERMISSION_DENIED
-                ? 'Location permission denied. Please enable it in your browser/device settings.'
-                : err2.message,
-              loading: false,
-            })
-          },
-          { enableHighAccuracy: false, timeout: 20000, maximumAge: 300000 }
-        )
-      } else {
-        setState({
-          latitude: null,
-          longitude: null,
-          accuracy: null,
-          error: err.code === err.PERMISSION_DENIED
-            ? 'Location permission denied. Please enable it in your browser/device settings.'
-            : err.message,
-          loading: false,
-        })
-      }
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      onSuccess,
-      onError,
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-    )
-  }, [])
+  const latitude = useLocationStore((s) => s.latitude)
+  const longitude = useLocationStore((s) => s.longitude)
+  const accuracy = useLocationStore((s) => s.accuracy)
+  const error = useLocationStore((s) => s.error)
+  const loading = useLocationStore((s) => s.loading)
+  const request = useLocationStore((s) => s.request)
+  const refresh = useLocationStore((s) => s.refresh)
 
   useEffect(() => {
-    getPosition()
-  }, [getPosition])
+    request()
+  }, [request])
 
-  return { ...state, refresh: getPosition }
+  return { latitude, longitude, accuracy, error, loading, refresh }
 }

@@ -43,7 +43,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { useGeolocation } from '@/hooks/useGeolocation'
+import { useLocationStore } from '@/store/locationStore'
 
 export default function DashboardLayout() {
   const { user, logout } = useAuthStore()
@@ -67,16 +67,14 @@ export default function DashboardLayout() {
   useCurrencyStore((s) => s.code)
   useCurrencyStore((s) => s.rates)
 
-  const { latitude, longitude } = useGeolocation()
-
+  // Location is owned by locationStore now: one GPS request for the whole app
+  // and a single throttled server sync. This component used to run its own
+  // getCurrentPosition (via useGeolocation) AND post the result after 5s, on top
+  // of the same work being done by HomePage, ServicesPage and the prompt banner.
+  const requestLocation = useLocationStore((s) => s.request)
   useEffect(() => {
-    if (user && latitude && longitude) {
-      const timeoutId = setTimeout(() => {
-        api.post('/users/me/location', { latitude, longitude }).catch(() => {})
-      }, 5000)
-      return () => clearTimeout(timeoutId)
-    }
-  }, [user, latitude, longitude])
+    requestLocation()
+  }, [requestLocation])
 
   useEffect(() => {
     const handler = (e: any) => {

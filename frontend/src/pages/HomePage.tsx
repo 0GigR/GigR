@@ -2,8 +2,8 @@ import { fmtPrice } from '@/store/currencyStore'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { useEffect } from 'react'
 import api from '@/lib/api'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -59,21 +59,18 @@ export default function HomePage() {
     enabled: !!user?.id,
   })
 
+  // Shared device location (locationStore owns the request + server sync).
+  const { latitude, longitude } = useGeolocation()
+
   const { data: nearbyServices } = useQuery<Service[]>({
-    queryKey: ['nearbyServicesHome'],
+    queryKey: ['nearbyServicesHome', latitude, longitude],
     queryFn: async () => {
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
-        })
-        const { data } = await api.get('/services/search/nearby', {
-          params: { lat: pos.coords.latitude, lon: pos.coords.longitude, radius: 20 },
-        })
-        return data
-      } catch {
-        return []
-      }
+      const { data } = await api.get('/services/search/nearby', {
+        params: { lat: latitude, lon: longitude, radius: 20 },
+      })
+      return Array.isArray(data) ? data : []
     },
+    enabled: latitude != null && longitude != null,
   })
 
   const { data: openJobs } = useQuery<Job[]>({
@@ -84,19 +81,8 @@ export default function HomePage() {
     },
   })
 
-  // ────────── Send location on mount ──────────
-  useEffect(() => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        api.post('/users/me/location', {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        }).catch(() => {})
-      },
-      () => {},
-      { timeout: 5000 }
-    )
-  }, [])
+  // Location is requested and synced once by locationStore — the raw
+  // getCurrentPosition + POST that used to live here was one of four duplicates.
 
   // ────────── Calculations ──────────
   const activeJobs = myJobs?.filter(j => !['completed', 'cancelled'].includes(j.status)) || []

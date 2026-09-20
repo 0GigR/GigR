@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { MapPin, X, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useGeolocation } from '@/hooks/useGeolocation'
+import { useLocationStore } from '@/store/locationStore'
 import api from '@/lib/api'
 
 const LAST_PROMPT_KEY = 'gigr-location-prompt-last'
@@ -58,10 +59,11 @@ export default function LocationPromptBanner() {
           maximumAge: 120000,
         })
       })
-      await api.post('/users/me/location', {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-      })
+      // Seed the shared store, which performs the (throttled) location sync —
+      // the banner keeps its own opt-in PATCH of `location_public` below.
+      useLocationStore
+        .getState()
+        .setPosition(position.coords.latitude, position.coords.longitude, position.coords.accuracy)
       await api.patch('/users/me', { location_public: true })
       await fetchUser()
       try {

@@ -1,8 +1,9 @@
 import { fmtPrice } from '@/store/currencyStore'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
 import api from '@/lib/api'
+import { haversineKm } from '@/lib/geo'
+import { useGeolocation } from '@/hooks/useGeolocation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -43,18 +44,7 @@ interface RatingOut {
   created_at: string
 }
 
-// Haversine distance in km
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLng = ((lng2 - lng1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
+// Distance maths lives in @/lib/geo so it exists once, not three times.
 
 function VoucherName({ voucherId }: { voucherId: string }) {
   const { data } = useQuery<PublicUser>({
@@ -69,17 +59,10 @@ function VoucherName({ voucherId }: { voucherId: string }) {
 export default function PublicProfilePage() {
   const { userId } = useParams<{ userId: string }>()
   const navigate = useNavigate()
-  const [viewerLat, setViewerLat] = useState<number | null>(null)
-  const [viewerLng, setViewerLng] = useState<number | null>(null)
 
-  // Get viewer's location for distance calc
-  useEffect(() => {
-    if (!navigator.geolocation) return
-    navigator.geolocation.getCurrentPosition(
-      (pos) => { setViewerLat(pos.coords.latitude); setViewerLng(pos.coords.longitude) },
-      () => {}
-    )
-  }, [])
+  // Shared device location — this page used to run its own getCurrentPosition,
+  // one of five independent copies across the app.
+  const { latitude: viewerLat, longitude: viewerLng } = useGeolocation()
 
   const { data: profile, isLoading } = useQuery<PublicUser>({
     queryKey: ['publicUser', userId],
@@ -108,10 +91,11 @@ export default function PublicProfilePage() {
   if (isLoading) return <div className="space-y-4"><Skeleton className="h-48 w-full rounded-2xl" /><Skeleton className="h-32 w-full rounded-2xl" /></div>
   if (!profile) return <div className="text-center py-12 text-gray-500">User not found.</div>
 
-  const distanceKm =
-    viewerLat && viewerLng && profile.location_lat && profile.location_lng
-      ? haversineKm(viewerLat, viewerLng, profile.location_lat, profile.location_lng)
-      : null
+  // `== null` not truthiness: a coordinate of 0 is a real place, and the old
+  // falsy checks silently hid anyone on the equator or prime meridian.
+  const distanceKm = haversineKm(
+    viewerLat, viewerLng, profile.location_lat, profile.location_lng,
+  )
 
   const initials = profile.display_name?.[0]?.toUpperCase() || '?'
 
@@ -158,7 +142,7 @@ export default function PublicProfilePage() {
                   <span>~{distanceKm < 1 ? '<1' : distanceKm.toFixed(1)} km from you</span>
                 </div>
               )}
-              {profile.location_lat && !distanceKm && (
+              {profile.location_lat != null && distanceKm == null && (
                 <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-500">
                   <MapPin className="w-3.5 h-3.5" />
                   <span>Location shared</span>

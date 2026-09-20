@@ -297,12 +297,8 @@ export default function ServicesPage() {
     }
   }, [latitude, longitude])
 
-  // Update location on backend
-  useEffect(() => {
-    if (latitude && longitude) {
-      api.post('/users/me/location', { latitude, longitude }).catch(() => {})
-    }
-  }, [latitude, longitude])
+  // Location is requested and synced once by locationStore (via useGeolocation).
+  // The POST that used to live here was a duplicate of three others.
 
   // Search handlers
   const handleTextSearch = async () => {
