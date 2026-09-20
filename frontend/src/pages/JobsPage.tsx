@@ -701,7 +701,7 @@ export default function JobsPage() {
               )}
             </Button>
           )}
-          <Button onClick={() => setCreateOpen(true)} className="bg-black text-white hover:bg-gray-800">
+          <Button onClick={() => setCreateOpen(true)} className="gigr-cta border-0">
             <Plus className="w-4 h-4 mr-2" /> Post Job
           </Button>
         </div>
