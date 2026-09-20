@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { fmtPrice } from '@/store/currencyStore'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
@@ -13,12 +14,11 @@ import {
   Briefcase,
   MapPin,
   Star,
-  TrendingUp,
   Clock,
   ArrowRight,
   Plus,
   Search,
-  Bell,
+  ChevronDown,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 
@@ -27,6 +27,8 @@ type Service = components['schemas']['ServiceOut']
 type Vouch = components['schemas']['VouchOut']
 
 export default function HomePage() {
+  // Progressive disclosure: the first screen shows only what a newcomer needs.
+  const [showAllStats, setShowAllStats] = useState(false)
   const { user } = useAuthStore()
 
   // ────────── Data ──────────
@@ -99,43 +101,47 @@ export default function HomePage() {
         <p className="text-gray-500 mt-1">Your neighborhood trusted marketplace</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card className="bg-card text-card-foreground border-border">
-          <CardContent className="pt-6 text-center">
-            <Briefcase className="w-7 h-7 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{activeJobs.length}</p>
-            <p className="text-xs text-gray-500">Active</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card text-card-foreground border-border">
-          <CardContent className="pt-6 text-center">
-            <Bell className="w-7 h-7 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{pendingApplications}</p>
-            <p className="text-xs text-gray-500">Pending Apps</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card text-card-foreground border-border">
-          <CardContent className="pt-6 text-center">
-            <Star className="w-7 h-7 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{myVouches?.length || 0}</p>
-            <p className="text-xs text-gray-500">Vouches</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card text-card-foreground border-border">
-          <CardContent className="pt-6 text-center">
-            <MapPin className="w-7 h-7 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{myServices?.length || 0}</p>
-            <p className="text-xs text-gray-500">Services</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card text-card-foreground border-border">
-          <CardContent className="pt-6 text-center">
-            <TrendingUp className="w-7 h-7 mx-auto mb-2 text-gray-700" />
-            <p className="text-2xl font-bold">{completedJobs.length}</p>
-            <p className="text-xs text-gray-500">Completed</p>
-          </CardContent>
-        </Card>
+      {/* Your numbers. Two figures a newcomer actually acts on are always
+          visible; the rest stay one tap away rather than filling the screen. */}
+      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 sm:gap-10">
+            <div>
+              <p className="text-2xl font-bold leading-none">{activeJobs.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Active jobs</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none">{pendingApplications}</p>
+              <p className="text-xs text-gray-500 mt-1">Pending applications</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllStats((value) => !value)}
+            aria-expanded={showAllStats}
+            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+          >
+            {showAllStats ? 'Less' : 'More stats'}
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </div>
+
+        {showAllStats && (
+          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+            {[
+              { label: 'Vouches', value: myVouches?.length || 0 },
+              { label: 'Services listed', value: myServices?.length || 0 },
+              { label: 'Completed', value: completedJobs.length },
+            ].map((stat) => (
+              <div key={stat.label}>
+                <p className="text-lg font-bold leading-none">{stat.value}</p>
+                <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}
