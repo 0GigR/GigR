@@ -4,6 +4,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
+const API_TARGET = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000'
+
 export default defineConfig({
   plugins: [
     react(), 
@@ -68,9 +70,12 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
     },
     proxy: {
-      '/api': 'http://127.0.0.1:8000',
+      // Configurable so the dev server can point at a backend on another port
+      // (localhost:8000 is frequently taken by an unrelated project). Same-origin
+      // proxying also avoids CORS entirely while recording a demo.
+      '/api': API_TARGET,
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: API_TARGET.replace(/^http/, 'ws'),
         ws: true,
       },
     },
