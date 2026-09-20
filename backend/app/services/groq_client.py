@@ -9,7 +9,9 @@ the same multi-key fallback.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -155,9 +157,16 @@ async def chat(
     temperature: float = 0.2,
     max_tokens: int = 400,
     response_format: Optional[Dict[str, str]] = None,
+    reasoning_effort: Optional[str] = None,
     timeout: float = 20.0,
 ) -> Dict[str, Any]:
     """Run one chat completion and return the raw parsed response body.
+
+    ``reasoning_effort`` matters a lot on reasoning models (gpt-oss): by default
+    they can spend most of ``max_tokens`` on hidden reasoning, which truncated
+    JSON responses and even produced empty generations that Groq rejects with
+    ``json_validate_failed``. Structured, latency-sensitive calls should pass
+    "low".
 
     Raises on failure — callers decide how to degrade.
     """
@@ -172,6 +181,8 @@ async def chat(
         payload["tool_choice"] = tool_choice or "auto"
     if response_format:
         payload["response_format"] = response_format
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
 
     async with httpx.AsyncClient(timeout=timeout) as client:
         response = await call_with_key_rotation(
@@ -181,6 +192,25 @@ async def chat(
             json=payload,
         )
         return response.json()
+
+
+def extract_json(text: str) -> Any:
+    """Parse JSON out of a model response, tolerating prose and code fences.
+
+    Trusting the whole string to be JSON is fragile: models wrap it, prefix it,
+    or trail an explanation. Taking the outermost ``{...}`` is far more reliable.
+    """
+    if not text or not text.strip():
+        raise ValueError("empty response")
+    cleaned = re.sub(r"```(?:json)?\s*", "", text).strip("` \n")
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start != -1 and end > start:
+        return json.loads(cleaned[start:end + 1])
+    raise ValueError("no JSON object found in response")
 
 
 def message_of(response: Dict[str, Any]) -> Dict[str, Any]:

@@ -645,7 +645,8 @@ async def run_agent_loop(
     for _ in range(max(1, max_steps)):
         try:
             response = await groq_client.chat(
-                messages, tools=tool_specs(), temperature=0.2, max_tokens=600
+                messages, tools=tool_specs(), temperature=0.2, max_tokens=900,
+                reasoning_effort="low",
             )
         except Exception as exc:
             logger.warning("[agent] tool-calling step failed: %s", exc)

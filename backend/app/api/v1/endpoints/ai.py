@@ -44,6 +44,7 @@ from ....models.agent_task import AgentTask
 from ....models.agent_log import AgentLog
 from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, AgentTaskListOut
 from ....services.ws_manager import manager as _ws_manager
+from ....services.groq_client import extract_json as _extract_json
 
 router = APIRouter()
 
@@ -111,13 +112,15 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                         {"role": "user", "content": text},
                     ],
                     "temperature": 0.1,
-                    "max_tokens": 300,
+                    # Generous headroom: gpt-oss spends a big chunk of the budget
+                    # on hidden reasoning, and 300 tokens truncated the JSON
+                    # mid-string, which silently fell back to the regex parser.
+                    "max_tokens": 900,
+                    "reasoning_effort": "low",
                 },
             )
-            content = response.json()["choices"][0]["message"]["content"].strip()
-            # Strip markdown code fences if Groq wrapped in ```json ... ```
-            content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
-            return json.loads(content)
+            content = response.json()["choices"][0]["message"]["content"] or ""
+            return _extract_json(content)
     except Exception as exc:
         logger.warning("[agent] Groq NLP failed (%s), falling back to rule-based", exc)
         return None
@@ -801,12 +804,14 @@ def _clean_posting_title(raw_text: str) -> str:
     text = _TITLE_TRAILING_PRICE_RE.sub("", text)
     text = text.strip(" ,.;:-–—\t")
 
-    # If we peeled everything away, fall back to the original trimmed sentence.
+    # If we peeled everything away there is nothing to name the listing with.
+    # Falling back to the raw command is exactly how jobs ended up titled
+    # "post a job" — better to return nothing and let the caller ask.
     if not text:
-        text = (raw_text or "").strip().rstrip(".,!?")
+        return ""
 
     text = text[:60].strip()
-    return (text[0].upper() + text[1:]) if text else (raw_text or "")[:60]
+    return (text[0].upper() + text[1:]) if text else ""
 
 
 async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
@@ -817,6 +822,8 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
     """
     def _fallback() -> Dict[str, str]:
         title = _clean_posting_title(raw_text)
+        if title and _looks_like_raw_command(title, raw_text):
+            title = ""
         desc = f"{'Looking for' if kind == 'job' else 'Offering'}: {raw_text.strip()}"
         return {"title": title, "description": desc}
 
@@ -859,13 +866,16 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
                     "model": settings.GROQ_MODEL,
                     "messages": [{"role": "system", "content": system}, {"role": "user", "content": user_prompt}],
                     "temperature": 0.3,
-                    "max_tokens": 200,
+                    # Reasoning must not consume the whole budget: at 200 tokens
+                    # with default effort this returned an empty generation and
+                    # Groq answered 400 json_validate_failed.
+                    "max_tokens": 700,
+                    "reasoning_effort": "low",
                     "response_format": {"type": "json_object"},
                 },
             )
-            content = resp.json()["choices"][0]["message"]["content"].strip()
-            content = re.sub(r"```(?:json)?\s*", "", content).strip("` ")
-            parsed = json.loads(content)
+            content = resp.json()["choices"][0]["message"]["content"] or ""
+            parsed = _extract_json(content)
             title = str(parsed.get("title") or "").strip()[:60]
 
             # Guard against the small model echoing the command back: if the title
@@ -918,7 +928,7 @@ async def _suggest_price(raw_title: str, kind: str) -> float:
                         {"role": "system", "content": "You price informal services in Nigeria. Reply with ONLY a single integer amount in naira (no text, no symbols)."},
                         {"role": "user", "content": f"Fair {'budget' if kind == 'job' else 'rate'} in naira for: {raw_title}"},
                     ],
-                    "temperature": 0.2, "max_tokens": 12,
+                    "temperature": 0.2, "max_tokens": 64, "reasoning_effort": "low",
                 },
             )
             text = resp.json()["choices"][0]["message"]["content"]
@@ -1012,7 +1022,13 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
 
     await _log(db, task.id, "action", "Writing a professional job listing...")
     content = await _groq_improve_posting(raw_title, "job")
-    title = content["title"]
+    title = (content.get("title") or "").strip()
+    if not title:
+        await _log(db, task.id, "info",
+                   "I couldn't tell what the job is from that. Tell me what you "
+                   'need done - for example: "post a job, I need someone to fix '
+                   'my sink".')
+        return {"created": False, "needs_details": True}
     desc = content["description"] + f"\n\nBudget: ₦{price:,.0f}"
 
     # Geo: inherit the poster's saved location so the job appears on the map and
@@ -1125,7 +1141,13 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
 
     await _log(db, task.id, "action", "Writing a professional service listing...")
     content = await _groq_improve_posting(raw_title, "service")
-    title = content["title"]
+    title = (content.get("title") or "").strip()
+    if not title:
+        await _log(db, task.id, "info",
+                   "I couldn't tell what the service is from that. Tell me what "
+                   'you offer - for example: "create a service, I fix generators '
+                   'for 15k".')
+        return {"created": False, "needs_details": True}
     desc = content["description"]
 
     # Geo: ServiceListing.location is NOT NULL and every hyperlocal feature
@@ -1329,7 +1351,8 @@ async def _handle_auto_reply(task: AgentTask, db: AsyncSession) -> Dict[str, Any
                             )},
                         ],
                         "temperature": 0.4,
-                        "max_tokens": 150,
+                        "max_tokens": 400,
+                        "reasoning_effort": "low",
                     },
                 )
                 reply_content = response.json()["choices"][0]["message"]["content"].strip()
@@ -1438,7 +1461,8 @@ async def _handle_apply_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
                             )},
                         ],
                         "temperature": 0.5,
-                        "max_tokens": 160,
+                        "max_tokens": 400,
+                        "reasoning_effort": "low",
                     },
                 )
                 message = resp.json()["choices"][0]["message"]["content"].strip()
@@ -1565,11 +1589,11 @@ async def _maybe_trigger_call(
         )
         await db.commit()
         if call is not None:
-            logger.info("[agent] 📞 Placed %s call to %s for task %s (status=%s)",
+            logger.info("[agent] Placed %s call to %s for task %s (status=%s)",
                         trigger, call.to_number, task_id, call.status)
             try:
                 await _log(db, uuid.UUID(task_id), "action",
-                           f"📞 Called you ({call.to_number}) about this task.",
+                           f"Called you ({call.to_number}) about this task.",
                            data={"call_status": call.status, "trigger": trigger})
                 await db.commit()
             except Exception:
@@ -1689,7 +1713,7 @@ async def _execute_task(task_id: str):
                         await _log(
                             db, task.id,
                             "action" if step.get("ok") else "warning",
-                            f"🔧 {step.get('summary') or step.get('tool')}",
+                            f"{step.get('summary') or step.get('tool')}",
                             data={"tool": step.get("tool"), "args": step.get("args")},
                         )
 
@@ -1706,7 +1730,7 @@ async def _execute_task(task_id: str):
 
                 task.status = "completed"
                 task.completed_at = datetime.now(timezone.utc)
-                logger.info("[agent] ✓ Task %s completed (type=%s)", task_id, task.task_type)
+                logger.info("[agent] Task %s completed (type=%s)", task_id, task.task_type)
                 # Avoid redundant "Task completed" log if the specific handler already logged its outcome or a dialog
                 if task.task_type not in ["find_service", "find_job", "post_job", "post_service"]:
                     await _log(db, task.id, "success", "Task completed")
@@ -1861,12 +1885,11 @@ async def _check_negotiation_reply(task_id: str):
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": f"Provider replied: \"{provider_reply}\""},
                         ],
-                        "temperature": 0.3, "max_tokens": 150,
+                        "temperature": 0.3, "max_tokens": 500, "reasoning_effort": "low",
                     }
                 )
-                raw = resp.json()["choices"][0]["message"]["content"].strip()
-                raw = re.sub(r"```(?:json)?\s*", "", raw).strip("` ")
-                decision_data = json.loads(raw)
+                raw = resp.json()["choices"][0]["message"]["content"] or ""
+                decision_data = _extract_json(raw)
         except Exception as exc:
             logger.warning("[agent] Negotiation Groq call failed: %s", exc)
             return
