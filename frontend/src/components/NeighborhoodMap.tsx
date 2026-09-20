@@ -138,6 +138,15 @@ function MapUpdater({ center, focus }: { center: [number, number]; focus: [numbe
   return null
 }
 
+/** Clears the selection when the user dismisses a popup or taps the map. */
+function SelectionWatcher({ onClear }: { onClear?: () => void }) {
+  useMapEvents({
+    popupclose: () => onClear?.(),
+    click: () => onClear?.(),
+  })
+  return null
+}
+
 function clusterPoints(map: L.Map, points: MapPoint[]) {
   const zoom = map.getZoom()
   const buckets = new Map<string, MapPoint[]>()
@@ -332,6 +341,7 @@ export function NeighborhoodMap({
   height = 500,
   selectedId,
   onSelect,
+  onSelectCleared,
   onResults,
   kindFilter = 'all',
   showHeat = false,
@@ -347,6 +357,8 @@ export function NeighborhoodMap({
   /** Controlled selection, so a list beside the map can drive it (and vice versa). */
   selectedId?: string | null
   onSelect?: (kind: 'job' | 'service', id: string) => void
+  /** Called when the popup is dismissed, so the parent can drop the selection. */
+  onSelectCleared?: () => void
   /** Reports the fetched points so a parent can render a synced result list. */
   onResults?: (points: MapPoint[]) => void
   /** 'all' shows jobs and services together, which is the point of the map. */
@@ -557,6 +569,8 @@ export function NeighborhoodMap({
           <Popup>You are here</Popup>
         </Marker>
 
+        <SelectionWatcher onClear={onSelectCleared} />
+
         <ClusterLayer
           points={visiblePoints}
           mode={showHeat ? 'heat' : 'pins'}
@@ -580,7 +594,11 @@ export function NeighborhoodMap({
       )}
 
       {/* Controls overlay */}
-      <div className="absolute top-3 left-3 z-[650] flex flex-col gap-1.5 max-w-[calc(100%-1.5rem)]">
+      <div
+        className={`absolute top-3 left-3 z-[650] flex flex-col gap-1.5 max-w-[calc(100%-1.5rem)] transition-opacity duration-200 ${
+          activeSelectedId ? 'opacity-0 pointer-events-none' : 'opacity-100'
+        }`}
+      >
         <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
             <Navigation className="w-3 h-3" /> Radius
