@@ -83,40 +83,14 @@ Rules:
 
 
 async def _call_groq_with_fallback(client: httpx.AsyncClient, url: str, **kwargs):
-    """Wrapper to try multiple Groq API keys if one gets rate limited."""
-    keys = settings.groq_keys_list
-    if not keys:
-        raise ValueError("No GROQ_API_KEYS configured")
-        
-    last_err = None
-    for key in keys:
-        call_kwargs = dict(kwargs)
-        headers = dict(call_kwargs.get("headers", {}))
-        headers["Authorization"] = f"Bearer {key}"
-        call_kwargs["headers"] = headers
-        
-        try:
-            response = await client.post(url, **call_kwargs)
-            if response.status_code == 429:
-                last_err = httpx.HTTPStatusError("Rate limited", request=response.request, response=response)
-                logger.warning("Groq API key rate limited, trying next key...")
-                continue
-            response.raise_for_status()
-            return response
-        except httpx.HTTPStatusError as e:
-            last_err = e
-            if e.response.status_code == 429:
-                logger.warning("Groq API key rate limited, trying next key...")
-                continue
-            raise
-        except Exception as e:
-            last_err = e
-            logger.warning(f"Groq API call failed: {e}, trying next key...")
-            continue
-            
-    if last_err:
-        raise last_err
-    raise Exception("All Groq API keys failed")
+    """Try multiple Groq API keys if one gets rate limited.
+
+    Thin alias over the shared client so every LLM call in the app rotates keys
+    the same way. Kept in place because existing call sites pass a pre-built
+    httpx client.
+    """
+    from ....services.groq_client import call_with_key_rotation
+    return await call_with_key_rotation(client, url, **kwargs)
 
 async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
     """Call Groq Llama-3 to parse the command into structured intent.
@@ -1001,51 +975,10 @@ async def _auto_price_fallback(task_id: str, kind: str, raw_title: str) -> None:
             pass
 
 
-def _norm_words(text: str) -> set[str]:
-    """Lowercase word set with light suffix stripping.
-
-    Enough to match "Plumber needed" to the "Plumbing" category without pulling
-    in a stemmer dependency.
-    """
-    words: set[str] = set()
-    for word in re.findall(r"[a-z]{3,}", (text or "").lower()):
-        for suffix in ("ings", "ing", "ers", "er", "es", "s"):
-            if len(word) > len(suffix) + 2 and word.endswith(suffix):
-                word = word[: -len(suffix)]
-                break
-        words.add(word)
-    return words
-
-
-async def _pick_category(db: AsyncSession, text: str):
-    """Best-effort category match for an AI-created listing.
-
-    Previously this was ``select(Category).limit(1)`` — literally the first row
-    in the table — so every AI-posted service landed in a random category.
-    Returns ``None`` when nothing matches confidently, so the caller can ask.
-    """
-    from ....models.category import Category
-
-    categories = (await db.execute(select(Category))).scalars().all()
-    if not categories:
-        return None
-
-    haystack = (text or "").lower()
-    text_words = _norm_words(text)
-    best = None
-    best_score = 0.0
-    for category in categories:
-        name = (category.name or "").strip()
-        if not name:
-            continue
-        name_lower = name.lower()
-        if name_lower in haystack:
-            score = 3.0  # whole category name appears verbatim
-        else:
-            score = float(len(text_words & _norm_words(name)))
-        if score > best_score:
-            best, best_score = category, score
-    return best if best_score >= 1.0 else None
+# Category matching now lives in services/agent_tools.py so the tool registry
+# and these handlers share one implementation. Aliased to the old private name
+# to keep the existing call sites readable.
+from ....services.agent_tools import pick_category as _pick_category  # noqa: E402
 
 
 async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
@@ -1732,31 +1665,44 @@ async def _execute_task(task_id: str):
                     await _log(db, task.id, "success", f"Navigating to {page}...",
                                data={"navigate_to": route})
                     task.result = {"page": page, "navigate_to": route}
-                else:  # generic
-                    # Try to get a real conversational response from Groq
-                    groq_reply = None
-                    if settings.groq_keys_list:
-                        try:
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                resp = await _call_groq_with_fallback(
-                                    client,
-                                    "https://api.groq.com/openai/v1/chat/completions",
-                                    headers={"Content-Type": "application/json"},
-                                    json={
-                                        "model": settings.GROQ_MODEL,
-                                        "messages": [
-                                            {"role": "system", "content": "You are a friendly AI assistant built into Gigr, a local freelance marketplace app. Answer the user's question helpfully and concisely in 1-3 sentences. If the question is about using Gigr, help them. Otherwise, stay on topic."},
-                                            {"role": "user", "content": task.command_text},
-                                        ],
-                                        "temperature": 0.7, "max_tokens": 200,
-                                    }
-                                )
-                                groq_reply = resp.json()["choices"][0]["message"]["content"].strip()
-                        except Exception:
-                            pass
-                    reply = groq_reply or "I'm Gigidy, your Gigr AI assistant! I can help you find services, post jobs, or navigate the app. Try: 'find a plumber for 5k'."
+                else:  # generic — free-form command: run the tool-calling agent
+                    from ....services import agent_tools
+
+                    agent_user = (await db.execute(
+                        select(User).where(User.id == task.user_id)
+                    )).scalar_one_or_none()
+
+                    agentic: Dict[str, Any] = {"reply": None, "steps": [], "used_tools": []}
+                    if agent_user is not None:
+                        agentic = await agent_tools.run_agent_loop(
+                            db, agent_user, task.command_text
+                        )
+
+                    # Surface every tool the agent chose, so the activity feed
+                    # shows exactly what was looked up or changed.
+                    for step in agentic.get("steps") or []:
+                        if step.get("tool") == "navigate" and step.get("route"):
+                            await _log(db, task.id, "action",
+                                       f"→ {step['summary']}",
+                                       data={"navigate_to": step["route"]})
+                            continue
+                        await _log(
+                            db, task.id,
+                            "action" if step.get("ok") else "warning",
+                            f"🔧 {step.get('summary') or step.get('tool')}",
+                            data={"tool": step.get("tool"), "args": step.get("args")},
+                        )
+
+                    reply = agentic.get("reply") or (
+                        "I'm Gigidy, your Gigr AI assistant! I can find services, "
+                        "post jobs, apply to work, and take you anywhere in the app. "
+                        "Try: 'find a plumber near me for 5k'."
+                    )
                     await _log(db, task.id, "info", reply)
-                    task.result = {"message": reply}
+                    task.result = {
+                        "message": reply,
+                        "used_tools": agentic.get("used_tools") or [],
+                    }
 
                 task.status = "completed"
                 task.completed_at = datetime.now(timezone.utc)
