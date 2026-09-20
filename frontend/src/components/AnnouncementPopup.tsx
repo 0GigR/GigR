@@ -6,6 +6,7 @@ import api from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/store/authStore'
 import { Link } from 'react-router-dom'
+import { safeAppLink } from '@/lib/appLinks'
 
 interface Announcement {
   id: string
@@ -126,9 +127,9 @@ export default function AnnouncementPopup() {
               </p>
 
               <div className="mt-6 flex items-center gap-3">
-                {current.link && current.link.startsWith('/') ? (
+                {current.link && current.link.startsWith('/') && !current.link.startsWith('//') ? (
                   <Link
-                    to={current.link}
+                    to={safeAppLink(current.link)}
                     onClick={close}
                     className="inline-flex items-center gap-2 rounded-full bg-black text-white px-5 py-2.5 text-sm font-semibold hover:opacity-90"
                   >

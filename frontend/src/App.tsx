@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useEffect, lazy, Suspense, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -45,6 +45,18 @@ function PageFallback() {
       <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
     </div>
   )
+}
+
+// A deep link to a dashboard route that doesn't exist (a stale notification,
+// an admin-entered announcement link, an old cached URL) would otherwise show
+// a dead 404 page. Unknown /dashboard/* paths bounce to the dashboard home
+// instead; genuinely unknown public paths still get the real 404 page.
+function CatchAll() {
+  const location = useLocation()
+  if (location.pathname.startsWith('/dashboard')) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <NotFoundPage />
 }
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -98,8 +110,8 @@ function App() {
               </Route>
               {/* Legacy public route still works */}
               <Route path="/profile/:userId" element={<PublicProfilePage />} />
-              {/* Catch-all 404 Route */}
-              <Route path="*" element={<NotFoundPage />} />
+              {/* Catch-all 404 Route — dashboard unknowns bounce home */}
+              <Route path="*" element={<CatchAll />} />
             </Routes>
           </Suspense>
         </BrowserRouter>

@@ -226,10 +226,13 @@ export const useAgentStore = create<AgentState>()(
       fetchTasks: async () => {
         try {
           const { data } = await api.get<AgentTask[]>('/ai/tasks', { params: { limit: 50 } })
+          // Never trust the response shape — a non-array here would crash every
+          // render of the agent panel (and this polls on EVERY dashboard page).
+          const list = Array.isArray(data) ? data : []
           const prev = get().tasks
 
           // Count newly completed/failed tasks as unread
-          const newUnread = data.filter((t) => {
+          const newUnread = list.filter((t) => {
             const existing = prev.find((p) => p.id === t.id)
             const justFinished = existing &&
               existing.status !== t.status &&
@@ -238,7 +241,7 @@ export const useAgentStore = create<AgentState>()(
           }).length
 
           set((s) => ({
-            tasks: data,
+            tasks: list,
             unreadCount: s.isPanelOpen ? 0 : s.unreadCount + newUnread,
           }))
         } catch (err) {
@@ -349,8 +352,9 @@ export const useAgentStore = create<AgentState>()(
       },
 
       get pendingDialogTaskIds() {
+        const tasks = Array.isArray(get().tasks) ? get().tasks : []
         return new Set(
-          get().tasks
+          tasks
             .filter((task) => {
               if (!task.logs) return false
               // Search backwards for the most recent log with an action_payload

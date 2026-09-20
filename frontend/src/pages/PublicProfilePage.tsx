@@ -319,11 +319,16 @@ export default function PublicProfilePage() {
             <div className="space-y-2">
               {vouches.map(v => (
                 <div key={v.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
-                  <div className="text-sm">
+                  <div className="text-sm min-w-0">
                     <Link to={`/dashboard/user/${v.voucher_id}`} className="hover:underline hover:opacity-80 transition-opacity">
                       <VoucherName voucherId={v.voucher_id} />
                     </Link>
-                    <span className="text-gray-500"> vouched for completed work</span>
+                    <span className="text-gray-500"> vouched for </span>
+                    {(v as any).job_title ? (
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{(v as any).job_title}</span>
+                    ) : (
+                      <span className="text-gray-500">completed work</span>
+                    )}
                     {v.cnf_nft_id && (
                       <span className="ml-1.5 text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full border border-purple-200">
                         cNFT on-chain
