@@ -441,7 +441,8 @@ export function NeighborhoodMap({
           focus={selectedPoint ? [selectedPoint.lat, selectedPoint.lng] : null}
         />
 
-        {/* Search radius, drawn to scale so "nearby" is visible, not implied. */}
+        {/* Search radius, drawn to scale so "nearby" is visible, not implied —
+            and gently animated so the covered area reads as live. */}
         <Circle
           center={[latitude, longitude]}
           radius={radius * 1000}
@@ -451,6 +452,7 @@ export function NeighborhoodMap({
             opacity: 0.7,
             fillColor: JOB_COLOR,
             fillOpacity: 0.06,
+            className: 'gigr-radius-circle',
           }}
         />
 

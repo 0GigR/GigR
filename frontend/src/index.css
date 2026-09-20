@@ -243,6 +243,24 @@
   animation: gigr-ring-pulse 2.6s ease-out infinite;
 }
 
+/* The search-radius circle breathes gently so the covered area reads as live
+   rather than as a static outline. Opacity-only, so it never distracts. */
+@keyframes gigr-radius-breathe {
+  0%,
+  100% {
+    fill-opacity: 0.04;
+    stroke-opacity: 0.55;
+  }
+  50% {
+    fill-opacity: 0.12;
+    stroke-opacity: 0.9;
+  }
+}
+
+.gigr-radius-circle {
+  animation: gigr-radius-breathe 4.5s ease-in-out infinite;
+}
+
 /* Respect reduced-motion: keep the map usable, drop the decoration. */
 @media (prefers-reduced-motion: reduce) {
   .gigr-pin,
