@@ -66,7 +66,7 @@ async def login(login_in: UserLogin, response: Response, db: AsyncSession = Depe
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 @router.post("/google")
@@ -166,7 +166,7 @@ async def google_auth(auth_data: UserGoogleAuth, response: Response, db: AsyncSe
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
     )
 
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "refresh_token": refresh_token, "token_type": "bearer"}
 
 
 # @router.get("/me", response_model=UserOut)
@@ -240,30 +240,69 @@ async def link_google(
 
 @router.post("/refresh")
 async def refresh_access_token(request: Request, response: Response):
-    refresh_token = request.cookies.get("refresh_token")
+    """Exchange a refresh token for a new access token — and rotate the refresh.
+
+    The refresh token is accepted from the HttpOnly cookie OR the JSON body,
+    because cross-site deployments (Vercel frontend + Render backend) have
+    third-party cookies blocked by Safari and Chrome. Relying on the cookie alone
+    meant refresh always failed there and the session died when the 24h access
+    token expired. Rotating on every refresh slides the window forward, so an
+    active user stays signed in indefinitely.
+    """
+    body_token = None
+    try:
+        if "application/json" in (request.headers.get("content-type") or ""):
+            payload_body = await request.json()
+            if isinstance(payload_body, dict):
+                body_token = payload_body.get("refresh_token")
+    except Exception:
+        body_token = None
+
+    refresh_token = request.cookies.get("refresh_token") or body_token
     if not refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token")
+
     payload = decode_access_token(refresh_token)
     if payload is None or payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid refresh token")
+
     user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
     new_access = create_access_token(data={"sub": user_id})
+    new_refresh = create_refresh_token(data={"sub": user_id})
+
+    cookie_kwargs = {
+        "httponly": True,
+        "secure": settings.SECURE_COOKIES,
+        "samesite": "None",
+    }
     response.set_cookie(
         key="access_token",
         value=new_access,
-        httponly=True,
-        secure=settings.SECURE_COOKIES,
-        samesite="None",
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        **cookie_kwargs,
     )
-    # Also return the token in the body so clients that can't use cookies
-    # (cross-site / Chrome storage blocked) can save it to localStorage.
-    return {"status": "ok", "access_token": new_access, "token_type": "bearer"}
-    
+    response.set_cookie(
+        key="refresh_token",
+        value=new_refresh,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        **cookie_kwargs,
+    )
+
+    # Return both, so clients that cannot use cookies can keep the session alive.
+    return {
+        "status": "ok",
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+    }
+
 @router.post("/logout")
 async def logout(response: Response):
     response.delete_cookie("access_token")
-    response.delete_cookie("refresh_token")   # <— add this
+    response.delete_cookie("refresh_token")
     return {"message": "Logged out"}
 
 

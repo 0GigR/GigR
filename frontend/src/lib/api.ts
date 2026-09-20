@@ -7,10 +7,22 @@ import { toast } from 'sonner'
 // environments (Vercel + Render) where Chrome blocks third-party cookies.
 // The backend already accepts both HttpOnly cookie AND Authorization header.
 const TOKEN_KEY = 'baros_access_token'
+// Kept next to the access token so a session survives environments where
+// third-party cookies are blocked outright (iOS Safari, installed PWAs). The
+// backend rotates this on every refresh, so it keeps sliding forward.
+const REFRESH_KEY = 'baros_refresh_token'
 
 export const saveToken = (token: string) => localStorage.setItem(TOKEN_KEY, token)
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
+
+export const saveRefreshToken = (token: string) => localStorage.setItem(REFRESH_KEY, token)
+export const getRefreshToken = () => localStorage.getItem(REFRESH_KEY)
+export const clearRefreshToken = () => localStorage.removeItem(REFRESH_KEY)
+export const clearTokens = () => {
+  clearToken()
+  clearRefreshToken()
+}
 
 // ── Axios instance ───────────────────────────────────────────────────────────
 // When VITE_API_URL is set (production), use it as-is.
@@ -51,17 +63,25 @@ api.interceptors.response.use(
       originalRequest._retry = true
 
       try {
-        // Try cookie-based refresh first
-        const refreshRes = await api.post('/auth/refresh')
-        // If the backend returns a new access_token in body, save it
-        if (refreshRes.data?.access_token) {
-          saveToken(refreshRes.data.access_token)
-          originalRequest.headers['Authorization'] = `Bearer ${refreshRes.data.access_token}`
+        // Send the stored refresh token as well as relying on the cookie: with
+        // third-party cookies blocked (iOS Safari, installed PWA) the cookie
+        // never arrives, and refresh used to fail there — logging the user out
+        // the moment the 24h access token expired.
+        const storedRefresh = getRefreshToken()
+        const refreshRes = await api.post(
+          '/auth/refresh',
+          storedRefresh ? { refresh_token: storedRefresh } : {},
+        )
+        const { access_token, refresh_token } = refreshRes.data ?? {}
+        if (access_token) {
+          saveToken(access_token)
+          originalRequest.headers['Authorization'] = `Bearer ${access_token}`
         }
+        if (refresh_token) saveRefreshToken(refresh_token)
         return api(originalRequest)
       } catch {
         // Refresh failed – log out and redirect
-        clearToken()
+        clearTokens()
         useAuthStore.getState().logout()
         if (window.location.pathname !== '/') {
           window.location.href = '/'
