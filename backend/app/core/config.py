@@ -101,7 +101,18 @@ class Settings(BaseSettings):
     # Seconds before a running task is declared timed-out / failed
     AI_AGENT_TASK_TIMEOUT_SECONDS: int = Field(default=300, env="AI_AGENT_TASK_TIMEOUT_SECONDS")
     # Whether the agent is allowed to make payments autonomously
+    # NOTE: deliberately NOT honoured — escrow funding always requires a human
+    # action. Kept so an existing deployment's env var still validates.
     AI_AUTONOMOUS_PAYMENT_ENABLED: bool = Field(default=False, env="AI_AUTONOMOUS_PAYMENT_ENABLED")
+    # Proactive hunting ("total" autonomy): how often to look for unmet needs
+    AI_AGENT_PROACTIVE_ENABLED: bool = Field(default=True, env="AI_AGENT_PROACTIVE_ENABLED")
+    AI_AGENT_PROACTIVE_INTERVAL_SECONDS: int = Field(
+        default=900, env="AI_AGENT_PROACTIVE_INTERVAL_SECONDS"
+    )
+    # Only consider a job "stale" (needing a hunt) after this long with no applicants
+    AI_AGENT_PROACTIVE_MIN_JOB_AGE_MINUTES: int = Field(
+        default=10, env="AI_AGENT_PROACTIVE_MIN_JOB_AGE_MINUTES"
+    )
 
     # ── Web Push Notifications ────────────────────────────────────────────────
     VAPID_PUBLIC_KEY: str = Field(default="", env="VAPID_PUBLIC_KEY")

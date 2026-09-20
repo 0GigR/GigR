@@ -1718,6 +1718,8 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_auto_reply(task, db)
                 elif task.task_type == "apply_job":
                     task.result = await _handle_apply_job(task, db)
+                elif task.task_type == "proactive_hunt":
+                    task.result = await _handle_proactive_hunt(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
                     page_routes = {
@@ -1963,6 +1965,193 @@ async def _check_negotiation_reply(task_id: str):
             t.result = new_r
             await db2.commit()
             await _ws_manager.notify_user(str(t.user_id), {"type": "agent_task_update", "task_id": task_id})
+
+
+async def _handle_proactive_hunt(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Proactively source providers for one of the user's unmet jobs.
+
+    This is what "total" autonomy promises. Nothing in the codebase ever ran a
+    hunt before, so the top level behaved identically to "high".
+
+    The agent finds candidates and presents them with a one-tap request action
+    rather than messaging providers by itself: opening a conversation with a real
+    person stays the user's call, which is also why the level caps how often this
+    runs.
+    """
+    from ....models.job import Job
+    from ....crud.service import get_services_nearby
+
+    params = task.params or {}
+    job_id_raw = params.get("job_id")
+    if not job_id_raw:
+        await _log(db, task.id, "warning", "Nothing to hunt for.")
+        return {"found": False}
+    try:
+        job_id = uuid.UUID(str(job_id_raw))
+    except (ValueError, AttributeError, TypeError):
+        await _log(db, task.id, "warning", "That job id was malformed.")
+        return {"found": False}
+
+    job = (await db.execute(select(Job).where(Job.id == job_id))).scalar_one_or_none()
+    if not job or str(job.client_id) != str(task.user_id):
+        return {"found": False}
+    if job.status != "open" or job.provider_id:
+        return {"found": False, "reason": "job already covered"}
+
+    has_location = job.latitude is not None and job.longitude is not None
+    await _log(db, task.id, "action",
+               f"Hunting for providers for “{job.title}”"
+               + (" near you" if has_location else "") + "...")
+
+    candidates = []
+    if has_location:
+        # Wider than the browse default so a first hunt actually finds someone.
+        candidates = await get_services_nearby(
+            db, float(job.latitude), float(job.longitude), radius_km=25, limit=8
+        )
+    if not candidates:
+        candidates = await search_services_by_text(db, job.title, limit=8)
+    candidates = [s for s in candidates if str(s.provider_id) != str(task.user_id)][:5]
+
+    if not candidates:
+        await _log(db, task.id, "warning",
+                   f"I couldn't find any providers for “{job.title}” yet — I'll keep looking.")
+        return {"found": False}
+
+    service_cards = [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "price": float(s.price),
+            "description": s.description or "",
+            "distance_km": getattr(s, "distance_km", None),
+        }
+        for s in candidates
+    ]
+    options = [
+        {
+            "label": f"Request {s['title']} — ₦{s['price']:,.0f}"
+            + (f" · {s['distance_km']} km" if s.get("distance_km") is not None else ""),
+            "action": f"select_service:{s['id']}",
+        }
+        for s in service_cards
+    ]
+    options.append({"label": "Not now", "action": "cancel"})
+
+    await _log(
+        db, task.id, "success",
+        f"I found {len(candidates)} provider(s) who could take “{job.title}”. "
+        f"Tap one and I'll open the request:",
+        data={
+            "render_type": "service_cards",
+            "services": service_cards,
+            "action_payload": {
+                "type": "select_service",
+                "query": job.title,
+                "options": options,
+            },
+        },
+    )
+    return {"found": True, "count": len(candidates), "job_id": str(job.id)}
+
+
+async def proactive_loop():
+    """Background hunt for users who opted into "total" autonomy.
+
+    Runs on its own cadence, counts against each user's daily guardrail budget,
+    only considers jobs that are genuinely stale (open, unassigned, no
+    applicants, older than the configured threshold), and never hunts the same
+    job twice inside the guardrail window.
+    """
+    import asyncio
+    from datetime import timedelta
+    from ....models.job import Job
+    from ....crud.application import get_applications_for_job
+    from ....services.agent_policy import (
+        AUTONOMY_MARKER,
+        resolve_policy,
+        within_guardrails,
+    )
+
+    logger.info(
+        "[proactive] Hunt loop started (every %ds)",
+        settings.AI_AGENT_PROACTIVE_INTERVAL_SECONDS,
+    )
+
+    while True:
+        await asyncio.sleep(settings.AI_AGENT_PROACTIVE_INTERVAL_SECONDS)
+
+        if not settings.AI_AGENT_ENABLED or not settings.AI_AGENT_PROACTIVE_ENABLED:
+            continue
+
+        try:
+            async with async_session() as db:
+                now = datetime.now(timezone.utc)
+                cutoff = now - timedelta(
+                    minutes=settings.AI_AGENT_PROACTIVE_MIN_JOB_AGE_MINUTES
+                )
+
+                hunters = (await db.execute(
+                    select(User).where(
+                        User.ai_settings["autonomyLevel"].astext == "total"
+                    )
+                )).scalars().all()
+
+                queued = 0
+                for user in hunters:
+                    policy = resolve_policy(user.ai_settings)
+                    if not policy.can_proactive_hunt:
+                        continue
+                    if not await within_guardrails(
+                        db, user.id, feature="proactive_hunt", cap=policy.daily_action_cap
+                    ):
+                        continue
+
+                    stale_jobs = (await db.execute(
+                        select(Job)
+                        .where(
+                            Job.client_id == user.id,
+                            Job.status == "open",
+                            Job.provider_id.is_(None),
+                            Job.created_at < cutoff,
+                        )
+                        .order_by(Job.created_at.asc())
+                        .limit(2)
+                    )).scalars().all()
+
+                    for job in stale_jobs:
+                        if await get_applications_for_job(db, job.id):
+                            continue  # someone already bit
+                        recent_hunt = (await db.execute(
+                            select(AgentTask)
+                            .where(
+                                AgentTask.user_id == user.id,
+                                AgentTask.params["job_id"].astext == str(job.id),
+                                AgentTask.params[AUTONOMY_MARKER].astext == "proactive_hunt",
+                                AgentTask.created_at >= now - timedelta(hours=24),
+                            )
+                            .limit(1)
+                        )).scalar_one_or_none()
+                        if recent_hunt:
+                            continue  # already hunted today
+
+                        db.add(AgentTask(
+                            user_id=user.id,
+                            command_text=f"Hunt for providers for “{job.title}”",
+                            task_type="proactive_hunt",
+                            params={
+                                "job_id": str(job.id),
+                                AUTONOMY_MARKER: "proactive_hunt",
+                            },
+                            status="queued",
+                        ))
+                        queued += 1
+
+                if queued:
+                    await db.commit()
+                    logger.info("[proactive] queued %d hunt task(s)", queued)
+        except Exception as exc:
+            logger.error("[proactive] loop error: %s", exc, exc_info=True)
 
 
 async def agent_loop():

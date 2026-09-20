@@ -131,8 +131,8 @@ export default function AISettingsPage() {
                   {aiSettings.autonomyLevel === 'total' && (
                     <>
                       <li>Fully autonomous negotiation and job applications.</li>
-                      <li>Actively hunts down services that match your requested tasks and automatically opens job requests with providers.</li>
-                      <li><strong>Warning:</strong> The AI acts as your proxy.</li>
+                      <li>Hunts for providers matching your open jobs and lines them up for a one-tap request — it never messages a provider without you tapping request.</li>
+                      <li><strong>Note:</strong> Funding escrow always stays a manual confirmation, at every level.</li>
                     </>
                   )}
                 </ul>
