@@ -5,9 +5,20 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import CallSettingsCard from '@/components/agent/CallSettingsCard'
 
+// Mirrors the backend guardrails in app/services/agent_policy.py — shown so the
+// limits the server actually enforces are visible, not implied.
+const AUTONOMY_LIMITS: Record<string, { actions: number; applies: number }> = {
+  off: { actions: 0, applies: 0 },
+  low: { actions: 20, applies: 0 },
+  medium: { actions: 30, applies: 0 },
+  high: { actions: 40, applies: 10 },
+  total: { actions: 60, applies: 20 },
+}
+
 export default function AISettingsPage() {
   const { aiSettings, updateAISetting, engineInfo, fetchEngineInfo, clearHistory } = useAgentStore()
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const limits = AUTONOMY_LIMITS[aiSettings.autonomyLevel] ?? AUTONOMY_LIMITS.off
 
   useEffect(() => {
     fetchEngineInfo()
@@ -125,6 +136,13 @@ export default function AISettingsPage() {
                     </>
                   )}
                 </ul>
+                <p className="pt-1.5 text-xs font-medium border-t border-amber-200 dark:border-amber-900/50">
+                  {limits.actions > 0
+                    ? `Daily guardrails: up to ${limits.actions} autonomous actions${
+                        limits.applies > 0 ? ` and ${limits.applies} automatic applications` : ''
+                      }. Enforced by the server.`
+                    : 'No autonomous actions — the agent only acts when you command it.'}
+                </p>
               </div>
             </div>
           </div>

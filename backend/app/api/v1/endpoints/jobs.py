@@ -20,6 +20,7 @@ from ....models.user import User
 from ....services.solana_client import get_platform_payer, init_escrow, release_escrow, cancel_escrow
 from ....services.wallet import get_user_keypair as _get_user_keypair
 from ....services.exchange_rate import get_ngn_usd_rate
+from ....services.agent_policy import resolve_policy, within_guardrails
 from ....core.config import settings
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
@@ -125,23 +126,39 @@ async def _notify_matching_providers(job_id: str, poster_name: str):
                 notified.add(svc.provider_id)
                 
                 provider = await get_user_by_id(db, svc.provider_id)
-                autonomy = provider.ai_settings.get("autonomyLevel") if provider and provider.ai_settings else "off"
-                
-                if autonomy in ["high", "total"]:
+                policy = resolve_policy(provider.ai_settings if provider else None)
+
+                if policy.can_auto_apply and await within_guardrails(
+                    db, provider.id, feature="auto_apply", cap=policy.daily_apply_cap
+                ):
+                    # A real, typed task with structured params. This used to be
+                    # task_type="generic" with the text "select_job:<id>", which
+                    # the executor never parsed — it answered conversationally
+                    # instead of applying, so "high" autonomy did nothing.
                     from ....models.agent_task import AgentTask
+                    from ....services.agent_policy import AUTONOMY_MARKER
                     db.add(AgentTask(
                         user_id=provider.id,
-                        task_type="generic",
-                        command_text=f"select_job:{job_id}",
-                        status="queued"
+                        command_text=f"Apply to “{job.title}”",
+                        task_type="apply_job",
+                        params={
+                            "job_id": str(job_id),
+                            "title": job.title,
+                            AUTONOMY_MARKER: "auto_apply",
+                        },
+                        status="queued",
                     ))
+                    logger.info(
+                        "[proactive] queued auto-apply for provider=%s job=%s",
+                        provider.id, job_id,
+                    )
                 else:
                     await create_notification(
                         db,
                         user_id=svc.provider_id,
                         title="New job matching your services",
                         message=f'{poster_name} posted a job: "{job.title}" for ₦{float(job.price):,.0f}. You might be a great fit!',
-                        link="/dashboard/jobs",
+                        link=f"/dashboard/jobs?jobId={job_id}",
                         type="job",
                     )
             if notified:
