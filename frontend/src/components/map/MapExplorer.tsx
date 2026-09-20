@@ -30,11 +30,8 @@ export function MapExplorer({
 }) {
   const [points, setPoints] = useState<MapPoint[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // Jobs and services are both drawn by default — seeing them together is the
-  // whole point of a neighbourhood map — with chips to separate them.
-  const [kindFilter, setKindFilter] = useState<'all' | 'job' | 'service'>(
-    type === 'jobs' ? 'job' : type === 'services' ? 'service' : 'all',
-  )
+  // Jobs and services have separate maps on purpose: the jobs map shows jobs,
+  // the services map shows services. Mixing them made both harder to read.
   const [showHeat, setShowHeat] = useState(false)
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
@@ -58,15 +55,13 @@ export function MapExplorer({
         <NeighborhoodMap
           latitude={latitude}
         longitude={longitude}
-        type="all"
+        type={type}
         radiusKm={radiusKm}
         onRadiusChange={onRadiusChange}
         height={height}
         selectedId={selectedId}
         onSelect={(_kind, id) => setSelectedId(id)}
           onResults={handleResults}
-          kindFilter={kindFilter}
-          onKindFilterChange={setKindFilter}
           showHeat={showHeat}
           onShowHeatChange={setShowHeat}
         />
@@ -137,7 +132,7 @@ export function MapExplorer({
                         {fmtPrice(point.price)}
                       </span>
                       <Link
-                        to={isJob ? '/dashboard/jobs' : '/dashboard/services'}
+                        to={isJob ? `/dashboard/jobs?jobId=${point.id}` : `/dashboard/services/${point.id}`}
                         className={`text-xs font-medium hover:underline ${
                           isJob ? 'text-blue-600' : 'text-green-600'
                         }`}

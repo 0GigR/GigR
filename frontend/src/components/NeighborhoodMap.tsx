@@ -3,7 +3,6 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import {
   MapContainer, TileLayer, Marker, Popup, Circle, useMap, useMapEvents,
 } from 'react-leaflet'
-import { Link } from 'react-router-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Flame, Layers, Navigation } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
@@ -91,18 +90,6 @@ function makeAvatarIcon(
   })
 }
 
-function makeClusterIcon(count: number, kind: 'job' | 'service' | 'mixed'): L.DivIcon {
-  const bg = kind === 'job' ? JOB_COLOR : kind === 'service' ? SERVICE_COLOR : MIXED_COLOR
-  const size = count < 10 ? 40 : count < 100 ? 46 : 54
-  const html = `
-    <div class="gigr-cluster" style="width:${size}px;height:${size}px;border-radius:9999px;background:${bg};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:3px solid rgba(255,255,255,.85);box-shadow:0 6px 16px rgba(0,0,0,.3)">${count}</div>`
-  return L.divIcon({
-    html,
-    className: 'gigr-cluster-marker',
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  })
-}
 
 // "You are here" — a pulsing dot that never depends on CDN marker PNGs.
 const userLocationIcon = L.divIcon({
@@ -178,7 +165,10 @@ function PointPopup({ point, ownerName, ownerAvatar }: {
   ownerAvatar?: string | null
 }) {
   const isJob = point.kind === 'job'
-  const link = isJob ? '/dashboard/jobs' : '/dashboard/services'
+  // Straight to the thing itself: the list page was a dead end.
+  const link = isJob
+    ? `/dashboard/jobs?jobId=${point.id}`
+    : `/dashboard/services/${point.id}`
   return (
     <div className="text-sm min-w-[170px]">
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -194,13 +184,13 @@ function PointPopup({ point, ownerName, ownerAvatar }: {
         <p className="line-clamp-2 text-gray-600 dark:text-gray-300 mt-0.5">{point.description}</p>
       )}
       <p className="font-semibold mt-1">{fmtPrice(point.price)}</p>
-      <Link
-        to={link}
+      <a
+        href={link}
         className={`inline-flex items-center gap-1 mt-2 font-medium hover:underline ${isJob ? 'text-blue-600' : 'text-green-600'}`}
       >
         {ownerAvatar && <img src={ownerAvatar} className="w-4 h-4 rounded-full object-cover" />}
         {ownerName || `View ${isJob ? 'job' : 'provider'}`} →
-      </Link>
+      </a>
     </div>
   )
 }
@@ -235,6 +225,44 @@ function ClusterLayer({
     [map, points, revision],
   )
 
+  // Pins mode draws every listing as its own tappable profile marker.
+  // Clustering used to replace nearby pins with a numbered bubble, which hid the
+  // people, made them unclickable for details, and put counts on the map that the
+  // header already shows.
+  if (mode === 'pins') {
+    return (
+      <>
+        {points.map((point) => {
+          const owner = point.ownerId ? owners.get(point.ownerId) : undefined
+          const highlighted = selectedId === point.id
+          return (
+            <Marker
+              key={`${point.kind}-${point.id}`}
+              position={[point.lat, point.lng]}
+              icon={makeAvatarIcon(
+                owner?.profile_image_url,
+                owner?.display_name,
+                point.kind === 'job' ? JOB_COLOR : SERVICE_COLOR,
+                highlighted,
+                point.kind === 'job' ? 'square' : 'round',
+              )}
+              zIndexOffset={highlighted ? 1000 : 0}
+              eventHandlers={{ click: () => onSelect?.(point.kind, point.id) }}
+            >
+              <Popup>
+                <PointPopup
+                  point={point}
+                  ownerName={owner?.display_name}
+                  ownerAvatar={owner?.profile_image_url}
+                />
+              </Popup>
+            </Marker>
+          )
+        })}
+      </>
+    )
+  }
+
   return (
     <>
       {clusters.map((cluster) => {
@@ -262,28 +290,6 @@ function ClusterLayer({
                   map.flyTo([cluster.lat, cluster.lng], Math.min(map.getZoom() + 2, 18), {
                     duration: 0.5,
                   }),
-              }}
-            />
-          )
-        }
-
-        if (cluster.points.length > 1) {
-          const kinds = new Set(cluster.points.map((p) => p.kind))
-          const kind = kinds.size > 1 ? 'mixed' : first.kind
-          return (
-            <Marker
-              key={`cluster-${first.id}-${cluster.points.length}`}
-              position={[cluster.lat, cluster.lng]}
-              icon={makeClusterIcon(cluster.points.length, kind)}
-              eventHandlers={{
-                click: () => {
-                  // Zooming into a cluster is the standard drill-down gesture.
-                  map.flyTo(
-                    [cluster.lat, cluster.lng],
-                    Math.min(map.getZoom() + 2, 18),
-                    { duration: 0.5 },
-                  )
-                },
               }}
             />
           )
@@ -332,7 +338,6 @@ export function NeighborhoodMap({
   onSelect,
   onResults,
   kindFilter = 'all',
-  onKindFilterChange,
   showHeat = false,
   onShowHeatChange,
 }: {
@@ -350,7 +355,6 @@ export function NeighborhoodMap({
   onResults?: (points: MapPoint[]) => void
   /** 'all' shows jobs and services together, which is the point of the map. */
   kindFilter?: 'all' | 'job' | 'service'
-  onKindFilterChange?: (kind: 'all' | 'job' | 'service') => void
   /** Draw density blobs instead of pins. */
   showHeat?: boolean
   onShowHeatChange?: (on: boolean) => void
@@ -497,6 +501,7 @@ export function NeighborhoodMap({
   const loading = jobsFetching || servicesFetching
   const jobCount = points.filter((p) => p.kind === 'job').length
   const serviceCount = points.filter((p) => p.kind === 'service').length
+  const accentColor = jobCount > 0 ? JOB_COLOR : SERVICE_COLOR
 
   return (
     <div
@@ -575,52 +580,29 @@ export function NeighborhoodMap({
           </div>
         </div>
 
-        {/* Jobs and services are different things, so the map shows both and lets
-            you separate them. Jobs draw as squares with a blue ring, services as
-            round pins with a green one. "Heat" swaps pins for density blobs. */}
-        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs space-y-2">
-          <div className="flex items-center gap-1">
-            {([
-              ['all', 'All', jobCount + serviceCount],
-              ['job', 'Jobs', jobCount],
-              ['service', 'Services', serviceCount],
-            ] as const).map(([value, label, count]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onKindFilterChange?.(value)}
-                aria-pressed={kindFilter === value}
-                className={`px-2 py-1 rounded-lg font-semibold transition-colors ${
-                  kindFilter === value
-                    ? 'bg-black text-white dark:bg-white dark:text-black'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                {label} {count}
-              </button>
-            ))}
+        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
+          <div className="flex items-center gap-3 text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <span
+                className={showHeat ? 'w-2.5 h-2.5 rounded-full' : 'w-2.5 h-2.5 rounded-[3px]'}
+                style={{ background: accentColor }}
+              />
+              {jobCount + serviceCount} on the map
+            </span>
+            {loading && <span className="text-gray-400">updating…</span>}
             <button
               type="button"
               onClick={() => onShowHeatChange?.(!showHeat)}
               aria-pressed={showHeat}
               title="Density view"
-              className={`ml-1 px-2 py-1 rounded-lg font-semibold transition-colors ${
+              className={`ml-auto px-2 py-0.5 rounded-lg font-semibold transition-colors ${
                 showHeat
                   ? 'bg-amber-500 text-white'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
               }`}
             >
               Heat
             </button>
-          </div>
-          <div className="flex items-center gap-3 text-gray-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: JOB_COLOR }} /> jobs
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: SERVICE_COLOR }} /> services
-            </span>
-            {loading && <span className="text-gray-400">updating…</span>}
           </div>
           {!loading && visiblePoints.length === 0 && (
             <p className="mt-1.5 text-gray-500 flex items-center gap-1">
