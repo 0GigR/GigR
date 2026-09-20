@@ -394,7 +394,7 @@ export function NeighborhoodMap({
   const jobsEnabled = validCenter && (type === 'jobs' || type === 'all')
   const servicesEnabled = validCenter && (type === 'services' || type === 'all')
 
-  const { data: nearbyJobs, isFetching: jobsFetching } = useQuery<Job[]>({
+  const { data: nearbyJobs, isFetching: jobsFetching, isError: jobsFailed } = useQuery<Job[]>({
     // Namespaced deliberately: ServicesPage holds an INFINITE query under
     // ['nearbyServices', lat, lon, radius] whose cached value is {pages, pageParams}.
     // Sharing that key meant this query received an object and the render loop
@@ -407,20 +407,20 @@ export function NeighborhoodMap({
         // which left the map empty. 500 km is the maximum the older validation
         // allows, so the map fills either way; the circle still shows the
         // neighbourhood the user actually picked.
-        params: { lat: latitude, lon: longitude, radius: 500, limit: 300 },
+        params: { lat: latitude, lon: longitude, radius: 500, limit: 100 },
       })
       return Array.isArray(data) ? data : []
     },
     enabled: jobsEnabled,
   })
 
-  const { data: nearbyServices, isFetching: servicesFetching } = useQuery<Service[]>({
+  const { data: nearbyServices, isFetching: servicesFetching, isError: servicesFailed } = useQuery<Service[]>({
     queryKey: ['map-nearby-services', latitude, longitude],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
         // Same reasoning as the jobs query: 500 km works against both the old and
         // the new backend, where radius=0 only works once the backend is updated.
-        params: { lat: latitude, lon: longitude, radius: 500, limit: 300 },
+        params: { lat: latitude, lon: longitude, radius: 500, limit: 100 },
       })
       return Array.isArray(data) ? data : []
     },
@@ -517,6 +517,9 @@ export function NeighborhoodMap({
   }
 
   const loading = jobsFetching || servicesFetching
+  // Only meaningful for the kinds this map is actually showing.
+  const loadFailed =
+    (jobsEnabled && jobsFailed) || (servicesEnabled && servicesFailed)
   const jobCount = points.filter((p) => p.kind === 'job').length
   const serviceCount = points.filter((p) => p.kind === 'service').length
   const accentColor = jobCount > 0 ? JOB_COLOR : SERVICE_COLOR
@@ -641,7 +644,9 @@ export function NeighborhoodMap({
           {!loading && visiblePoints.length === 0 && (
             <p className="mt-1.5 text-gray-500 flex items-center gap-1">
               <Flame className="w-3 h-3 text-amber-500" />
-              No listings with a location yet.
+              {loadFailed
+                ? 'Could not load listings for the map. Pull to refresh, or try again shortly.'
+                : 'No listings with a location yet.'}
             </p>
           )}
         </div>
