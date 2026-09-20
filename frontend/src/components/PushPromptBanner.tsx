@@ -37,9 +37,15 @@ function currentPushState(): PushState {
 export default function PushPromptBanner({
   onSignIn,
   positionClassName = 'sticky top-14',
+  enabled = true,
+  onActiveChange,
 }: {
   onSignIn?: () => void
   positionClassName?: string
+  /** Lets the shell suppress this banner while a more urgent one is showing. */
+  enabled?: boolean
+  /** Reports whether this banner is currently occupying the banner slot. */
+  onActiveChange?: (active: boolean) => void
 }) {
   const { user } = useAuthStore()
   const [dismissed, setDismissed] = useState(
@@ -114,7 +120,15 @@ export default function PushPromptBanner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
-  if (dismissed || state === 'granted') return null
+  const active = enabled && !dismissed && state !== 'granted'
+
+  // Tell the shell whether this banner is occupying the slot, so only one banner
+  // is ever on screen at a time.
+  useEffect(() => {
+    onActiveChange?.(active)
+  }, [active, onActiveChange])
+
+  if (!active) return null
 
   const handleEnable = async () => {
     setBusy(true)

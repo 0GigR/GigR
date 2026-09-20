@@ -15,7 +15,7 @@ const REASK_AFTER_DAYS = 7
  * REASK_AFTER_DAYS per browser (localStorage). "Not now" dismisses for the
  * period; "Enable" requests the browser location and flips location_public on.
  */
-export default function LocationPromptBanner() {
+export default function LocationPromptBanner({ enabled = true }: { enabled?: boolean } = {}) {
   const { user, fetchUser } = useAuthStore()
   const geo = useGeolocation()
   const [visible, setVisible] = useState(false)
@@ -85,7 +85,7 @@ export default function LocationPromptBanner() {
     }
   }
 
-  if (!visible || !user || (user as any)?.location_public) return null
+  if (!enabled || !visible || !user || (user as any)?.location_public) return null
   void geo // geolocation hook kept for future use; enabling requests fresh position
 
   return (
