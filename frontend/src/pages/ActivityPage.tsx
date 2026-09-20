@@ -34,7 +34,7 @@ import {
   UserPlus,
   Zap,
   X,
-  Wallet,
+  ChevronDown,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -270,6 +270,9 @@ export default function ActivityPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'feed' | 'clienting' | 'providing' | 'completed' | 'cancelled' | 'applications'>('feed')
+  // Progressive disclosure: two headline figures stay visible, the rest sit
+  // behind a tap.
+  const [showAllStats, setShowAllStats] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -636,36 +639,45 @@ export default function ActivityPage() {
         </div>
       </div>
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-lg bg-black text-white flex items-center justify-center shrink-0"><Zap className="w-4 h-4" /></div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500">Active jobs</p>
-            <p className="text-lg font-bold leading-tight">{activeJobsCount}</p>
+      {/* Two figures worth a glance; the rest stay one tap away. */}
+      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 sm:gap-10">
+            <div>
+              <p className="text-2xl font-bold leading-none">{activeJobsCount}</p>
+              <p className="text-xs text-gray-500 mt-1">Active jobs</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none">
+                {escrowTotal ? `₦${escrowTotal.toLocaleString()}` : '—'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">In escrow</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowAllStats((value) => !value)}
+            aria-expanded={showAllStats}
+            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+          >
+            {showAllStats ? 'Less' : 'More stats'}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
+          </button>
         </div>
-        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0"><Wallet className="w-4 h-4" /></div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500">In escrow</p>
-            <p className="text-lg font-bold leading-tight">{escrowTotal ? `₦${escrowTotal.toLocaleString()}` : '—'}</p>
+        {showAllStats && (
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{completedJobs.length}</span>
+              <span className="text-xs text-gray-500">Completed</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{myActivityFull?.applications?.length || 0}</span>
+              <span className="text-xs text-gray-500">Applications sent</span>
+            </div>
           </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-lg bg-purple-600 text-white flex items-center justify-center shrink-0"><CheckCircle className="w-4 h-4" /></div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500">Completed</p>
-            <p className="text-lg font-bold leading-tight">{completedJobs.length}</p>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
-          <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0"><Send className="w-4 h-4" /></div>
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500">Applications sent</p>
-            <p className="text-lg font-bold leading-tight">{myActivityFull?.applications?.length || 0}</p>
-          </div>
-        </div>
+        )}
       </div>
 
       <Tabs
@@ -679,13 +691,13 @@ export default function ActivityPage() {
               <Sparkles className="w-3.5 h-3.5 mr-1.5" /> Feed
             </TabsTrigger>
             <TabsTrigger value="clienting" className="whitespace-nowrap shrink-0">
-              Clienting ({clientingJobs.length})
+              I'm hiring ({clientingJobs.length})
             </TabsTrigger>
             <TabsTrigger value="providing" className="whitespace-nowrap shrink-0">
-              Providing ({providingJobs.length})
+              I'm working ({providingJobs.length})
             </TabsTrigger>
             <TabsTrigger value="applications" className="whitespace-nowrap shrink-0">
-              Applications ({myActivityFull?.applications?.length || 0})
+              Applied ({myActivityFull?.applications?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="completed" className="whitespace-nowrap shrink-0">
               Completed ({completedJobs.length})
