@@ -5,6 +5,7 @@ import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tansta
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
+import { haversineKm } from '@/lib/geo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PriceInput } from '@/components/PriceInput'
@@ -53,17 +54,16 @@ const statusBadge = (status: string) => {
   }
 }
 
-// Great-circle distance in km between two points (haversine). Returns null when
-// either point is missing (jobs posted without a location, or no GPS fix).
-function distanceKm(lat1: number | null | undefined, lon1: number | null | undefined, lat2: number | null | undefined, lon2: number | null | undefined): number | null {
-  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null
-  const R = 6371
-  const dLat = ((lat2 - lat1) * Math.PI) / 180
-  const dLon = ((lon2 - lon1) * Math.PI) / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10
+// Rounded to 0.1 km for display. The maths itself lives in @/lib/geo so it
+// exists once rather than in three pages.
+function distanceKm(
+  lat1: number | null | undefined,
+  lon1: number | null | undefined,
+  lat2: number | null | undefined,
+  lon2: number | null | undefined,
+): number | null {
+  const km = haversineKm(lat1, lon1, lat2, lon2)
+  return km == null ? null : Math.round(km * 10) / 10
 }
 
 // Small KPI card used in the stats strip above the tabs.

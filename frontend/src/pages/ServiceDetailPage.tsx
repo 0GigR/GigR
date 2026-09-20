@@ -1,4 +1,5 @@
 import { fmtPrice } from '@/store/currencyStore'
+import { useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Send, MapPin, Loader2, Star, Navigation, MessageCircle } from 'lucide-react'
@@ -8,7 +9,7 @@ import type { components } from '@/types/api'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
@@ -28,36 +29,51 @@ type RatingOut = {
   job_title?: string | null
 }
 
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const R = 6371 // Radius of the earth in km
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-  return R * c // Distance in km
-}
-
-// Re-use avatar marker logic or standard Leaflet icon
-const defaultIcon = new L.Icon({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+// Provider pin as a divIcon — consistent with the neighbourhood map and
+// independent of the CDN marker PNGs (which silently fail to load, leaving an
+// invisible marker).
+const providerIcon = L.divIcon({
+  html: `<div class="gigr-pin" style="position:relative;width:34px;height:44px;">
+      <div style="position:absolute;top:0;left:0;width:34px;height:34px;border-radius:9999px;background:#16a34a;border:3px solid #fff;box-shadow:0 3px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;">◎</div>
+      <div style="position:absolute;top:30px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:13px solid #16a34a;"></div>
+    </div>`,
+  className: 'gigr-service-pin',
+  iconSize: [34, 44],
+  iconAnchor: [17, 44],
+  popupAnchor: [0, -40],
 })
+
+const viewerIcon = L.divIcon({
+  html: `<div style="position:relative;width:20px;height:20px;">
+      <div class="gigr-ring" style="position:absolute;inset:0;border-radius:9999px;background:rgba(37,99,235,.35);"></div>
+      <div style="position:absolute;top:4px;left:4px;width:12px;height:12px;border-radius:9999px;background:#2563eb;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);"></div>
+    </div>`,
+  className: 'gigr-user-marker',
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
+})
+
+/** OSRM/geocode payloads coming back from /location/route. */
+type RouteInfo = {
+  distance_km: number | null
+  duration_min: number | null
+  /** GeoJSON order: [lon, lat] pairs. */
+  geometry?: [number, number][] | null
+  approximate?: boolean
+}
 
 export default function ServiceDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
-  const attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-  const tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+
+  // Tile config comes from the backend so the URL isn't hardcoded per component.
+  const { data: mapConfig } = useQuery<{ tile_light_url: string; attribution: string }>({
+    queryKey: ['map-config'],
+    queryFn: async () => (await api.get('/location/map-config')).data,
+    staleTime: 24 * 60 * 60 * 1000,
+  })
 
   const { data: service, isLoading: serviceLoading, error: serviceError } = useQuery<Service>({
     queryKey: ['service', id],
@@ -97,10 +113,35 @@ export default function ServiceDetailPage() {
     enabled: !!service?.provider_id,
   })
 
-  let distanceKm = null
-  if (latitude && longitude && service?.latitude && service?.longitude) {
-    distanceKm = calculateDistance(latitude, longitude, service.latitude, service.longitude)
-  }
+  // Distance + ETA come from the backend (OSRM), which also falls back to a
+  // straight-line estimate. This replaced a client-side haversine duplicated in
+  // four different files.
+  const canRoute = Boolean(
+    latitude && longitude && service?.latitude && service?.longitude,
+  )
+  const { data: routeInfo } = useQuery<RouteInfo>({
+    queryKey: ['route', latitude, longitude, service?.latitude, service?.longitude],
+    queryFn: async () => {
+      const { data } = await api.get('/location/route', {
+        params: {
+          from_lat: latitude, from_lon: longitude,
+          to_lat: service!.latitude, to_lon: service!.longitude,
+          profile: 'driving',
+        },
+      })
+      return data
+    },
+    enabled: canRoute,
+    staleTime: 5 * 60 * 1000,
+  })
+  const distanceKm = routeInfo?.distance_km ?? null
+
+  // OSRM returns GeoJSON [lon, lat]; Leaflet wants [lat, lon].
+  const routeLine: [number, number][] | null = useMemo(() => {
+    const geometry = routeInfo?.geometry
+    if (!geometry || geometry.length < 2) return null
+    return geometry.map(([lon, lat]) => [lat, lon] as [number, number])
+  }, [routeInfo])
 
   // Services the user has already requested (for the "Requested" indicator)
   const { data: myClientJobs } = useQuery<any[]>({
@@ -324,13 +365,52 @@ export default function ServiceDetailPage() {
               {distanceKm !== null && (
                 <div className="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center gap-2">
                   <Navigation className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm text-blue-800 font-medium">{distanceKm.toFixed(1)} km away from you</span>
+                  <span className="text-sm text-blue-800 font-medium">
+                    {distanceKm.toFixed(1)} km away
+                    {routeInfo?.duration_min != null &&
+                      ` · ~${Math.round(routeInfo.duration_min)} min drive`}
+                    {routeInfo?.approximate && ' (straight line)'}
+                  </span>
                 </div>
               )}
-              <div className="h-48 w-full relative z-0 isolate">
+              <div className="h-56 w-full relative z-0 isolate">
                 <MapContainer center={[service.latitude, service.longitude]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-                  <TileLayer attribution={attribution} url={tileUrl} />
-                  <Marker position={[service.latitude, service.longitude]} icon={defaultIcon}>
+                  <TileLayer
+                    attribution={mapConfig?.attribution ?? '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}
+                    url={mapConfig?.tile_light_url ?? 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'}
+                  />
+
+                  {/* How far the provider says they will travel — drawn from the
+                      radius_km they set, which used to be text-only. */}
+                  {Number(service.radius_km) > 0 && (
+                    <Circle
+                      center={[service.latitude, service.longitude]}
+                      radius={Number(service.radius_km) * 1000}
+                      pathOptions={{
+                        color: '#16a34a',
+                        weight: 1.5,
+                        opacity: 0.7,
+                        fillColor: '#16a34a',
+                        fillOpacity: 0.08,
+                      }}
+                    />
+                  )}
+
+                  {latitude && longitude && (
+                    <Marker position={[latitude, longitude]} icon={viewerIcon}>
+                      <Popup>You are here</Popup>
+                    </Marker>
+                  )}
+
+                  {/* Road route from the viewer, when OSRM returned a geometry. */}
+                  {routeLine && (
+                    <Polyline
+                      positions={routeLine}
+                      pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.75 }}
+                    />
+                  )}
+
+                  <Marker position={[service.latitude, service.longitude]} icon={providerIcon}>
                     <Popup>{service.title}</Popup>
                   </Marker>
                 </MapContainer>
