@@ -23,7 +23,7 @@ import { useGeolocation } from '@/hooks/useGeolocation'
 import {
   Plus, Send, Shield, CheckCircle, Star, Play, UserPlus, Edit2,
   ImagePlus, ExternalLink, X, MessageCircle, FileText, Loader2, Map, List, Search,
-  Flame, Clock, Briefcase, MapPin, Zap, Inbox, Trash2
+  Flame, Clock, Briefcase, MapPin, Zap, Inbox, Trash2, SlidersHorizontal, ChevronDown
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { components } from '@/types/api'
@@ -64,24 +64,6 @@ function distanceKm(
 ): number | null {
   const km = haversineKm(lat1, lon1, lat2, lon2)
   return km == null ? null : Math.round(km * 10) / 10
-}
-
-// Small KPI card used in the stats strip above the tabs.
-function StatCard({ icon, label, value, hint }: { icon: ReactNode; label: string; value: number; hint?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3 shadow-sm">
-      <div className="w-9 h-9 rounded-lg bg-black text-white flex items-center justify-center shrink-0">
-        {icon}
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-gray-500 truncate">{label}</p>
-        <p className="text-lg font-bold leading-tight">
-          {value}
-          {hint ? <span className="text-xs font-normal text-gray-400 ml-1">{hint}</span> : null}
-        </p>
-      </div>
-    </div>
-  )
 }
 
 // Status groupings for the "My Jobs" tab. Order matters: requests first, then
@@ -218,6 +200,10 @@ export default function JobsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  // Progressive disclosure: filters and the secondary stats are folded
+  // away so the first look at this page is Jobs, not a wall of controls.
+  const [showFilters, setShowFilters] = useState(false)
+  const [showAllStats, setShowAllStats] = useState(false)
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -266,7 +252,18 @@ export default function JobsPage() {
   }, [inView, hasMoreOpenJobs, loadingMoreOpenJobs, fetchMoreOpenJobs])
 
   const openJobs = openJobsPages?.pages.flat() ?? []
-
+  // Boundaries and summary figures used by the folded header/stats above.
+  const activeFilterCount =
+    (categoryFilter ? 1 : 0) + (sortOrder && sortOrder !== 'newest' ? 1 : 0)
+  const nearbyCount =
+    geo.latitude && geo.longitude
+      ? openJobs.filter((j) => {
+          const km =
+            (j as Job & { distance_km?: number | null }).distance_km ??
+            distanceKm(geo.latitude, geo.longitude, j.latitude, j.longitude)
+          return km != null && km <= mapRadius
+        }).length
+      : 0
   const { data: myJobs, isLoading: myLoading } = useQuery<Job[]>({
     queryKey: ['jobs', 'mine'],
     queryFn: async () => {
@@ -277,6 +274,10 @@ export default function JobsPage() {
       return [...c.data, ...p.data]
     },
   })
+
+  const activeWithYou = (myJobs ?? []).filter((j) =>
+    ['assigned', 'funded', 'in_progress'].includes(j.status),
+  ).length
 
   // Live NGN → USDC exchange rate (cached 60 min server-side, refetch every hour client-side)
   const { data: rateData } = useQuery<{ ngn_per_usd: number }>({
@@ -666,15 +667,15 @@ export default function JobsPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* Header */}
+      {/* Header — one primary action, a search, and everything else folded. */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
           <p className="text-gray-500">Find work or get things done</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(activeTab === 'open' || activeTab === 'mine') && (
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-none">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
               <Input
                 placeholder={activeTab === 'open' ? 'Search jobs...' : 'Search my jobs...'}
@@ -685,18 +686,40 @@ export default function JobsPage() {
             </div>
           )}
           {activeTab === 'open' && (
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[160px] bg-background border-border">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">All Categories</SelectItem>
-                {categories.map(c => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Button
+              variant="outline"
+              onClick={() => setShowFilters((value) => !value)}
+              aria-expanded={showFilters}
+              className="border-gray-200 dark:border-gray-700"
+            >
+              <SlidersHorizontal className="w-4 h-4 mr-2" />
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-black text-white dark:bg-white dark:text-black text-[10px] font-bold px-1">
+                  {activeFilterCount}
+                </span>
+              )}
+            </Button>
           )}
+          <Button onClick={() => setCreateOpen(true)} className="bg-black text-white hover:bg-gray-800">
+            <Plus className="w-4 h-4 mr-2" /> Post Job
+          </Button>
+        </div>
+      </div>
+
+      {activeTab === 'open' && showFilters && (
+        <div className="flex flex-wrap gap-2 animate-in fade-in duration-200">
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-[160px] bg-background border-border">
+              <SelectValue placeholder="All Categories" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Categories</SelectItem>
+              {categories.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select value={sortOrder} onValueChange={setSortOrder}>
             <SelectTrigger className="w-[160px] bg-background border-border">
               <SelectValue placeholder="Sort by" />
@@ -708,37 +731,48 @@ export default function JobsPage() {
               <SelectItem value="price_low">Price: Low to High</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => setCreateOpen(true)} className="bg-black text-white hover:bg-gray-800">
-            <Plus className="w-4 h-4 mr-2" /> Post Job
-          </Button>
         </div>
-      </div>
+      )}
 
-      {/* Quick stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={<Briefcase className="w-4 h-4" />} label="Open jobs" value={openJobs.length} />
-        <StatCard
-          icon={<MapPin className="w-4 h-4" />}
-          label="Near you"
-          value={
-            geo.latitude && geo.longitude
-              ? openJobs.filter(j => {
-                  // Prefer the backend's own distance when the endpoint supplied
-                  // it; only fall back to client maths for plain browse rows.
-                  const km = (j as Job & { distance_km?: number | null }).distance_km
-                    ?? distanceKm(geo.latitude, geo.longitude, j.latitude, j.longitude)
-                  return km != null && km <= mapRadius
-                }).length
-              : 0
-          }
-          hint={geo.latitude ? undefined : 'location off'}
-        />
-        <StatCard icon={<Send className="w-4 h-4" />} label="You applied" value={appliedJobIds.size} />
-        <StatCard
-          icon={<Zap className="w-4 h-4" />}
-          label="Active with you"
-          value={(myJobs ?? []).filter(j => ['assigned', 'funded', 'in_progress'].includes(j.status)).length}
-        />
+      {/* Two figures that matter while browsing; the rest stay one tap away. */}
+      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-6 sm:gap-10">
+            <div>
+              <p className="text-2xl font-bold leading-none">{openJobs.length}</p>
+              <p className="text-xs text-gray-500 mt-1">Open jobs</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold leading-none">{nearbyCount}</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Near you{geo.latitude ? ` (${mapRadius} km)` : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllStats((value) => !value)}
+            aria-expanded={showAllStats}
+            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+          >
+            {showAllStats ? 'Less' : 'More stats'}
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
+          </button>
+        </div>
+        {showAllStats && (
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <Send className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{appliedJobIds.size}</span>
+              <span className="text-xs text-gray-500">You applied</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap className="w-4 h-4 text-gray-400" />
+              <span className="text-lg font-bold leading-none">{activeWithYou}</span>
+              <span className="text-xs text-gray-500">Active with you</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'open' | 'mine' | 'map')}>
