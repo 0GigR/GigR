@@ -192,7 +192,11 @@ export default function ServicesPage() {
   const [catSearchResults, setCatSearchResults] = useState<Category[]>([])
   const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
   const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
-  const [radius] = useState(100000) // global radius
+  // Search radius in KILOMETRES. This used to be a hardcoded 100000, and since
+  // the API takes km that disabled radius filtering entirely — "nearby" meant
+  // the whole planet. Shared with the map's radius selector so the list and the
+  // map always describe the same area.
+  const [radius, setRadius] = useState(10)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
@@ -669,7 +673,13 @@ export default function ServicesPage() {
         {activeTab === 'map' ? (
           <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {latitude && longitude ? (
-              <NeighborhoodMap latitude={latitude} longitude={longitude} type="services" />
+              <NeighborhoodMap
+                latitude={latitude}
+                longitude={longitude}
+                type="services"
+                radiusKm={radius}
+                onRadiusChange={setRadius}
+              />
             ) : (
               <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
                 <MapPin className="w-10 h-10 text-gray-400 mx-auto mb-3" />
