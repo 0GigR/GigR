@@ -17,6 +17,27 @@ export default function VoiceAssistant() {
   const recognitionRef = useRef<any>(null)
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Cleanup on unmount — must be declared before any early returns (Rules of Hooks)
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) recognitionRef.current.stop()
+      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current)
+    }
+  }, [])
+
+  // Hide popup if the big activity panel opens so they don't overlap
+  useEffect(() => {
+    if (isPanelOpen && isOpen) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+        recognitionRef.current = null
+      }
+      setIsListening(false)
+      setIsOpen(false)
+      setSuccessMessage(null)
+    }
+  }, [isPanelOpen, isOpen])
+
   // Don't render the floating button if the user disabled it in AI Settings
   // (unless the panel is open, in which case we might want to hide the whole popup anyway,
   // but let's just hide the trigger button if disabled).
@@ -114,19 +135,6 @@ export default function VoiceAssistant() {
     stopListening()
     setIsOpen(false)
     setSuccessMessage(null)
-  }
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (recognitionRef.current) recognitionRef.current.stop()
-      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current)
-    }
-  }, [])
-
-  // Hide popup if the big activity panel is open so they don't overlap
-  if (isPanelOpen && isOpen) {
-    handleClose()
   }
 
   return (
