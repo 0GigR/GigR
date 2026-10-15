@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { motion, AnimatePresence } from 'framer-motion'
+import { RobotWaitingIllustration } from './illustrations'
 
 const AgentResultMap = lazy(() => import('./AgentResultMap'))
 
@@ -515,10 +516,8 @@ function EmptyState({ onChipClick }: { onChipClick: (text: string) => void }) {
   ]
   return (
     <div className="flex flex-col items-center justify-center h-full text-center py-10 px-4">
-      <div className="w-16 h-16 rounded-full bg-violet-50 dark:bg-violet-900/30 flex items-center justify-center mb-4">
-        <Zap className="w-8 h-8 text-violet-400" />
-      </div>
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Hi! I'm GigidyAI</p>
+      <RobotWaitingIllustration className="w-36 h-36 mb-3" />
+      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Gigr Agent OS</p>
       <p className="text-sm text-gray-500 mb-6 max-w-xs">
         I can find services, post jobs, negotiate on your behalf, and navigate the app.
       </p>

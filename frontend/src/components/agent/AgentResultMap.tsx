@@ -11,6 +11,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { MapPin, ExternalLink } from 'lucide-react'
 import { isFeatureEnabled } from '@/lib/featureFlags'
+import { makeServicePin, makeJobPin } from '@/lib/mapPins'
 
 export interface AgentMapItem {
   id: string
@@ -33,28 +34,7 @@ const OSM_TILE_URL = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
 
-/** Create custom SVG pin for service or job without CDN raster icons */
-function createMarkerIcon(title: string, kind: 'service' | 'job' = 'service'): L.DivIcon {
-  const accentColor = kind === 'job' ? '#2563eb' : '#7c3aed'
-  const letter = (title || 'G').trim().charAt(0).toUpperCase()
 
-  const html = `
-    <div style="position:relative;width:32px;height:42px;display:flex;flex-direction:column;align-items:center;">
-      <div style="width:30px;height:30px;border-radius:9999px;background:${accentColor};display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.35);border:2px solid #ffffff;">
-        <span style="color:#ffffff;font-size:12px;font-weight:700;line-height:1;font-family:sans-serif;">${letter}</span>
-      </div>
-      <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:9px solid ${accentColor};margin-top:-1px;"></div>
-    </div>
-  `
-
-  return L.divIcon({
-    html,
-    className: 'agent-map-pin',
-    iconSize: [32, 42],
-    iconAnchor: [16, 42],
-    popupAnchor: [0, -38],
-  })
-}
 
 /** Recenter and fit map bounds to the markers */
 function AutoFitBounds({ points }: { points: [number, number][] }): null {
@@ -142,7 +122,10 @@ export default function AgentResultMap({
               geoItem.latitude as number,
               geoItem.longitude as number,
             ]
-            const pinIcon = createMarkerIcon(geoItem.title, geoItem.kind || 'service')
+            const pinIcon =
+              geoItem.kind === 'job'
+                ? makeJobPin(geoItem.title, geoItem.price)
+                : makeServicePin(geoItem.title, geoItem.price)
 
             return (
               <Marker key={geoItem.id} position={pointPosition} icon={pinIcon}>
