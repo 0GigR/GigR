@@ -177,8 +177,13 @@ export default function VoiceAssistant() {
 
   return (
     <>
-      {/* Floating mic button */}
-      <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center pointer-events-none">
+      {/* Floating draggable mic button */}
+      <motion.div
+        drag
+        dragMomentum={false}
+        whileDrag={{ scale: 1.08 }}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+      >
         {/* Active recording sonar ring */}
         {isListening && (
           <>
@@ -195,12 +200,12 @@ export default function VoiceAssistant() {
           whileTap={{ scale: 0.94 }}
           whileHover={{ scale: 1.06 }}
           onClick={handleMicToggle}
-          className={`pointer-events-auto relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
+          className={`relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 pointer-events-auto ${
             isListening
               ? 'bg-red-600 text-white shadow-red-500/50 ring-4 ring-red-500/30'
               : 'bg-black text-white hover:bg-gray-900 border border-white/10 shadow-xl'
           }`}
-          title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening... Click to send') : 'Gigidy AI — Tap to speak'}
+          title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening... Click to send') : 'Gigidy AI — Tap to speak (Drag anywhere)'}
           aria-label={isListening ? 'Stop recording voice command' : 'Start recording voice command'}
         >
           {isProcessing ? (
@@ -209,7 +214,7 @@ export default function VoiceAssistant() {
             <Mic className={`w-6 h-6 text-white ${isListening ? 'animate-pulse' : ''}`} />
           )}
         </motion.button>
-      </div>
+      </motion.div>
 
       {/* Speech Companion Popup Panel on the side */}
       <AnimatePresence>
