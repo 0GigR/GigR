@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles, Wallet, Mic } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, ChevronDown, Check, Wrench, Sparkles, Wallet, Mic } from 'lucide-react'
 import { toast } from 'sonner'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
@@ -377,6 +377,7 @@ export default function AgentActivityPanel() {
 
 function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: string) => void }) {
   const { respondToDialog, cancelTask } = useAgentStore()
+  const [isStepsCollapsed, setIsStepsCollapsed] = useState(false)
   const timeAgo = formatDistanceToNow(new Date(task.created_at), { addSuffix: true })
   const isActive = task.status === 'queued' || task.status === 'running'
 
@@ -401,6 +402,30 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
       agentAudio.playRadarPing()
     }
   }, [task.logs?.length])
+
+  const allLogs = task.logs ?? []
+
+  // Split logs into execution steps vs outcome cards / answers
+  const stepLogs = allLogs.filter((l) => {
+    if (l.level === 'think') return true
+    if (l.level === 'action') return true
+    if (
+      l.level === 'info' &&
+      !l.data?.render_type &&
+      !l.data?.action_payload &&
+      (l.message.startsWith('Searching') ||
+        l.message.startsWith('Evaluating') ||
+        l.message.startsWith('Parsing') ||
+        l.message.startsWith('Agent started') ||
+        l.message.startsWith('Interpreted as:') ||
+        l.message.startsWith('Analyzing'))
+    ) {
+      return true
+    }
+    return false
+  })
+
+  const outcomeLogs = allLogs.filter((l) => !stepLogs.includes(l))
 
   const statusTag =
     task.status === 'running'
@@ -436,8 +461,65 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
         </div>
       </div>
 
-      {/* Agent logs */}
-      {(task.logs ?? []).map((log) => (
+      {/* Collapsible execution steps block */}
+      {stepLogs.length > 0 && (
+        <div className="space-y-1.5 pl-2 border-l-2 border-indigo-500/25 dark:border-indigo-500/35 ml-2 my-2">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setIsStepsCollapsed((prev) => !prev)}
+              className="flex items-center gap-1.5 text-[11px] font-mono text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 py-1 px-2 rounded-lg bg-gray-100 dark:bg-gray-800 transition-colors"
+            >
+              {isStepsCollapsed ? (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                  <span>Show {stepLogs.length} step{stepLogs.length === 1 ? '' : 's'}</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  <span>Hide execution steps ({stepLogs.length})</span>
+                </>
+              )}
+            </button>
+            {isActive && (
+              <span className="text-[10px] font-mono text-indigo-500 dark:text-indigo-400 animate-pulse font-medium">
+                [AGENT WORKING...]
+              </span>
+            )}
+          </div>
+
+          {!isStepsCollapsed && (
+            <div className="space-y-1.5 pt-1">
+              {stepLogs.map((step) => (
+                <div
+                  key={step.id}
+                  className="flex items-start gap-2 text-xs py-1.5 px-2.5 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800"
+                >
+                  <span
+                    className={cn(
+                      "text-[9px] font-mono px-1 py-0.5 rounded font-semibold uppercase shrink-0 mt-0.5",
+                      step.level === 'think'
+                        ? "bg-violet-950/60 text-violet-400 border border-violet-800/40"
+                        : step.level === 'action'
+                          ? "bg-blue-950/60 text-blue-400 border border-blue-800/40"
+                          : "bg-gray-800 text-gray-300"
+                    )}
+                  >
+                    {step.level === 'think' ? '[THINK]' : step.level === 'action' ? '[ACTION]' : '[STEP]'}
+                  </span>
+                  <span className="text-gray-700 dark:text-gray-300 leading-snug break-words">
+                    {step.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Outcome logs (cards, dialogs, answers) */}
+      {outcomeLogs.map((log) => (
         <AgentMessage key={log.id} log={log} onDialogAction={handleDialogAction} onNavigate={onNavigate} />
       ))}
 
@@ -453,8 +535,8 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
             </div>
           </div>
           {isActive && (
-            <button onClick={() => cancelTask(task.id)} className="text-xs text-red-400 hover:text-red-600 mt-2 self-end">
-              Cancel
+            <button onClick={() => cancelTask(task.id)} className="text-xs text-red-400 hover:text-red-600 mt-2 self-end font-mono">
+              [CANCEL]
             </button>
           )}
         </div>
@@ -633,14 +715,10 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
   const renderType = logPayload?.render_type
   const actionPayload = logPayload?.action_payload
 
-  // Skip raw internal diagnostic logs — they clutter chat presentation
+  // Skip raw command echo and generic task completed marker
   if (
     log.message.startsWith('Command received:') ||
-    log.message === 'Parsing command intent...' ||
-    log.message.startsWith('Agent started working on:') ||
-    log.message.startsWith('Interpreted as:') ||
-    log.message === 'Task completed' ||
-    log.message.startsWith('Analyzing command and session context')
+    log.message === 'Task completed'
   ) {
     return null
   }
