@@ -146,27 +146,44 @@ export default function VoiceAssistant() {
 
   return (
     <>
-      {/* Floating mic button */}
-      <motion.button
-        drag
-        dragMomentum={false}
-        whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
-        onClick={handleToggle}
-        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-colors duration-300 ${
-          isListening
-            ? 'bg-red-500 text-white animate-pulse shadow-red-500/50'
-            : 'bg-black text-white hover:bg-gray-800'
-        }`}
-        title={isListening ? 'Stop listening' : 'Voice assistant'}
-      >
-        {isProcessing ? (
-          <Loader2 className="w-6 h-6 animate-spin" />
-        ) : isListening ? (
-          <Mic className="w-6 h-6" />
-        ) : (
-          <MicOff className="w-6 h-6" />
+      {/* Floating mic button with sonar pulse rings */}
+      <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center pointer-events-none">
+        {/* Sonar pulse rings when listening */}
+        {isListening && (
+          <>
+            <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
+            <span
+              className="absolute -inset-2 rounded-full border border-red-500/50 animate-ping pointer-events-none"
+              style={{ animationDuration: '2s', animationDelay: '0.4s' }}
+            />
+            <span
+              className="absolute -inset-4 rounded-full border border-red-500/25 animate-ping pointer-events-none"
+              style={{ animationDuration: '2.5s', animationDelay: '0.8s' }}
+            />
+          </>
         )}
-      </motion.button>
+
+        <motion.button
+          drag
+          dragMomentum={false}
+          whileDrag={{ scale: 1.1, cursor: 'grabbing' }}
+          onClick={handleToggle}
+          className={`pointer-events-auto relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
+            isListening
+              ? 'bg-red-500 text-white shadow-red-500/50 ring-4 ring-red-500/30'
+              : 'bg-gray-950 text-white hover:bg-gray-800 border border-white/10 shadow-[0_4px_20px_rgba(124,58,237,0.25)] hover:shadow-[0_4px_25px_rgba(124,58,237,0.4)]'
+          }`}
+          title={isListening ? 'Stop listening' : 'Voice assistant'}
+        >
+          {isProcessing ? (
+            <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
+          ) : isListening ? (
+            <Mic className="w-6 h-6 text-white" />
+          ) : (
+            <MicOff className="w-6 h-6 text-gray-300" />
+          )}
+        </motion.button>
+      </div>
 
       {/* Assistant Popup Panel */}
       {isOpen && (
