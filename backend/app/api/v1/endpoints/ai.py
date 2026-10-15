@@ -1934,38 +1934,40 @@ async def _execute_task(task_id: str):
             logger.info("[agent] ▶ Executing task %s (type=%s): %r",
                         task_id, task.task_type, task.command_text)
 
-            # Load user's memory context and inject into params
-            memory = await _load_memory(db, task.user_id)
-            if memory and task.params is not None:
-                task.params = {**task.params, "_memory": memory}
-            elif memory:
-                task.params = {"_memory": memory}
-
-            await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
-
-            session_id = (task.params or {}).get("session_id")
-            session_history = get_session_history(session_id) if session_id else None
-
-            # --- NLP Parsing moved to background loop to avoid blocking the UI ---
-            if task.task_type == "pending":
-                if settings.FEATURE_AGENT_REASONING_VISIBLE:
-                    context_hint = f" ({len(session_history)} turns of history)" if session_history else ""
-                    await _log(db, task.id, "think", f"Analyzing command and session context{context_hint}...")
-                await _log(db, task.id, "info", "Parsing command intent...")
-                parsed = await parse_command(task.command_text, memory=memory, session_history=session_history)
-                task.task_type = parsed.get("task_type", "generic")
-
-                # Merge original params (like ai_negotiate_enabled, session_id) with parsed params
-                orig_params = task.params or {}
-                new_params = parsed.get("params", {})
-                task.params = {**orig_params, **new_params}
-
-                logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
-                await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
-                await db.flush()
-
-            # Dispatch to the right handler
+            # Wrap entire task execution in try-except so an unhandled exception
+            # never leaves a task indefinitely stuck in 'running'.
             try:
+                # Load user's memory context and inject into params
+                memory = await _load_memory(db, task.user_id)
+                if memory and task.params is not None:
+                    task.params = {**task.params, "_memory": memory}
+                elif memory:
+                    task.params = {"_memory": memory}
+
+                await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
+
+                session_id = (task.params or {}).get("session_id")
+                session_history = get_session_history(session_id) if session_id else None
+
+                # --- NLP Parsing moved to background loop to avoid blocking the UI ---
+                if task.task_type == "pending":
+                    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+                        context_hint = f" ({len(session_history)} turns of history)" if session_history else ""
+                        await _log(db, task.id, "think", f"Analyzing command and session context{context_hint}...")
+                    await _log(db, task.id, "info", "Parsing command intent...")
+                    parsed = await parse_command(task.command_text, memory=memory, session_history=session_history)
+                    task.task_type = parsed.get("task_type", "generic")
+
+                    # Merge original params (like ai_negotiate_enabled, session_id) with parsed params
+                    orig_params = task.params or {}
+                    new_params = parsed.get("params", {})
+                    task.params = {**orig_params, **new_params}
+
+                    logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
+                    await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
+                    await db.flush()
+
+                # Dispatch to the right handler
                 if task.task_type == "find_service":
                     task.result = await _handle_find_service(task, db)
                 elif task.task_type == "find_job":
