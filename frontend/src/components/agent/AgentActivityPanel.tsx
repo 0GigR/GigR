@@ -6,9 +6,10 @@
  * Service/job results render as interactive cards inside the chat.
  * Dialogs render as inline choice buttons.
  */
-import { useEffect, useRef, useState, lazy, Suspense } from 'react'
+import { useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles, Wallet } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles, Wallet, Mic } from 'lucide-react'
+import { toast } from 'sonner'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
@@ -58,10 +59,72 @@ export default function AgentActivityPanel() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [isVoiceActive, setIsVoiceActive] = useState(false)
+  const voiceRecognitionRef = useRef<any>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
   // Log ids we have already acted on, persisted for the session.
   const handledLogIds = useRef<Set<string>>(loadHandledNavIds())
+
+  const stopVoice = useCallback(() => {
+    if (voiceRecognitionRef.current) {
+      try {
+        voiceRecognitionRef.current.stop()
+      } catch {
+        /* already stopped */
+      }
+      voiceRecognitionRef.current = null
+    }
+    setIsVoiceActive(false)
+  }, [])
+
+  const startVoice = useCallback(() => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      toast.error('Voice recognition is not supported in this browser.')
+      return
+    }
+
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const speechRecognition = new SpeechRecognitionClass()
+    speechRecognition.continuous = false
+    speechRecognition.interimResults = true
+    speechRecognition.lang = 'en-US'
+
+    speechRecognition.onresult = (event: any) => {
+      const currentIdx = event.resultIndex
+      const voiceSpeech = event.results[currentIdx][0].transcript
+      setInput(voiceSpeech)
+    }
+
+    speechRecognition.onerror = (event: any) => {
+      console.warn('[agent-voice] recognition error', event.error)
+      stopVoice()
+    }
+
+    speechRecognition.onend = () => {
+      setIsVoiceActive(false)
+    }
+
+    voiceRecognitionRef.current = speechRecognition
+    speechRecognition.start()
+    setIsVoiceActive(true)
+  }, [stopVoice])
+
+  const toggleVoice = () => {
+    if (isVoiceActive) {
+      stopVoice()
+    } else {
+      startVoice()
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (voiceRecognitionRef.current) {
+        try { voiceRecognitionRef.current.stop() } catch {}
+      }
+    }
+  }, [])
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -146,12 +209,17 @@ export default function AgentActivityPanel() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80 backdrop-blur shrink-0">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-violet-100 dark:bg-violet-900/50 flex items-center justify-center">
-              <Zap className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center">
+              <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <p className="font-semibold text-sm leading-none">GigidyAI</p>
-              <p className="text-xs text-gray-500 mt-0.5">Your smart marketplace assistant</p>
+              <p className="font-semibold text-sm leading-none flex items-center gap-1.5">
+                Gigidy AI
+                <span className="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  [OK] ACTIVE
+                </span>
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Your local Gigr assistant</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -186,22 +254,40 @@ export default function AgentActivityPanel() {
 
         {/* Input bar */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-3 shrink-0 bg-white dark:bg-gray-950">
-          <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 focus-within:border-violet-400 transition-colors">
+          <div className={cn(
+            "flex items-center gap-2 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2 transition-colors",
+            isVoiceActive ? "border-red-500 ring-2 ring-red-500/20" : "focus-within:border-indigo-500"
+          )}>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask me anything…"
+              placeholder={isVoiceActive ? "Listening... speak now" : "Ask Gigidy AI anything..."}
               rows={1}
-              className="flex-1 bg-transparent resize-none outline-none text-sm leading-snug max-h-28"
-            id="agent-input"
+              className="flex-1 bg-transparent resize-none outline-none text-sm leading-snug max-h-28 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+              id="agent-input"
               style={{ scrollbarWidth: 'none' }}
             />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={toggleVoice}
+              className={cn(
+                "h-8 w-8 rounded-lg shrink-0 transition-colors",
+                isVoiceActive ? "bg-red-500/20 text-red-500" : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              )}
+              title={isVoiceActive ? "Listening... click to stop" : "Speak to Gigidy AI"}
+              aria-label={isVoiceActive ? "Stop voice listening" : "Start voice listening"}
+            >
+              <Mic className={cn("w-4 h-4", isVoiceActive && "animate-pulse text-red-500")} />
+            </Button>
             <Button
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || sending || isSubmitting}
-              className="h-8 w-8 rounded-lg bg-violet-600 hover:bg-violet-700 text-white shrink-0 disabled:opacity-40"
+              className="h-8 w-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 disabled:opacity-40"
+              title="Send to Gigidy AI"
             >
               {sending || isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </Button>
@@ -277,7 +363,7 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
       {/* User command bubble */}
       <div className="flex justify-end">
         <div className="max-w-[80%]">
-          <div className="bg-violet-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm shadow-sm">
+          <div className="bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm shadow-sm">
             {task.command_text}
           </div>
           <div className="flex items-center justify-end gap-1.5 mt-1">
@@ -302,9 +388,9 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
           <AgentAvatar />
           <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-3">
             <div className="flex gap-1 items-center">
-              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
           </div>
           {isActive && (
@@ -650,8 +736,8 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
 
 function AgentAvatar() {
   return (
-    <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/60 flex items-center justify-center shrink-0 mt-0.5">
-      <Zap className="w-3.5 h-3.5 text-violet-600 dark:text-violet-400" />
+    <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center shrink-0 mt-0.5">
+      <Zap className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
     </div>
   )
 }
@@ -661,12 +747,12 @@ function ServiceResultCard({ service, onRequest }: { service: any; onRequest: ()
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
         <p className="font-medium text-sm truncate">{service.title}</p>
-        <p className="text-xs text-violet-600 dark:text-violet-400 font-semibold mt-0.5">₦{Number(service.price).toLocaleString()}</p>
+        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">₦{Number(service.price).toLocaleString()}</p>
         {service.description && (
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{service.description}</p>
         )}
       </div>
-      <Button size="sm" className="shrink-0 bg-violet-600 hover:bg-violet-700 text-white text-xs h-7 px-2.5"
+      <Button size="sm" className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-7 px-2.5"
         onClick={onRequest}>
         Request
       </Button>
@@ -724,10 +810,10 @@ function DialogOptions({ options, onSelect }: {
             className={cn(
               'text-xs px-3 py-1.5 rounded-full border font-medium transition-all',
               isSelected
-                ? 'bg-violet-600 text-white border-violet-600'
+                ? 'bg-indigo-600 text-white border-indigo-600'
                 : isCancel
                   ? 'border-gray-300 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  : 'border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-400 dark:hover:bg-violet-900/30',
+                  : 'border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30',
               selected && !isSelected && 'opacity-40 cursor-not-allowed'
             )}
           >
@@ -742,24 +828,24 @@ function DialogOptions({ options, onSelect }: {
 
 function EmptyState({ onChipClick }: { onChipClick: (text: string) => void }) {
   const chips = [
-    'Find a plumber for 5k',
-    'Post a job: fix my sink for ₦8,000',
-    'Go to services',
+    'Find a reliable plumber nearby',
+    'What is my wallet balance?',
+    'I need someone for house cleaning',
     'Show open jobs',
   ]
   return (
     <div className="flex flex-col items-center justify-center h-full text-center py-10 px-4">
       <RobotWaitingIllustration className="w-36 h-36 mb-3" />
-      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Gigr Agent OS</p>
+      <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Gigidy AI</p>
       <p className="text-sm text-gray-500 mb-6 max-w-xs">
-        I can find services, post jobs, negotiate on your behalf, and navigate the app.
+        I can find verified service providers nearby, search open gigs, check your wallet balance, or help you negotiate prices.
       </p>
       <div className="flex flex-col gap-2 w-full max-w-xs">
         {chips.map((chip) => (
           <button
             key={chip}
             onClick={() => onChipClick(chip)}
-            className="text-sm text-left bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition-colors text-gray-700 dark:text-gray-300"
+            className="text-sm text-left bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-colors text-gray-700 dark:text-gray-300"
           >
             {chip}
           </button>

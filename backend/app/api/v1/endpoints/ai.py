@@ -64,7 +64,7 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # System prompt for Groq Llama-3 NLP
-_GROQ_SYSTEM_PROMPT = """You are a command parser for Gigr, a freelance services marketplace.
+_GROQ_SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable assistant for Gigr, a Nigerian freelance and services marketplace.
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
@@ -83,7 +83,7 @@ Extract the user's intent from their message and return ONLY a JSON object with 
       {"task_type": "post_job", "params": {"title": "AC repair", "price": 10000}}
     ]
   },
-  "response": "brief confirmation message to show user"
+  "response": "brief, friendly confirmation message to show user"
 }
 
 Rules:
@@ -298,7 +298,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         return {
             "task_type": "generic",
             "params": {"query": text},
-            "response": "I can help you find nearby service providers, search and apply for open jobs, view or manage your jobs, check your wallet, or negotiate prices.",
+            "response": "I am Gigidy AI, your assistant on Gigr! I can help you find verified workers and services nearby, check open gigs, check your wallet balance, help negotiate good prices, and post jobs. Just tell me what you need!",
         }
 
     # ─── Generic / greeting guard (before intent checks) ─────────────

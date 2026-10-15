@@ -25,7 +25,6 @@ const CommandPalette = lazy(() => import('@/components/agent/CommandPalette'))
 const AgentProactiveToast = lazy(() => import('@/components/agent/AgentProactiveToast'))
 const CallReminderPrompt = lazy(() => import('@/components/agent/CallReminderPrompt'))
 const GlobalItemModal = lazy(() => import('@/components/GlobalItemModal'))
-const AgentCapsule = lazy(() => import('@/components/agent/AgentCapsule'))
 import {
   LayoutDashboard,
   Briefcase,
@@ -225,7 +224,6 @@ export default function DashboardLayout() {
         {aiEnabled && <CommandPalette />}
         {aiEnabled && <AgentProactiveToast />}
         {aiEnabled && <CallReminderPrompt />}
-        {aiEnabled && <AgentCapsule />}
         <OnboardingOverlay />
         <AnnouncementPopup />
         <GlobalItemModal />
