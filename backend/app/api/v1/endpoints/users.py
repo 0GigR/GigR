@@ -79,7 +79,7 @@ async def get_my_balance(current_user: User = Depends(get_current_user)):
     usdc_balance = "0.00"
 
     try:
-        async with AsyncClient(settings.SOLANA_RPC_URL, timeout=30) as client:
+        async with AsyncClient(settings.SOLANA_RPC_URL, timeout=8) as client:
             # SOL balance
             sol_resp = await client.get_balance(pubkey)
             lamports = sol_resp.value

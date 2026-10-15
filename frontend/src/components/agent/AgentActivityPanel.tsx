@@ -61,13 +61,32 @@ export default function AgentActivityPanel() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [isVoiceActive, setIsVoiceActive] = useState(false)
   const voiceRecognitionRef = useRef<any>(null)
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const speechBufferRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   // Log ids we have already acted on, persisted for the session.
   const handledLogIds = useRef<Set<string>>(loadHandledNavIds())
 
+  const handleSendSpoken = useCallback(async (spokenPhrase: string) => {
+    const cleanSpeech = spokenPhrase.trim()
+    if (!cleanSpeech || sending || isSubmitting) return
+    setInput('')
+    speechBufferRef.current = ''
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+    setSending(true)
+    await submitCommand(cleanSpeech)
+    setSending(false)
+  }, [sending, isSubmitting, submitCommand])
+
   const stopVoice = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current)
+      silenceTimerRef.current = null
+    }
     if (voiceRecognitionRef.current) {
       try {
         voiceRecognitionRef.current.stop()
@@ -87,14 +106,39 @@ export default function AgentActivityPanel() {
 
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     const speechRecognition = new SpeechRecognitionClass()
-    speechRecognition.continuous = false
+    speechRecognition.continuous = true
     speechRecognition.interimResults = true
     speechRecognition.lang = 'en-US'
 
     speechRecognition.onresult = (event: any) => {
-      const currentIdx = event.resultIndex
-      const voiceSpeech = event.results[currentIdx][0].transcript
-      setInput(voiceSpeech)
+      let finalSpeech = ''
+      let interimSpeech = ''
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalSpeech += event.results[i][0].transcript
+        } else {
+          interimSpeech += event.results[i][0].transcript
+        }
+      }
+      const activeSpeech = (finalSpeech || interimSpeech).trim()
+      if (activeSpeech) {
+        setInput(activeSpeech)
+        speechBufferRef.current = activeSpeech
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto'
+          textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`
+        }
+        if (silenceTimerRef.current) {
+          clearTimeout(silenceTimerRef.current)
+        }
+        silenceTimerRef.current = setTimeout(() => {
+          if (speechBufferRef.current) {
+            const speechToSubmit = speechBufferRef.current
+            stopVoice()
+            handleSendSpoken(speechToSubmit)
+          }
+        }, 1200)
+      }
     }
 
     speechRecognition.onerror = (event: any) => {
@@ -104,12 +148,18 @@ export default function AgentActivityPanel() {
 
     speechRecognition.onend = () => {
       setIsVoiceActive(false)
+      if (speechBufferRef.current) {
+        const speechToSubmit = speechBufferRef.current
+        speechBufferRef.current = ''
+        handleSendSpoken(speechToSubmit)
+      }
     }
 
     voiceRecognitionRef.current = speechRecognition
+    speechBufferRef.current = ''
     speechRecognition.start()
     setIsVoiceActive(true)
-  }, [stopVoice])
+  }, [stopVoice, handleSendSpoken])
 
   const toggleVoice = () => {
     if (isVoiceActive) {
