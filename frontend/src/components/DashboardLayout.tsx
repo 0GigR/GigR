@@ -21,6 +21,7 @@ const OnboardingOverlay = lazy(() => import('@/components/OnboardingOverlay'))
 const AnnouncementPopup = lazy(() => import('@/components/AnnouncementPopup'))
 const AgentActivityPanel = lazy(() => import('@/components/agent/AgentActivityPanel'))
 const CommandPalette = lazy(() => import('@/components/agent/CommandPalette'))
+const AgentProactiveToast = lazy(() => import('@/components/agent/AgentProactiveToast'))
 const CallReminderPrompt = lazy(() => import('@/components/agent/CallReminderPrompt'))
 const GlobalItemModal = lazy(() => import('@/components/GlobalItemModal'))
 import {
@@ -216,6 +217,7 @@ export default function DashboardLayout() {
         {aiEnabled && <VoiceAssistant />}
         {aiEnabled && <AgentActivityPanel />}
         {aiEnabled && <CommandPalette />}
+        {aiEnabled && <AgentProactiveToast />}
         {aiEnabled && <CallReminderPrompt />}
         <OnboardingOverlay />
         <AnnouncementPopup />
