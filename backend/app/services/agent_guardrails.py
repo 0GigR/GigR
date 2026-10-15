@@ -29,6 +29,9 @@ VALID_TASK_TYPES = frozenset({
     "pay",
     "reply_message",
     "generic",
+    "plan",
+    "apply_job",
+    "proactive_hunt",
 })
 
 VALID_NAV_PAGES = frozenset({
@@ -83,6 +86,10 @@ class IntentParams(BaseModel):
     radius_km: Optional[float] = None
     job_id: Optional[str] = None
     page: Optional[str] = None
+    steps: Optional[List[Dict[str, Any]]] = None
+    cover_letter: Optional[str] = None
+    child_task_ids: Optional[List[str]] = None
+    parent_task_id: Optional[str] = None
 
     @field_validator("max_price", "min_price", "price", mode="before")
     @classmethod

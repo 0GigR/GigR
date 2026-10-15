@@ -68,7 +68,7 @@ _GROQ_SYSTEM_PROMPT = """You are a command parser for Gigr, a freelance services
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
-  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "generic",
+  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "generic",
   "params": {
     "query": "search query string",
     "max_price": 5000,          // number in naira, null if not specified
@@ -77,12 +77,17 @@ Extract the user's intent from their message and return ONLY a JSON object with 
     "price": 5000,              // number in naira
     "radius_km": 10,            // distance in km, only if the user says one
     "job_id": "optional id",    // for pay
-    "page": "jobs|services|messages|activity|disputes|profile|home"  // for navigate
+    "page": "jobs|services|messages|activity|disputes|profile|home",  // for navigate
+    "steps": [                  // for "plan" only: array of child subtasks
+      {"task_type": "find_service", "params": {"query": "cleaner"}},
+      {"task_type": "post_job", "params": {"title": "AC repair", "price": 10000}}
+    ]
   },
   "response": "brief confirmation message to show user"
 }
 
 Rules:
+- "plan" = compound request containing two or more distinct goals (e.g. "clean my room and fix the tap", "find a photographer and post a job for a DJ"). Populate params.steps with the subtask objects.
 - "post_job" = user wants to HIRE SOMEONE / create a task
 - "post_service" = user wants to WORK / offer their skills
 - "find_service" = user wants to look for someone to hire
@@ -1578,6 +1583,95 @@ async def _handle_apply_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
     return {"applied": True, "job_id": str(job.id), "title": job.title}
 
 
+async def _handle_plan(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Execute a multi-step task plan by generating and enqueuing child tasks."""
+    params = task.params or {}
+    steps = params.get("steps") or []
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            "Deconstructing compound command into actionable execution steps..."
+        )
+
+    if not steps:
+        raw_text = task.command_text
+        parts = [
+            p.strip()
+            for p in re.split(r"\b(?:and\s+then|then|and)\b|;", raw_text, flags=re.IGNORECASE)
+            if p.strip()
+        ]
+        if len(parts) > 1:
+            for part in parts:
+                steps.append({
+                    "task_type": "generic",
+                    "command_text": part,
+                    "params": {"query": part},
+                })
+        else:
+            steps.append({
+                "task_type": "generic",
+                "command_text": raw_text,
+                "params": {"query": raw_text},
+            })
+
+    child_tasks: List[Dict[str, Any]] = []
+    child_task_ids: List[str] = []
+
+    await _log(
+        db, task.id, "action",
+        f"Planning {len(steps)} subtask(s) for execution..."
+    )
+
+    for idx, step in enumerate(steps):
+        step_type = step.get("task_type", "generic")
+        step_params = step.get("params") or {}
+        step_cmd = (
+            step.get("command_text")
+            or step_params.get("query")
+            or step_params.get("title")
+            or f"Subtask {idx + 1}"
+        )
+        child = AgentTask(
+            user_id=task.user_id,
+            command_text=step_cmd,
+            task_type=step_type if step_type != "plan" else "generic",
+            params={
+                **step_params,
+                "parent_task_id": str(task.id),
+                "step_index": idx + 1,
+                "total_steps": len(steps),
+            },
+            status="queued",
+        )
+        db.add(child)
+        await db.flush()
+        child_task_ids.append(str(child.id))
+        child_tasks.append({
+            "task_id": str(child.id),
+            "step_index": idx + 1,
+            "task_type": child.task_type,
+            "title": step_cmd,
+        })
+
+    await _log(
+        db, task.id, "success",
+        f"[PLAN] Created {len(child_task_ids)} subtask(s). Running autonomously.",
+        data={
+            "render_type": "plan_summary",
+            "child_tasks": child_tasks,
+            "child_task_ids": child_task_ids,
+        },
+    )
+
+    return {
+        "planned": True,
+        "count": len(child_task_ids),
+        "child_task_ids": child_task_ids,
+        "child_tasks": child_tasks,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 3: Agent loop — background asyncio coroutine
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1765,6 +1859,8 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_apply_job(task, db)
                 elif task.task_type == "proactive_hunt":
                     task.result = await _handle_proactive_hunt(task, db)
+                elif task.task_type == "plan":
+                    task.result = await _handle_plan(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
                     page_routes = {
@@ -2423,6 +2519,77 @@ async def get_task(
     return task
 
 
+@router.get("/ai/tasks/{task_id}/stream")
+async def stream_task_logs(
+    task_id: uuid.UUID,
+    current_user: User = Depends(require_ai_enabled),
+    db: AsyncSession = Depends(get_db),
+):
+    """Server-Sent Events endpoint streaming live task logs to the client."""
+    import json
+    from fastapi.responses import StreamingResponse
+
+    # Verify task ownership
+    result = await db.execute(
+        select(AgentTask).where(
+            and_(AgentTask.id == task_id, AgentTask.user_id == current_user.id)
+        )
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def event_generator():
+        sent_log_ids: set[str] = set()
+        iterations = 0
+        max_iterations = 120
+
+        while iterations < max_iterations:
+            iterations += 1
+            async with async_session() as session:
+                log_result = await session.execute(
+                    select(AgentLog)
+                    .where(AgentLog.task_id == task_id)
+                    .order_by(AgentLog.created_at.asc())
+                )
+                logs = log_result.scalars().all()
+                for log_entry in logs:
+                    if str(log_entry.id) not in sent_log_ids:
+                        sent_log_ids.add(str(log_entry.id))
+                        payload = {
+                            "id": str(log_entry.id),
+                            "task_id": str(log_entry.task_id),
+                            "level": log_entry.level,
+                            "message": log_entry.message,
+                            "data": log_entry.data,
+                            "created_at": (
+                                log_entry.created_at.isoformat()
+                                if log_entry.created_at
+                                else None
+                            ),
+                        }
+                        yield f"data: {json.dumps(payload)}\n\n"
+
+                task_status_row = (await session.execute(
+                    select(AgentTask.status).where(AgentTask.id == task_id)
+                )).scalar_one_or_none()
+                if task_status_row in ("completed", "failed"):
+                    yield f"event: done\ndata: {{\"status\": \"{task_status_row}\"}}\n\n"
+                    break
+
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.delete("/ai/tasks", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_all_tasks(
     current_user: User = Depends(require_ai_enabled),
@@ -2699,3 +2866,38 @@ async def get_ai_settings(
         "ai_settings": ai_settings,
         "autonomy_level": ai_settings.get("autonomyLevel", "off"),
     }
+
+
+@router.patch("/ai/memory")
+async def update_memory_endpoint(
+    memory_patch: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update agent memory keys."""
+    await _save_memory(db, current_user.id, memory_patch)
+    await db.commit()
+    updated = await _load_memory(db, current_user.id)
+    return {"status": "ok", "memory": updated}
+
+
+@router.delete("/ai/memory/{key}")
+async def forget_memory_key(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Forget a specific agent memory key."""
+    from sqlalchemy import update as sa_update
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings_now = dict(user.ai_settings or {})
+    memory = dict(settings_now.get("memory", {}))
+    if key in memory:
+        del memory[key]
+    settings_now["memory"] = memory
+    await db.execute(sa_update(User).where(User.id == current_user.id).values(ai_settings=settings_now))
+    await db.commit()
+    return {"status": "ok", "forgotten": key, "memory": memory}

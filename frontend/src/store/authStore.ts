@@ -12,6 +12,7 @@ interface User {
   created_at: string
   role?: string | null
   ai_enabled?: boolean
+  subscription_tier?: string | null
   location_public?: boolean
   permissions?: string[] | null
   /** Server-side UI preferences (onboarding dismissal and similar). */
