@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { Mic, MicOff, Loader2, X, Sparkles, Send, CheckCircle2 } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
+import { isFeatureEnabled } from '@/lib/featureFlags'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 
 export default function VoiceAssistant() {
-  const { aiSettings, submitCommand, isPanelOpen } = useAgentStore()
+  const isPaletteEnabled = isFeatureEnabled('commandPalette')
+  const { aiSettings, submitCommand, isPanelOpen, isPaletteOpen, togglePalette } = useAgentStore()
   
   const [isOpen, setIsOpen] = useState(false)
   const [isListening, setIsListening] = useState(false)
@@ -25,9 +27,9 @@ export default function VoiceAssistant() {
     }
   }, [])
 
-  // Hide popup if the big activity panel opens so they don't overlap
+  // Hide popup if the activity panel or command palette opens so they don't overlap
   useEffect(() => {
-    if (isPanelOpen && isOpen) {
+    if ((isPanelOpen || isPaletteOpen) && isOpen) {
       if (recognitionRef.current) {
         recognitionRef.current.stop()
         recognitionRef.current = null
@@ -36,7 +38,7 @@ export default function VoiceAssistant() {
       setIsOpen(false)
       setSuccessMessage(null)
     }
-  }, [isPanelOpen, isOpen])
+  }, [isPanelOpen, isPaletteOpen, isOpen])
 
   // Don't render the floating button if the user disabled it in AI Settings
   // (unless the panel is open, in which case we might want to hide the whole popup anyway,
@@ -122,6 +124,11 @@ export default function VoiceAssistant() {
   }
 
   const handleToggle = () => {
+    if (isPaletteEnabled) {
+      togglePalette()
+      return
+    }
+
     if (isListening) {
       stopListening()
       setIsOpen(false)

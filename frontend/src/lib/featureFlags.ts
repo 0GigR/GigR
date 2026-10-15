@@ -18,9 +18,9 @@ export interface AgentFeatureFlags {
   premiumGate: boolean
 }
 
-function parseEnvBoolean(val: string | undefined, defaultValue: boolean): boolean {
-  if (val === undefined || val === '') return defaultValue
-  const lower = val.toLowerCase().trim()
+function parseEnvBoolean(envValue: string | undefined, defaultValue: boolean): boolean {
+  if (envValue === undefined || envValue === '') return defaultValue
+  const lower = envValue.toLowerCase().trim()
   return lower === 'true' || lower === '1' || lower === 'yes'
 }
 

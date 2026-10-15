@@ -25,8 +25,8 @@ class _SessionStore:
     def _prune_expired(self) -> None:
         now = time.time()
         expired = [
-            sid for sid, data in self._sessions.items()
-            if now - data.get("last_active", 0) > SESSION_TTL_SECONDS
+            sid for sid, session_entry in self._sessions.items()
+            if now - session_entry.get("last_active", 0) > SESSION_TTL_SECONDS
         ]
         for sid in expired:
             self._sessions.pop(sid, None)
