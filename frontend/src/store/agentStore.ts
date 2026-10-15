@@ -19,7 +19,7 @@ import api, { getToken } from '@/lib/api'
 export interface AgentLog {
   id: string
   task_id: string
-  level: 'info' | 'action' | 'success' | 'error' | 'warning'
+  level: 'info' | 'action' | 'success' | 'error' | 'warning' | 'think'
   message: string
   data?: Record<string, unknown> | null
   created_at: string
@@ -176,6 +176,12 @@ interface AgentState {
   /** Close the agent push WS */
   disconnectAgentWS: () => void
 
+  /** Active multi-turn conversational session ID */
+  activeSessionId: string | null
+
+  /** Reset current multi-turn session */
+  resetSession: () => void
+
   _agentWS: WebSocket | null
 }
 
@@ -200,6 +206,8 @@ export const useAgentStore = create<AgentState>()(
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
       voiceSettings: null,
+      activeSessionId: null,
+      resetSession: () => set({ activeSessionId: null }),
       _pollTimer: null,
       _agentWS: null,
 
@@ -207,10 +215,18 @@ export const useAgentStore = create<AgentState>()(
         if (get().isSubmitting) return null
         set({ isSubmitting: true })
         try {
-          // /ai/command just queues a task (parsing happens in the background loop),
-          // but the DB round-trip can occasionally spike past the default 15s under
-          // load, so give it more headroom.
-          const { data } = await api.post<AgentTask>('/ai/command', { text }, { timeout: 30000 })
+          let sessionId = get().activeSessionId
+          if (!sessionId) {
+            sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+            set({ activeSessionId: sessionId })
+          }
+
+          // /ai/command queues a task with session_id for multi-turn context
+          const { data } = await api.post<AgentTask>(
+            '/ai/command',
+            { text, session_id: sessionId },
+            { timeout: 30000 }
+          )
           set((s) => ({
             tasks: [data, ...s.tasks],
             unreadCount: s.unreadCount + 1,

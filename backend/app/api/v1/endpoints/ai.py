@@ -49,6 +49,11 @@ from ....services.agent_guardrails import (
     sanitize_user_input,
     validate_intent,
     build_enriched_system_prompt,
+    prune_session_history,
+)
+from ....services.agent_session import (
+    get_session_history,
+    record_session_turn,
 )
 
 router = APIRouter()
@@ -101,14 +106,25 @@ async def _call_groq_with_fallback(client: httpx.AsyncClient, url: str, **kwargs
     from ....services.groq_client import call_with_key_rotation
     return await call_with_key_rotation(client, url, **kwargs)
 
-async def _parse_command_groq(text: str, memory: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+async def _parse_command_groq(
+    text: str,
+    memory: Optional[Dict[str, Any]] = None,
+    session_history: Optional[List[Dict[str, str]]] = None,
+) -> Optional[Dict[str, Any]]:
     """Call Groq Llama-3 to parse the command into structured intent.
     Returns None if Groq is not configured or the call fails."""
     if not settings.groq_keys_list:
         return None
 
     clean_text = sanitize_user_input(text)
-    system_prompt = build_enriched_system_prompt(_GROQ_SYSTEM_PROMPT, memory=memory)
+    pruned_history = prune_session_history(session_history or [])
+    turn_number = (len(pruned_history) // 2) + 1
+    system_prompt = build_enriched_system_prompt(_GROQ_SYSTEM_PROMPT, memory=memory, session_turn=turn_number)
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    for msg in pruned_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": clean_text})
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -118,10 +134,7 @@ async def _parse_command_groq(text: str, memory: Optional[Dict[str, Any]] = None
                 headers={"Content-Type": "application/json"},
                 json={
                     "model": settings.GROQ_MODEL,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": clean_text},
-                    ],
+                    "messages": messages,
                     "temperature": 0.1,
                     # Generous headroom: gpt-oss spends a big chunk of the budget
                     # on hidden reasoning, and 300 tokens truncated the JSON
@@ -354,14 +367,18 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
 # (Removed extract_search_query from here since it was moved up)
 
 
-async def parse_command(text: str, memory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def parse_command(
+    text: str,
+    memory: Optional[Dict[str, Any]] = None,
+    session_history: Optional[List[Dict[str, str]]] = None,
+) -> Dict[str, Any]:
     """Parse a natural language command into structured intent.
 
-    Tries Groq Llama-3 first with context guardrails and memory enrichment.
+    Tries Groq Llama-3 first with context guardrails, memory enrichment, and multi-turn session context.
     Falls back to rule-based regex parser if Groq key is missing or validation fails.
     """
     clean_text = sanitize_user_input(text)
-    groq_result = await _parse_command_groq(clean_text, memory=memory)
+    groq_result = await _parse_command_groq(clean_text, memory=memory, session_history=session_history)
     if groq_result and groq_result.get("task_type"):
         return groq_result
     return _parse_command_rules(clean_text)
@@ -508,12 +525,22 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
             if km <= radius_km:
                 within.append(service)
                 distances[str(service.id)] = round(km, 1)
-        services = within
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Evaluating service providers matching '{query}' within {radius_km:g} km radius..."
+        )
 
     if max_price:
         filtered = [s for s in services if float(s.price) <= max_price]
     else:
         filtered = services
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Evaluated {len(services)} nearby candidate(s); {len(filtered)} within target budget."
+        )
 
     if filtered:
         service_cards = [
@@ -523,6 +550,8 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                 "price": float(s.price),
                 "description": s.description or "",
                 "distance_km": distances.get(str(s.id)),
+                "latitude": float(s.latitude) if s.latitude is not None else None,
+                "longitude": float(s.longitude) if s.longitude is not None else None,
             }
             for s in filtered[:5]
         ]
@@ -598,16 +627,33 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                 if d <= job_radius_km:
                     with_distance.append((d, j))
         jobs = [j for _, j in sorted(with_distance, key=lambda x: x[0])]
-        # else: keep the full text-matched list (location_note already reflects intent)
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Scanning open gig postings matching '{query}' within {job_radius_km:g} km..."
+        )
 
     if min_price:
         filtered = [j for j in jobs if float(j.price) >= min_price]
     else:
         filtered = jobs
 
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Identified {len(jobs)} active job(s); {len(filtered)} meeting rate criteria."
+        )
+
     if filtered:
         job_cards = [
-            {"id": str(j.id), "title": j.title, "price": float(j.price), "description": getattr(j, 'description', '') or ""}
+            {
+                "id": str(j.id),
+                "title": j.title,
+                "price": float(j.price),
+                "description": getattr(j, 'description', '') or "",
+                "latitude": float(j.latitude) if j.latitude is not None else None,
+                "longitude": float(j.longitude) if j.longitude is not None else None,
+            }
             for j in filtered[:5]
         ]
         await _log(db, task.id, "success", f"Found {len(filtered)} open job(s) matching '{query}':",
@@ -1676,13 +1722,19 @@ async def _execute_task(task_id: str):
 
             await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
 
+            session_id = (task.params or {}).get("session_id")
+            session_history = get_session_history(session_id) if session_id else None
+
             # --- NLP Parsing moved to background loop to avoid blocking the UI ---
             if task.task_type == "pending":
+                if settings.FEATURE_AGENT_REASONING_VISIBLE:
+                    context_hint = f" ({len(session_history)} turns of history)" if session_history else ""
+                    await _log(db, task.id, "think", f"Analyzing command and session context{context_hint}...")
                 await _log(db, task.id, "info", "Parsing command intent...")
-                parsed = await parse_command(task.command_text, memory=memory)
+                parsed = await parse_command(task.command_text, memory=memory, session_history=session_history)
                 task.task_type = parsed.get("task_type", "generic")
 
-                # Merge original params (like ai_negotiate_enabled) with parsed params
+                # Merge original params (like ai_negotiate_enabled, session_id) with parsed params
                 orig_params = task.params or {}
                 new_params = parsed.get("params", {})
                 task.params = {**orig_params, **new_params}
@@ -1782,6 +1834,15 @@ async def _execute_task(task_id: str):
 
             task.updated_at = datetime.now(timezone.utc)
 
+            # Record multi-turn session turn
+            if session_id:
+                reply_text = ""
+                if task.result and isinstance(task.result, dict):
+                    reply_text = str(task.result.get("message") or task.result.get("response") or "")
+                if not reply_text and task.logs:
+                    reply_text = task.logs[-1].message
+                record_session_turn(session_id, task.command_text, reply_text or f"Completed {task.task_type}")
+
             # Update memory from task results
             if task.status == "completed" and task.result:
                 mem_updates: Dict[str, Any] = {}
@@ -1796,6 +1857,10 @@ async def _execute_task(task_id: str):
                     mem_updates["usual_price_job"] = r["price"]
                 if task.task_type == "post_service" and r.get("price"):
                     mem_updates["usual_price_service"] = r["price"]
+                if r.get("job_id"):
+                    mem_updates["last_active_job_id"] = str(r["job_id"])
+                if r.get("service_id"):
+                    mem_updates["last_active_service_id"] = str(r["service_id"])
                 if mem_updates:
                     await _save_memory(db, task.user_id, mem_updates)
 
@@ -2286,6 +2351,8 @@ async def submit_command(
     # Parse intent later in the background loop to avoid blocking the UI
     task_type = "pending"
     params = {}
+    if request.session_id:
+        params["session_id"] = request.session_id
 
     # For negotiate tasks, inject the user's negotiate preference
     if "ai_negotiate_enabled" in request.dict(exclude_unset=True):

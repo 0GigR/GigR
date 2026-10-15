@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
@@ -297,6 +297,16 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
       : log.level === 'success'
         ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-900'
         : 'bg-gray-100 dark:bg-gray-800'
+
+  // Agent reasoning transparency ("think" log level)
+  if (log.level === 'think') {
+    return (
+      <div className="flex items-center gap-2 pl-9 py-0.5 text-xs text-violet-600/80 dark:text-violet-400/80 italic font-mono">
+        <Sparkles className="w-3 h-3 shrink-0 text-violet-500 animate-pulse" />
+        <span className="truncate">{log.message}</span>
+      </div>
+    )
+  }
 
   // A tool call is the agent showing its work, not talking to you, so it reads as
   // a compact trace line instead of a chat bubble.
