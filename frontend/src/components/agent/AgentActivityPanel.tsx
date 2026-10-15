@@ -6,7 +6,7 @@
  * Service/job results render as interactive cards inside the chat.
  * Dialogs render as inline choice buttons.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { motion, AnimatePresence } from 'framer-motion'
+
+const AgentResultMap = lazy(() => import('./AgentResultMap'))
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -235,6 +237,21 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
     await respondToDialog(task.id, action)
   }
 
+  const statusTag =
+    task.status === 'running'
+      ? '[RUNNING]'
+      : task.status === 'queued'
+        ? '[QUEUED]'
+        : task.status === 'completed'
+          ? '[DONE]'
+          : task.status === 'waiting_reply'
+            ? '[PENDING]'
+            : task.status === 'failed'
+              ? '[FAILED]'
+              : task.status === 'cancelled'
+                ? '[CANCELLED]'
+                : null
+
   return (
     <div className="space-y-3">
       {/* User command bubble */}
@@ -243,7 +260,14 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
           <div className="bg-violet-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm shadow-sm">
             {task.command_text}
           </div>
-          <p className="text-[10px] text-gray-400 text-right mt-1">{timeAgo}</p>
+          <div className="flex items-center justify-end gap-1.5 mt-1">
+            {statusTag && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-semibold tracking-wider">
+                {statusTag}
+              </span>
+            )}
+            <p className="text-[10px] text-gray-400">{timeAgo}</p>
+          </div>
         </div>
       </div>
 
@@ -332,6 +356,13 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
         {/* Inline service cards */}
         {renderType === 'service_cards' && data?.services?.length > 0 && (
           <div className="space-y-2 max-w-[90%]">
+            <Suspense fallback={null}>
+              <AgentResultMap
+                items={data.services}
+                onSelectItem={(selectedId) => onDialogAction(`select_service:${selectedId}`)}
+                onNavigateToMap={() => onNavigate('/dashboard/explore')}
+              />
+            </Suspense>
             {data.services.map((svc: any) => (
               <ServiceResultCard key={svc.id} service={svc} onRequest={() => onDialogAction(`select_service:${svc.id}`)} />
             ))}
@@ -341,6 +372,13 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
         {/* Inline job cards */}
         {renderType === 'job_cards' && data?.jobs?.length > 0 && (
           <div className="space-y-2 max-w-[90%]">
+            <Suspense fallback={null}>
+              <AgentResultMap
+                items={data.jobs}
+                onSelectItem={(selectedId) => onDialogAction(`select_job:${selectedId}`)}
+                onNavigateToMap={() => onNavigate('/dashboard/explore')}
+              />
+            </Suspense>
             {data.jobs.map((job: any) => (
               <JobResultCard 
                 key={job.id} 
