@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { motion, AnimatePresence } from 'framer-motion'
 import { RobotWaitingIllustration } from './illustrations'
+import { agentAudio } from '@/lib/agentAudio'
 
 const AgentResultMap = lazy(() => import('./AgentResultMap'))
 
@@ -238,6 +239,24 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
     await respondToDialog(task.id, action)
   }
 
+  useEffect(() => {
+    if (task.status === 'completed' && useAgentStore.getState().aiSettings.soundEnabled) {
+      agentAudio.playSuccessChime()
+    }
+  }, [task.status])
+
+  useEffect(() => {
+    const logsList = task.logs ?? []
+    const latestLog = logsList[logsList.length - 1]
+    if (
+      latestLog?.level === 'success' &&
+      (latestLog?.data as Record<string, unknown> | null | undefined)?.render_type === 'service_cards' &&
+      useAgentStore.getState().aiSettings.soundEnabled
+    ) {
+      agentAudio.playRadarPing()
+    }
+  }, [task.logs?.length])
+
   const statusTag =
     task.status === 'running'
       ? '[RUNNING]'
@@ -299,6 +318,73 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
   )
 }
 
+// ─── Negotiation Progress Card ────────────────────────────────────────────────
+
+interface NegotiationProgressCardProps {
+  originalPrice: number
+  targetPrice: number
+  counterPrice?: number
+  round: number
+  savings: number
+}
+
+function NegotiationProgressCard({
+  originalPrice,
+  targetPrice,
+  counterPrice,
+  round,
+  savings,
+}: NegotiationProgressCardProps) {
+  const ceiling = Math.max(originalPrice, targetPrice, counterPrice ?? 0) * 1.05
+  const bars: Array<{ label: string; amount: number; colour: string }> = [
+    { label: 'Listing', amount: originalPrice, colour: 'bg-gray-500' },
+    { label: 'Target', amount: targetPrice, colour: 'bg-violet-500' },
+  ]
+  if (counterPrice !== undefined && counterPrice > 0) {
+    bars.push({ label: 'Counter', amount: counterPrice, colour: 'bg-indigo-400' })
+  }
+
+  return (
+    <div className="p-3 rounded-xl bg-gray-950/60 border border-indigo-800/40 space-y-3 max-w-[90%]">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-mono text-indigo-300 tracking-wider">
+          [NEGOTIATION] Round {round}
+        </span>
+        {savings > 0 && (
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+            [OK] Saved: NGN {savings.toLocaleString()}
+          </span>
+        )}
+      </div>
+
+      {/* Bar chart */}
+      <div className="space-y-2">
+        {bars.map((bar) => (
+          <div key={bar.label} className="space-y-0.5">
+            <div className="flex justify-between text-[10px] text-gray-400">
+              <span>{bar.label}</span>
+              <span className="font-mono">NGN {bar.amount.toLocaleString()}</span>
+            </div>
+            <div className="h-2 w-full bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${bar.colour}`}
+                style={{ width: `${Math.min((bar.amount / ceiling) * 100, 100).toFixed(1)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Savings summary */}
+      {savings > 0 && (
+        <p className="text-xs text-emerald-400 font-semibold">
+          Negotiated {((savings / originalPrice) * 100).toFixed(1)}% below listing price.
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── Agent Message ─────────────────────────────────────────────────────────────
 
 function AgentMessage({ log, onDialogAction, onNavigate }: {
@@ -306,9 +392,9 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
   onDialogAction: (action: string) => void
   onNavigate: (path: string) => void
 }) {
-  const data = log.data as any
-  const renderType = data?.render_type
-  const actionPayload = data?.action_payload
+  const logPayload = (log.data as any) || {}
+  const renderType = logPayload?.render_type
+  const actionPayload = logPayload?.action_payload
 
   // Skip raw "Command received" and "Parsing command intent" logs — they're noise in the chat
   if (log.message.startsWith('Command received:') || log.message === 'Parsing command intent...') {
@@ -335,7 +421,7 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
 
   // A tool call is the agent showing its work, not talking to you, so it reads as
   // a compact trace line instead of a chat bubble.
-  if (data?.tool) {
+  if (logPayload?.tool) {
     return (
       <div className="flex items-center gap-2 pl-9 text-xs text-gray-500 dark:text-gray-400">
         <Wrench className="w-3 h-3 shrink-0 text-indigo-500" />
@@ -355,32 +441,32 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
         </div>
 
         {/* Inline service cards */}
-        {renderType === 'service_cards' && data?.services?.length > 0 && (
+        {renderType === 'service_cards' && logPayload?.services?.length > 0 && (
           <div className="space-y-2 max-w-[90%]">
             <Suspense fallback={null}>
               <AgentResultMap
-                items={data.services}
+                items={logPayload.services}
                 onSelectItem={(selectedId) => onDialogAction(`select_service:${selectedId}`)}
                 onNavigateToMap={() => onNavigate('/dashboard/explore')}
               />
             </Suspense>
-            {data.services.map((svc: any) => (
+            {logPayload.services.map((svc: any) => (
               <ServiceResultCard key={svc.id} service={svc} onRequest={() => onDialogAction(`select_service:${svc.id}`)} />
             ))}
           </div>
         )}
 
         {/* Inline job cards */}
-        {renderType === 'job_cards' && data?.jobs?.length > 0 && (
+        {renderType === 'job_cards' && logPayload?.jobs?.length > 0 && (
           <div className="space-y-2 max-w-[90%]">
             <Suspense fallback={null}>
               <AgentResultMap
-                items={data.jobs}
+                items={logPayload.jobs}
                 onSelectItem={(selectedId) => onDialogAction(`select_job:${selectedId}`)}
                 onNavigateToMap={() => onNavigate('/dashboard/explore')}
               />
             </Suspense>
-            {data.jobs.map((job: any) => (
+            {logPayload.jobs.map((job: any) => (
               <JobResultCard 
                 key={job.id} 
                 job={job} 
@@ -392,7 +478,7 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
         )}
 
         {/* Inline multi-step plan card */}
-        {renderType === 'plan_summary' && Array.isArray(data?.child_tasks) && (
+        {renderType === 'plan_summary' && Array.isArray(logPayload?.child_tasks) && (
           <div className="space-y-1.5 p-3 rounded-xl bg-violet-950/30 border border-violet-800/40 max-w-[90%]">
             <div className="flex items-center justify-between pb-1.5 border-b border-violet-800/30">
               <span className="text-xs font-semibold text-violet-200">Execution Plan</span>
@@ -401,7 +487,7 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
               </span>
             </div>
             <div className="space-y-1">
-              {data.child_tasks.map((stepItem: any, idx: number) => (
+              {logPayload.child_tasks.map((stepItem: any, idx: number) => (
                 <div key={stepItem.task_id || idx} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-white/5 border border-white/5">
                   <div className="flex items-center gap-2 truncate">
                     <span className="text-[10px] font-mono text-violet-400">Step {stepItem.step_index || idx + 1}:</span>
@@ -414,6 +500,17 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
               ))}
             </div>
           </div>
+        )}
+
+        {/* Negotiation price comparison chart */}
+        {renderType === 'negotiation_progress' && (
+          <NegotiationProgressCard
+            originalPrice={(logPayload as any).original_price}
+            targetPrice={(logPayload as any).target_price}
+            counterPrice={(logPayload as any).counter_price}
+            round={(logPayload as any).round ?? 1}
+            savings={(logPayload as any).savings ?? 0}
+          />
         )}
 
         {/* Dialog options */}

@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import CallSettingsCard from '@/components/agent/CallSettingsCard'
 import MemoryCards from '@/components/agent/MemoryCards'
+import { agentAudio } from '@/lib/agentAudio'
+import { cn } from '@/lib/utils'
 
 // Mirrors the backend guardrails in app/services/agent_policy.py — shown so the
 // limits the server actually enforces are visible, not implied.
@@ -175,6 +177,41 @@ export default function AISettingsPage() {
             />
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
           </label>
+        </div>
+
+        {/* Sound Design Card */}
+        <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
+          <div className="space-y-1">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-violet-500" />
+              Sound Design
+            </h3>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Synthetic audio feedback synthesised in-browser via Web Audio API. Radar pings, task completion chimes, and sonar pulses.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const nextState = !aiSettings.soundEnabled
+              updateAISetting('soundEnabled', nextState)
+              agentAudio.setEnabled(nextState)
+              if (nextState) agentAudio.playRadarPing()
+            }}
+            className={cn(
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 mt-1',
+              aiSettings.soundEnabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-gray-700',
+            )}
+            aria-pressed={aiSettings.soundEnabled}
+            aria-label="Toggle agent sound effects"
+          >
+            <span
+              className={cn(
+                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                aiSettings.soundEnabled ? 'translate-x-6' : 'translate-x-1',
+              )}
+            />
+          </button>
         </div>
 
         {/* Danger Zone */}

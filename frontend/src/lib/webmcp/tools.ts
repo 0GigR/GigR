@@ -35,6 +35,8 @@ export interface ToolDeps {
    * amounts are always Naira). Used by the `set_display_currency` tool.
    */
   setDisplayCurrency?: (code: string) => void | Promise<unknown>
+  /** Optional: navigate to an app route (react-router-dom). */
+  navigate?: (targetRoute: string) => void
 }
 
 export interface WebMCPTool {
@@ -66,6 +68,8 @@ export const AUTHED_TOOL_NAMES: readonly string[] = [
   'send_message',
   'get_notifications',
   'set_display_currency',
+  'navigate_to',
+  'scroll_into_view',
 ]
 
 export const ALL_TOOL_NAMES: ReadonlySet<string> = new Set([...PUBLIC_TOOL_NAMES, ...AUTHED_TOOL_NAMES])
@@ -770,6 +774,72 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
           })
         } catch (err) {
           return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
+      name: 'navigate_to',
+      description:
+        'Navigate the app to a specific route without a full page reload. Use this to send the user to the right section (jobs, services, explore map, messages, profile, etc.) before or after completing another tool call.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description:
+              'App route path. Examples: "/dashboard", "/dashboard/explore", "/dashboard/jobs", "/dashboard/services", "/dashboard/messages", "/dashboard/profile".',
+          },
+        },
+        required: ['path'],
+      },
+      execute: (inputParams: { path?: string }) => {
+        const inputRoute = String(inputParams?.path ?? '').trim()
+        if (!inputRoute) return fail('path is required.')
+        if (!inputRoute.startsWith('/')) return fail('path must start with "/".')
+        if (!deps.navigate) return fail('Navigation is not available in this context.')
+        deps.navigate(inputRoute)
+        return ok({ navigated: true, path: inputRoute })
+      },
+    },
+
+    {
+      name: 'scroll_into_view',
+      description:
+        'Scroll a DOM element into the visible viewport using a CSS selector. Useful for drawing attention to a specific UI section after navigating. Silently no-ops if the selector does not match.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          selector: {
+            type: 'string',
+            description:
+              'CSS selector for the element to scroll to. Examples: "#job-card-123", "[data-agent-panel]", ".map-explorer".',
+          },
+          behavior: {
+            type: 'string',
+            enum: ['smooth', 'instant'],
+            description: 'Scroll behaviour. Defaults to "smooth".',
+          },
+        },
+        required: ['selector'],
+      },
+      annotations: { readOnlyHint: false },
+      execute: (inputParams: { selector?: string; behavior?: 'smooth' | 'instant' }) => {
+        const targetSelector = String(inputParams?.selector ?? '').trim()
+        if (!targetSelector) return fail('selector is required.')
+        if (typeof document === 'undefined') {
+          return ok({ scrolled: false, note: 'DOM document is not available in this environment.' })
+        }
+        try {
+          const selectedElement = document.querySelector(targetSelector)
+          if (!selectedElement) return ok({ scrolled: false, note: `No element matched "${targetSelector}".` })
+          selectedElement.scrollIntoView({
+            behavior: inputParams?.behavior === 'instant' ? 'instant' : 'smooth',
+            block: 'nearest',
+          })
+          return ok({ scrolled: true, selector: targetSelector })
+        } catch (scrollErr) {
+          return fail(scrollErr instanceof Error ? scrollErr.message : 'Scroll failed.')
         }
       },
     },

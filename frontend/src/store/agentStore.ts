@@ -53,6 +53,8 @@ export interface AISettings {
   voiceEnabled: boolean
   /** Speech recognition language code */
   voiceLanguage: string
+  /** Whether agent sound effects are played (Web Audio API synthesis) */
+  soundEnabled: boolean
 }
 
 // ─── Voice-call settings (server state: ai_settings.call + user.phone_number) ───
@@ -209,6 +211,7 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   autonomyLevel: 'off',
   voiceEnabled: true,
   voiceLanguage: 'en-US',
+  soundEnabled: false,
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────

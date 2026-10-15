@@ -808,6 +808,24 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
                        f"Opening offer sent to provider for **'{service.title}'** (₦{float(service.price):,.0f}). "
                        f"I'll monitor their reply and negotiate on your behalf. "
                        f"[View chat](/dashboard/messages)")
+            # Emit structured log so the frontend can render the price-comparison bar chart.
+            original_price = float(service.price)
+            target_price = max_price or original_price
+            round_num = 1
+            await _log(
+                db,
+                task.id,
+                "success",
+                f"Negotiation round {round_num}: opening offer submitted.",
+                data={
+                    "render_type": "negotiation_progress",
+                    "original_price": original_price,
+                    "target_price": target_price,
+                    "counter_price": None,
+                    "round": round_num,
+                    "savings": max(0.0, original_price - target_price),
+                },
+            )
             negotiated_with.append({
                 "service_id": str(service.id), "title": service.title, "job_id": str(job.id)
             })

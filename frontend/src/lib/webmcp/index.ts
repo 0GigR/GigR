@@ -51,6 +51,11 @@ const adapter: ToolApi = {
 }
 
 let started = false
+let activeNavigator: ((targetRoute: string) => void) | null = null
+
+export function setWebMCPNavigate(navigationFunction: (targetRoute: string) => void): void {
+  activeNavigator = navigationFunction
+}
 
 export function initWebMCP(): void {
   if (started || typeof window === 'undefined') return
@@ -72,6 +77,9 @@ export function initWebMCP(): void {
     api: adapter,
     currentUser,
     setDisplayCurrency: (code) => applyDisplayCurrency(code as CurrencyCode),
+    navigate: (targetRoute) => {
+      if (activeNavigator) activeNavigator(targetRoute)
+    },
   })
 
   const registrar = createRegistrar({
