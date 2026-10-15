@@ -4,6 +4,7 @@ import { useAgentStore } from '@/store/agentStore'
 import { isFeatureEnabled } from '@/lib/featureFlags'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
+import { agentAudio } from '@/lib/agentAudio'
 
 export default function VoiceAssistant() {
   const isPaletteEnabled = isFeatureEnabled('commandPalette')
@@ -24,6 +25,7 @@ export default function VoiceAssistant() {
     return () => {
       if (recognitionRef.current) recognitionRef.current.stop()
       if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current)
+      agentAudio.stopSonarPulse()
     }
   }, [])
 
@@ -71,6 +73,7 @@ export default function VoiceAssistant() {
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error)
       setIsListening(false)
+      agentAudio.stopSonarPulse()
       if (event.error === 'not-allowed') {
         toast.error('Microphone access denied.')
       }
@@ -78,11 +81,15 @@ export default function VoiceAssistant() {
 
     recognition.onend = () => {
       setIsListening(false)
+      agentAudio.stopSonarPulse()
     }
 
     recognitionRef.current = recognition
     recognition.start()
     setIsListening(true)
+    if (aiSettings.soundEnabled) {
+      agentAudio.playSonarPulse()
+    }
     setTranscript('')
     setSuccessMessage(null)
   }
@@ -93,6 +100,7 @@ export default function VoiceAssistant() {
       recognitionRef.current = null
     }
     setIsListening(false)
+    agentAudio.stopSonarPulse()
   }
 
   // ─── Command Submission ──────────────────────────────────────────

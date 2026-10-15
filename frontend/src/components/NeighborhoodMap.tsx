@@ -60,6 +60,7 @@ function makeAvatarIcon(
   highlighted = false,
   /** Jobs are square, services are round — shape reads faster than colour. */
   shape: 'square' | 'round' = 'round',
+  bloomDelayMs = 0,
 ): L.DivIcon {
   const headRadius = shape === 'square' ? '10px' : '9999px'
   const innerRadius = shape === 'square' ? '7px' : '9999px'
@@ -74,7 +75,7 @@ function makeAvatarIcon(
     : ''
 
   const html = `
-    <div class="gigr-pin" style="position:relative;width:40px;height:52px;">
+    <div class="gigr-pin animate-pin-bloom" style="position:relative;width:40px;height:52px;animation-delay:${bloomDelayMs}ms;">
       ${halo}
       <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:${headRadius};background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;${highlighted ? `outline:3px solid #fff;outline-offset:1px;` : ''}">
         <div style="width:32px;height:32px;border-radius:${innerRadius};overflow:hidden;background:#fff;">${inner}</div>
@@ -237,7 +238,7 @@ function ClusterLayer({
   if (mode === 'pins') {
     return (
       <>
-        {points.map((point) => {
+        {points.map((point, index) => {
           const owner = point.ownerId ? owners.get(point.ownerId) : undefined
           const highlighted = selectedId === point.id
           return (
@@ -250,6 +251,7 @@ function ClusterLayer({
                 point.kind === 'job' ? JOB_COLOR : SERVICE_COLOR,
                 highlighted,
                 point.kind === 'job' ? 'square' : 'round',
+                Math.min(index * 60, 600),
               )}
               zIndexOffset={highlighted ? 1000 : 0}
               eventHandlers={{ click: () => onSelect?.(point.kind, point.id) }}
