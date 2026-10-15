@@ -32,6 +32,7 @@ VALID_TASK_TYPES = frozenset({
     "plan",
     "apply_job",
     "proactive_hunt",
+    "check_wallet",
 })
 
 VALID_NAV_PAGES = frozenset({

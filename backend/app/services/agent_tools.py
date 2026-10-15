@@ -107,6 +107,21 @@ def _job_card(job: Job) -> Dict[str, Any]:
     }
 
 
+import math
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    earth_radius_km = 6371.0
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lng = math.radians(lng2 - lng1)
+    arc = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(delta_lng / 2) ** 2
+    )
+    chord = 2 * math.atan2(math.sqrt(arc), math.sqrt(1 - arc))
+    return earth_radius_km * chord
+
+
 def _user_location(user: User) -> Optional[Dict[str, float]]:
     lat, lng = getattr(user, "location_lat", None), getattr(user, "location_lng", None)
     if lat is None or lng is None:
@@ -123,34 +138,74 @@ def _error(message: str) -> Dict[str, Any]:
 async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
     from ..crud.service import get_services_nearby, search_services_by_text
 
-    query = str(args.get("query") or "").strip()
-    max_price = args.get("max_price")
-    radius_km = float(args.get("radius_km") or 10)
-    location = _user_location(user)
+    search_query = str(args.get("query") or "").strip()
+    price_ceiling = args.get("max_price")
+    search_radius_km = float(args.get("radius_km") or 10)
+    user_coords = _user_location(user)
 
-    if location:
-        services = await get_services_nearby(
-            db, location["lat"], location["lng"], radius_km=radius_km, limit=15
+    if search_query:
+        candidates = await search_services_by_text(db, search_query, limit=30)
+    elif user_coords:
+        candidates = await get_services_nearby(
+            db, user_coords["lat"], user_coords["lng"], radius_km=search_radius_km, limit=15
         )
-        if not services and query:
-            services = await search_services_by_text(db, query, limit=15)
     else:
-        services = await search_services_by_text(db, query or "service", limit=15)
+        candidates = await search_services_by_text(db, "service", limit=15)
 
-    services = [s for s in services if str(s.provider_id) != str(user.id)]
-    if max_price is not None:
+    candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
+
+    if user_coords:
+        for candidate in candidate_services:
+            if candidate.latitude is not None and candidate.longitude is not None:
+                candidate.distance_km = round(
+                    _haversine_km(
+                        user_coords["lat"],
+                        user_coords["lng"],
+                        float(candidate.latitude),
+                        float(candidate.longitude),
+                    ),
+                    1,
+                )
+            else:
+                candidate.distance_km = None
+        candidate_services.sort(
+            key=lambda s: (s.distance_km if s.distance_km is not None else 99999.0, float(s.price))
+        )
+
+    nearby_matches = [
+        s for s in candidate_services
+        if s.distance_km is not None and s.distance_km <= search_radius_km
+    ] if user_coords else candidate_services
+
+    active_matches = nearby_matches if nearby_matches else candidate_services
+
+    if price_ceiling is not None:
         try:
-            services = [s for s in services if float(s.price) <= float(max_price)]
+            budget_matches = [s for s in active_matches if float(s.price) <= float(price_ceiling)]
+            if budget_matches:
+                active_matches = budget_matches
         except (TypeError, ValueError):
             pass
 
-    cards = [_service_card(s) for s in services[:_MAX_RESULTS]]
+    cards = [_service_card(s) for s in active_matches[:_MAX_RESULTS]]
+    outside_note = None
+    if user_coords and not nearby_matches and candidate_services:
+        nearest_distance = candidate_services[0].distance_km
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_note = (
+            f"None found within {search_radius_km:g} km, but found {len(candidate_services)} provider(s) "
+            f"further away{distance_label}."
+        )
+
     return {
         "ok": True,
         "count": len(cards),
+        "total_found": len(candidate_services),
         "services": cards,
-        "note": "Use request_service with a service id to open a request."
-        if cards else "No matching providers found.",
+        "note": outside_note or (
+            "Use request_service with a service id to open a request."
+            if cards else "No matching providers found."
+        ),
     }
 
 
@@ -236,11 +291,35 @@ async def _tool_my_applications(db: AsyncSession, user: User, args: Dict[str, An
 
 
 async def _tool_get_wallet(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "ok": True,
-        "wallet_public_key": user.wallet_public_key,
-        "note": "Funding and releasing escrow are manual actions the user performs in the app.",
-    }
+    if not user.wallet_public_key:
+        return {
+            "ok": True,
+            "connected": False,
+            "note": "No Solana wallet connected yet. You can connect or fund your wallet from the dashboard.",
+        }
+
+    from ..api.v1.endpoints.users import get_my_balance
+    try:
+        balance_res = await get_my_balance(current_user=user)
+        sol_amount = balance_res.get("sol", 0.0)
+        usdc_amount = balance_res.get("usdc", "0.00")
+        wallet_key = user.wallet_public_key
+        return {
+            "ok": True,
+            "connected": True,
+            "wallet_public_key": wallet_key,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+            "note": f"Wallet {wallet_key[:4]}...{wallet_key[-4:]} has {sol_amount} SOL and {usdc_amount} USDC. Funding and releasing escrow are manual actions in the app.",
+        }
+    except Exception as balance_exc:
+        wallet_key = user.wallet_public_key
+        return {
+            "ok": True,
+            "connected": True,
+            "wallet_public_key": wallet_key,
+            "note": f"Connected wallet: {wallet_key[:4]}...{wallet_key[-4:]} (balance check warning: {balance_exc})",
+        }
 
 
 async def _tool_get_my_location(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -579,6 +658,9 @@ You can call tools to look things up and to act on the user's behalf. Rules:
 - Prefer calling a tool over guessing. Never invent jobs, providers, prices or ids.
 - Prices are in Naira. Use the user's saved location for anything location-specific;
   call get_my_location first if you are unsure whether one exists.
+- NEVER invent a budget or max_price. If the user did not specify a price or budget, do not pass max_price.
+- When the user mentions physical symptoms or pain (e.g. "my back hurts", "sore body"), call search_services with a relevant query like "massage" or "physiotherapy" WITHOUT any max_price.
+- When the user asks about their wallet, balance, funds, SOL, or USDC, call get_wallet.
 - Only apply to jobs, request services, or post jobs when the user actually asked for it.
 - You can NEVER move money. Escrow funding and release are manual actions the user
   performs in the app — never claim a payment happened.
@@ -608,7 +690,7 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     if name == "get_my_location":
         return "checked location" if result.get("location") else "no saved location"
     if name == "get_wallet":
-        return "checked wallet"
+        return "checked wallet balance"
     return name
 
 
