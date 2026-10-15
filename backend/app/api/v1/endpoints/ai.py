@@ -68,7 +68,7 @@ _GROQ_SYSTEM_PROMPT = """You are a command parser for Gigr, a freelance services
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
-  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "generic",
+  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "check_wallet" | "generic",
   "params": {
     "query": "search query string",
     "max_price": 5000,          // number in naira, null if not specified
@@ -87,10 +87,12 @@ Extract the user's intent from their message and return ONLY a JSON object with 
 }
 
 Rules:
+- "check_wallet" = user asks about their wallet balance, funds, SOL, USDC, or wallet address.
+- "find_service" = user wants to find someone to hire, OR user describes physical symptoms/needs ("my back hurts", "sore body" → query: "massage", "burst pipe" → query: "plumber").
+- max_price: null if not specified. NEVER invent or guess a budget or max_price unless the user explicitly stated a number.
 - "plan" = compound request containing two or more distinct goals (e.g. "clean my room and fix the tap", "find a photographer and post a job for a DJ"). Populate params.steps with the subtask objects.
 - "post_job" = user wants to HIRE SOMEONE / create a task
 - "post_service" = user wants to WORK / offer their skills
-- "find_service" = user wants to look for someone to hire
 - "find_job" = user is a freelancer looking for open jobs to apply to
 - "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
 - "within 20km" / "in 10 km" → params.radius_km = 20 / 10. Only set it when the
@@ -268,6 +270,36 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         if m and m.group(1) in nav_map:
             page = nav_map[m.group(1)]
             return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
+
+    # ─── Wallet balance / funds check ────────────────────────────────
+    if re.search(r"\b(?:wallet|balance|sol\b|usdc\b|funds?|how much money|my crypto)\b", text_lower):
+        return {
+            "task_type": "check_wallet",
+            "params": {},
+            "response": "Checking your wallet balance...",
+        }
+
+    # ─── Physical symptoms / needs mapping ───────────────────────────
+    if re.search(r"\b(?:back\s+hurts?|sore\s+body|body\s+(?:is\s+)?sore|massage|masseuse|stiff\s+neck|body\s+pain)\b", text_lower):
+        return {
+            "task_type": "find_service",
+            "params": {"query": "massage", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
+            "response": "Searching for massage services...",
+        }
+
+    if re.search(r"\b(?:burst\s+pipe|pipe\s+burst|leaking\s+pipe|leaking\s+sink|clogged\s+drain)\b", text_lower):
+        return {
+            "task_type": "find_service",
+            "params": {"query": "plumber", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
+            "response": "Searching for plumbing services...",
+        }
+
+    if re.search(r"\b(?:what\s+can\s+you\s+do|how\s+(?:can|do)\s+you\s+work|capabilities)\b", text_lower):
+        return {
+            "task_type": "generic",
+            "params": {"query": text},
+            "response": "I can help you find nearby service providers, search and apply for open jobs, view or manage your jobs, check your wallet, or negotiate prices.",
+        }
 
     # ─── Generic / greeting guard (before intent checks) ─────────────
     # Catch short greetings, rhetorical questions, and ambiguous inputs
@@ -521,30 +553,41 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
     # "near you" mean nothing and hid why a result appeared.
     radius_km = params.get("radius_km") or 10.0
     distances: Dict[str, float] = {}
+    within = []
     if user_lat and user_lng:
-        within = []
         for service in services:
             if service.latitude is None or service.longitude is None:
                 continue
             km = _haversine_km(user_lat, user_lng, float(service.latitude), float(service.longitude))
+            distances[str(service.id)] = round(km, 1)
             if km <= radius_km:
                 within.append(service)
-                distances[str(service.id)] = round(km, 1)
+
+        services.sort(key=lambda s: distances.get(str(s.id), 99999.0))
+        within.sort(key=lambda s: distances.get(str(s.id), 99999.0))
+
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
             f"Evaluating service providers matching '{query}' within {radius_km:g} km radius..."
         )
 
+    target_pool = within if (user_lat and user_lng and within) else services
+    outside_radius_note = None
+    if user_lat and user_lng and not within and services:
+        nearest_distance = distances.get(str(services[0].id))
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_radius_note = f"None within {radius_km:g} km, but found provider(s) further away{distance_label}"
+
     if max_price:
-        filtered = [s for s in services if float(s.price) <= max_price]
+        filtered = [s for s in target_pool if float(s.price) <= max_price]
     else:
-        filtered = services
+        filtered = target_pool
 
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
-            f"Evaluated {len(services)} nearby candidate(s); {len(filtered)} within target budget."
+            f"Evaluated {len(target_pool)} candidate(s); {len(filtered)} within target budget."
         )
 
     if filtered:
@@ -567,11 +610,17 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         dialog_options.append({"label": "Post a job instead", "action": "post_job"})
         dialog_options.append({"label": "Cancel", "action": "cancel"})
 
+        found_msg = f"Found {len(filtered)} matching service(s)"
+        if outside_radius_note:
+            found_msg += f" ({outside_radius_note})"
+        found_msg += ". Which would you like me to request?"
+
         await _log(db, task.id, "success",
-                   f"Found {len(filtered)} matching service(s). Which would you like me to request?",
-                   data={
+                   found_msg,
+                   {
                        "render_type": "service_cards",
                        "services": service_cards,
+                       "outside_radius_note": outside_radius_note,
                        "action_payload": {
                            "type": "select_service",
                            "query": query,
@@ -581,8 +630,8 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                    })
         return {"found": True, "count": len(filtered), "services": service_cards}
     else:
-        closest = sorted(services, key=lambda s: float(s.price))[:3]
-        if closest:
+        closest = sorted(target_pool, key=lambda s: float(s.price))[:3]
+        if closest and max_price:
             names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
             await _log(db, task.id, "warning",
                        f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
@@ -1374,6 +1423,66 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     }
 
 
+async def _handle_check_wallet(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Retrieve and display user's on-chain wallet balance (SOL and USDC)."""
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    current_user = user_res.scalar_one_or_none()
+    if not current_user or not current_user.wallet_public_key:
+        await _log(
+            db,
+            task.id,
+            "warning",
+            "No Solana wallet connected yet. You can connect or fund your wallet in your dashboard profile.",
+            {"render_type": "wallet_card", "connected": False},
+        )
+        return {"connected": False, "sol_balance": 0.0, "usdc_balance": "0.00"}
+
+    wallet_pubkey = current_user.wallet_public_key
+    from .users import get_my_balance
+    try:
+        balance_res = await get_my_balance(current_user=current_user)
+        sol_amount = float(balance_res.get("sol", 0.0))
+        usdc_amount = str(balance_res.get("usdc", "0.00"))
+        wallet_payload = {
+            "render_type": "wallet_card",
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+        }
+        await _log(
+            db,
+            task.id,
+            "success",
+            f"Wallet {wallet_pubkey[:4]}...{wallet_pubkey[-4:]}: {sol_amount:.4f} SOL | ${usdc_amount} USDC",
+            wallet_payload,
+        )
+        return {
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+        }
+    except Exception as balance_exc:
+        logger.warning("[agent] wallet balance lookup failed: %s", balance_exc)
+        wallet_payload = {
+            "render_type": "wallet_card",
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": 0.0,
+            "usdc_balance": "0.00",
+            "warning": str(balance_exc),
+        }
+        await _log(
+            db,
+            task.id,
+            "warning",
+            f"Connected wallet {wallet_pubkey[:4]}...{wallet_pubkey[-4:]} (balance lookup currently unavailable)",
+            wallet_payload,
+        )
+        return {"connected": True, "wallet_public_key": wallet_pubkey, "error": str(balance_exc)}
+
+
 async def _resolve_conversation(db: AsyncSession, task: AgentTask):
     """The job a reply task belongs to: explicit id, else the newest live one."""
     from ....models.job import Job
@@ -1879,6 +1988,8 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_proactive_hunt(task, db)
                 elif task.task_type == "plan":
                     task.result = await _handle_plan(task, db)
+                elif task.task_type == "check_wallet":
+                    task.result = await _handle_check_wallet(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
                     page_routes = {
@@ -2492,6 +2603,9 @@ async def submit_command(
     db.add(initial_log)
     await db.commit()
     await db.refresh(task)
+
+    # Immediately trigger execution in background so user doesn't wait on polling loop
+    asyncio.create_task(_execute_task(str(task.id)))
 
     # Return with logs
     result = await db.execute(

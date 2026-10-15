@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, lazy, Suspense } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, Check, Wrench, Sparkles, Wallet } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
@@ -385,6 +385,98 @@ function NegotiationProgressCard({
   )
 }
 
+// ─── Wallet Balance Card ──────────────────────────────────────────────────────
+
+interface WalletCardProps {
+  connected: boolean
+  walletPublicKey?: string
+  solBalance?: number
+  usdcBalance?: string
+  warning?: string
+  onNavigate: (path: string) => void
+}
+
+function WalletCard({
+  connected,
+  walletPublicKey,
+  solBalance = 0,
+  usdcBalance = '0.00',
+  warning,
+  onNavigate,
+}: WalletCardProps) {
+  const truncatedKey = walletPublicKey
+    ? `${walletPublicKey.slice(0, 4)}...${walletPublicKey.slice(-4)}`
+    : null
+
+  return (
+    <div className="p-3.5 rounded-xl bg-gray-950/80 border border-violet-800/40 space-y-3 max-w-[90%] shadow-lg shadow-black/30">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Wallet className="w-3.5 h-3.5 text-violet-400" />
+          <span className="text-[11px] font-mono font-medium text-violet-200">
+            {connected ? `[WALLET] ${truncatedKey}` : '[WALLET] Disconnected'}
+          </span>
+        </div>
+        <span
+          className={cn(
+            'text-[10px] font-mono px-1.5 py-0.5 rounded border',
+            connected
+              ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/40'
+              : 'bg-amber-950/60 text-amber-400 border-amber-800/40',
+          )}
+        >
+          {connected ? '[OK] ACTIVE' : '[PENDING] CONNECT'}
+        </span>
+      </div>
+
+      {connected ? (
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+            <span className="text-[10px] font-mono text-gray-400 block">SOL Balance</span>
+            <span className="text-sm font-mono font-bold text-white">
+              {Number(solBalance).toFixed(4)} <span className="text-violet-400 text-xs">SOL</span>
+            </span>
+          </div>
+          <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+            <span className="text-[10px] font-mono text-gray-400 block">USDC Balance</span>
+            <span className="text-sm font-mono font-bold text-white">
+              ${usdcBalance} <span className="text-emerald-400 text-xs">USDC</span>
+            </span>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-gray-300">
+          Connect your Solana wallet in your profile to view balances, fund gigs, and receive escrow payouts.
+        </p>
+      )}
+
+      {warning && (
+        <p className="text-[11px] text-amber-400/90 font-mono">
+          Note: {warning}
+        </p>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <Button
+          size="sm"
+          className="flex-1 bg-violet-600 hover:bg-violet-700 text-white text-xs h-8 font-mono"
+          onClick={() => onNavigate('/dashboard/profile')}
+        >
+          [FUND WALLET]
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-gray-700 hover:bg-gray-800 text-xs h-8 font-mono text-gray-300"
+          onClick={() => onNavigate('/dashboard/activity')}
+        >
+          [TRANSACTIONS]
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Agent Message ─────────────────────────────────────────────────────────────
 
 function AgentMessage({ log, onDialogAction, onNavigate }: {
@@ -396,8 +488,15 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
   const renderType = logPayload?.render_type
   const actionPayload = logPayload?.action_payload
 
-  // Skip raw "Command received" and "Parsing command intent" logs — they're noise in the chat
-  if (log.message.startsWith('Command received:') || log.message === 'Parsing command intent...') {
+  // Skip raw internal diagnostic logs — they clutter chat presentation
+  if (
+    log.message.startsWith('Command received:') ||
+    log.message === 'Parsing command intent...' ||
+    log.message.startsWith('Agent started working on:') ||
+    log.message.startsWith('Interpreted as:') ||
+    log.message === 'Task completed' ||
+    log.message.startsWith('Analyzing command and session context')
+  ) {
     return null
   }
 
@@ -510,6 +609,18 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
             counterPrice={(logPayload as any).counter_price}
             round={(logPayload as any).round ?? 1}
             savings={(logPayload as any).savings ?? 0}
+          />
+        )}
+
+        {/* Wallet Balance Card */}
+        {renderType === 'wallet_card' && (
+          <WalletCard
+            connected={Boolean(logPayload.connected)}
+            walletPublicKey={logPayload.wallet_public_key}
+            solBalance={logPayload.sol_balance}
+            usdcBalance={logPayload.usdc_balance}
+            warning={logPayload.warning}
+            onNavigate={onNavigate}
           />
         )}
 
