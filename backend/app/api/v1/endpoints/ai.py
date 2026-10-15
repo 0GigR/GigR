@@ -543,8 +543,21 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+RELATED_SERVICE_CATEGORIES: Dict[str, List[str]] = {
+    "massage": ["massage", "masseuse", "physiotherapy", "wellness", "body therapy", "spa"],
+    "physiotherapy": ["physiotherapy", "massage", "wellness", "therapy"],
+    "plumber": ["plumber", "plumbing", "pipe repair", "water leak", "drain repair"],
+    "cleaning": ["cleaning", "cleaner", "housekeeping", "fumigation", "deep clean"],
+    "fumigation": ["fumigation", "pest control", "insects", "exterminator", "cleaning"],
+    "mechanic": ["mechanic", "auto repair", "car repair", "engine maintenance"],
+    "electrician": ["electrician", "electrical", "generator repair", "wiring"],
+    "carpenter": ["carpenter", "woodwork", "furniture", "upholstery"],
+    "ac repair": ["ac repair", "air conditioning", "cooling", "refrigeration"],
+}
+
+
 async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
-    """Search for services matching the task query (Client looking to hire)."""
+    """Search for services matching the task query with multi-search expansion (Client looking to hire)."""
     params = task.params or {}
     query: str = params.get("query", "")
     max_price: Optional[float] = params.get("max_price")
@@ -562,10 +575,39 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
 
     services = await search_services_by_text(db, query, limit=50)
     services = [s for s in services if s.provider_id != task.user_id]
+    seen_service_ids = {str(s.id) for s in services}
 
-    # Respect the distance the user asked for. This used to silently fall back to
-    # every match in the country whenever fewer than three were nearby, which made
-    # "near you" mean nothing and hid why a result appeared.
+    # If initial query yielded 0 or very few results, execute multi-search across related categories
+    if len(services) < 2:
+        query_key = query.lower()
+        alternate_queries: List[str] = []
+        for cat_key, cat_terms in RELATED_SERVICE_CATEGORIES.items():
+            if cat_key in query_key or any(term in query_key for term in cat_terms):
+                for term in cat_terms:
+                    if term.lower() != query_key and term not in alternate_queries:
+                        alternate_queries.append(term)
+
+        if alternate_queries:
+            await _log(
+                db, task.id, "think",
+                f"Initial query '{query}' yielded {len(services)} match(es). Expanding search to related specialties: {', '.join(alternate_queries[:3])}..."
+            )
+            for alt_term in alternate_queries:
+                extra_services = await search_services_by_text(db, alt_term, limit=30)
+                extra_services = [s for s in extra_services if s.provider_id != task.user_id]
+                new_services = [s for s in extra_services if str(s.id) not in seen_service_ids]
+                if new_services:
+                    await _log(
+                        db, task.id, "action",
+                        f"Found {len(new_services)} matching provider(s) under '{alt_term}'."
+                    )
+                    for s in new_services:
+                        seen_service_ids.add(str(s.id))
+                        services.append(s)
+                if len(services) >= 5:
+                    break
+
+    # Respect the distance the user asked for. If none nearby, gracefully widen to nationwide.
     radius_km = params.get("radius_km") or 10.0
     distances: Dict[str, float] = {}
     within = []
@@ -584,7 +626,7 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
-            f"Evaluating service providers matching '{query}' within {radius_km:g} km radius..."
+            f"Evaluating {len(services)} candidate provider(s) within {radius_km:g} km radius..."
         )
 
     target_pool = within if (user_lat and user_lng and within) else services
@@ -592,7 +634,11 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
     if user_lat and user_lng and not within and services:
         nearest_distance = distances.get(str(services[0].id))
         distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
-        outside_radius_note = f"None within {radius_km:g} km, but found provider(s) further away{distance_label}"
+        outside_radius_note = f"None within {radius_km:g} km, but found {len(services)} provider(s) further away{distance_label}"
+        await _log(
+            db, task.id, "think",
+            f"No providers found within {radius_km:g} km. Widened search nationwide: showing nearest {len(services)} provider(s){distance_label}."
+        )
 
     if max_price:
         filtered = [s for s in target_pool if float(s.price) <= max_price]

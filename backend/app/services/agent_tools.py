@@ -143,16 +143,31 @@ async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, An
     search_radius_km = float(args.get("radius_km") or 10)
     user_coords = _user_location(user)
 
+    candidate_services = []
     if search_query:
         candidates = await search_services_by_text(db, search_query, limit=30)
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
+        if not candidate_services:
+            query_lower = search_query.lower()
+            from ..api.v1.endpoints.ai import RELATED_SERVICE_CATEGORIES
+            for cat_key, alt_terms in RELATED_SERVICE_CATEGORIES.items():
+                if cat_key in query_lower or any(t in query_lower for t in alt_terms):
+                    for alt in alt_terms:
+                        if alt.lower() != query_lower:
+                            more_candidates = await search_services_by_text(db, alt, limit=20)
+                            candidate_services.extend([s for s in more_candidates if str(s.provider_id) != str(user.id)])
+                            if candidate_services:
+                                break
+                    if candidate_services:
+                        break
     elif user_coords:
         candidates = await get_services_nearby(
             db, user_coords["lat"], user_coords["lng"], radius_km=search_radius_km, limit=15
         )
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
     else:
         candidates = await search_services_by_text(db, "service", limit=15)
-
-    candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
 
     if user_coords:
         for candidate in candidate_services:
