@@ -231,17 +231,20 @@ def _extract_radius_km(text: str) -> Optional[float]:
 
 def _extract_search_query(text: str) -> Optional[str]:
     """Extract the core search intent from a command string."""
+    cleaned_input = re.sub(r"^(?:i\s+meant\s+|i\s+mean\s+|please\s+)", "", text or "", flags=re.IGNORECASE).strip()
     patterns = [
-        r"(?:find|get|hire)\s+(?:someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
-        r"(?:search|look\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
-        r"(?:i\s+need|i\s+want|i\s+am\s+looking\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
-        r"(?:someone|a\s+person)\s+(?:who\s+can\s+|who\s+will\s+|to\s+)?(.+?)(?:\s+for\s+|\s*$)",
-        r"(?:looking\s+for)\s+(?:a\s+|an\s+|someone\s+(?:to\s+|who\s+can\s+))?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:find|get|hire)\s+(?:me\s+someone\s+(?:that|who)\s+(?:does|can|is)\s+|someone\s+(?:that|who)\s+(?:does|can|is)\s+|me\s+someone\s+to\s+|someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
+        r"(?:search|look\s+for)\s+(?:someone\s+(?:that|who)\s+(?:does|can)\s+|a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
+        r"(?:i\s+need|i\s+want|i\s+am\s+looking\s+for)\s+(?:someone\s+(?:that|who)\s+(?:does|can)\s+|a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:someone|a\s+person)\s+(?:that\s+does\s+|who\s+does\s+|who\s+can\s+|who\s+will\s+|to\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:looking\s+for)\s+(?:a\s+|an\s+|someone\s+(?:to\s+|who\s+can\s+|that\s+does\s+))?(.+?)(?:\s+for\s+|\s*$)",
     ]
     for pat in patterns:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, cleaned_input, re.IGNORECASE)
         if m:
             q = m.group(1).strip()
+            # Strip relative clauses like "someone that does ..." or "someone who ..."
+            q = re.sub(r"^(?:someone\s+(?:that|who)\s+(?:does|can|offers?)\s+)", "", q, flags=re.IGNORECASE).strip()
             # Remove trailing price qualifiers more aggressively
             q = re.sub(r"\s+(for\s+)?(no\s+more|no\s+less|under|less\s+than|max|budget).*$", "", q, flags=re.IGNORECASE).strip()
             if q:
@@ -282,7 +285,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Physical symptoms / needs mapping ───────────────────────────
-    if re.search(r"\b(?:back\s+hurts?|sore\s+body|body\s+(?:is\s+)?sore|massage|masseuse|stiff\s+neck|body\s+pain)\b", text_lower):
+    if re.search(r"\b(?:back\s+hurts?|sore\s+(?:body|muscles?|back)|body\s+(?:is\s+)?sore|sore\s+muscles?|better\s+my\s+sore|massage|masseuse|masseur|stiff\s+neck|body\s+pain|ache|aching)\b", text_lower):
         return {
             "task_type": "find_service",
             "params": {"query": "massage", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
@@ -428,10 +431,20 @@ async def parse_command(
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _log(db: AsyncSession, task_id: uuid.UUID, level: str, message: str, data: Any = None):
-    """Write a single log entry for a task."""
+    """Write a single log entry for a task and immediately commit so UI sees real-time progress."""
     entry = AgentLog(task_id=task_id, level=level, message=message, data=data)
     db.add(entry)
-    await db.flush()
+    try:
+        from sqlalchemy import update as sa_update
+        await db.execute(
+            sa_update(AgentTask)
+            .where(AgentTask.id == task_id)
+            .values(updated_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+    except Exception as commit_exc:
+        logger.warning("[agent] _log commit failed: %s", commit_exc)
+        await db.flush()
 
 
 async def _load_memory(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, Any]:
