@@ -1,25 +1,27 @@
 /**
- * VoiceAssistant.tsx — Floating push-to-talk mic for Gigidy AI.
+ * VoiceAssistant.tsx — Floating push-to-talk mic and companion popup for Gigidy AI.
  *
- * Frictionless tap-to-speak:
- * - Single tap immediately starts audio capture via Web Speech API.
- * - Auto-submits to submitCommand as soon as speech finishes.
- * - Directly opens the AgentActivityPanel so interactive feedback lives in the panel.
- * - No modal overlays or command palettes popping up in front of the user.
+ * Tap-to-speak flow:
+ * - Tapping the mic button opens the companion speech popup on the side and starts listening immediately.
+ * - Live speech transcripts stream in real-time inside the companion card.
+ * - Auto-submits on speech completion (silence debounce or onend).
+ * - Opens the AgentActivityPanel with the agent's progress and actions.
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Mic, Loader2 } from 'lucide-react'
+import { Mic, Loader2, X, Send } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { toast } from 'sonner'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { agentAudio } from '@/lib/agentAudio'
 
 export default function VoiceAssistant() {
   const { aiSettings, submitCommand, openPanel } = useAgentStore()
 
+  const [isOpen, setIsOpen] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
+  const [typedCommand, setTypedCommand] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
 
   const recognitionRef = useRef<any>(null)
@@ -53,6 +55,7 @@ export default function VoiceAssistant() {
     try {
       const task = await submitCommand(cleanSpeech)
       if (task) {
+        setIsOpen(false)
         openPanel()
         if (aiSettings.soundEnabled) {
           agentAudio.playSuccessChime()
@@ -64,6 +67,7 @@ export default function VoiceAssistant() {
     } finally {
       setIsProcessing(false)
       setTranscript('')
+      setTypedCommand('')
       speechBufferRef.current = ''
     }
   }, [openPanel, submitCommand, aiSettings.soundEnabled, stopListening])
@@ -149,50 +153,152 @@ export default function VoiceAssistant() {
 
   if (!aiSettings.voiceEnabled) return null
 
-  const handleMicClick = () => {
+  const handleMicToggle = () => {
     if (isListening) {
       if (speechBufferRef.current.trim()) {
         handleSubmit(speechBufferRef.current)
       } else {
         stopListening()
+        setIsOpen(false)
       }
     } else {
+      setIsOpen(true)
       startListening()
     }
   }
 
-  return (
-    <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center pointer-events-none">
-      {/* Active recording sonar ring */}
-      {isListening && (
-        <>
-          <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
-          <span
-            className="absolute -inset-2 rounded-full border border-red-500/50 animate-ping pointer-events-none"
-            style={{ animationDuration: '2s', animationDelay: '0.3s' }}
-          />
-        </>
-      )}
+  const handleClose = () => {
+    stopListening()
+    setIsOpen(false)
+    setTranscript('')
+    setTypedCommand('')
+    speechBufferRef.current = ''
+  }
 
-      <motion.button
-        type="button"
-        whileTap={{ scale: 0.94 }}
-        whileHover={{ scale: 1.06 }}
-        onClick={handleMicClick}
-        className={`pointer-events-auto relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
-          isListening
-            ? 'bg-red-600 text-white shadow-red-500/50 ring-4 ring-red-500/30'
-            : 'bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-400/30 shadow-[0_4px_20px_rgba(79,70,229,0.35)]'
-        }`}
-        title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening to you... Click to send now') : 'Gigidy AI — Tap to speak'}
-        aria-label={isListening ? 'Stop recording voice command' : 'Start recording voice command'}
-      >
-        {isProcessing ? (
-          <Loader2 className="w-6 h-6 animate-spin text-white" />
-        ) : (
-          <Mic className={`w-6 h-6 text-white ${isListening ? 'animate-pulse' : ''}`} />
+  return (
+    <>
+      {/* Floating mic button */}
+      <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center pointer-events-none">
+        {/* Active recording sonar ring */}
+        {isListening && (
+          <>
+            <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping pointer-events-none" />
+            <span
+              className="absolute -inset-2 rounded-full border border-red-500/50 animate-ping pointer-events-none"
+              style={{ animationDuration: '2s', animationDelay: '0.3s' }}
+            />
+          </>
         )}
-      </motion.button>
-    </div>
+
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.94 }}
+          whileHover={{ scale: 1.06 }}
+          onClick={handleMicToggle}
+          className={`pointer-events-auto relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 ${
+            isListening
+              ? 'bg-red-600 text-white shadow-red-500/50 ring-4 ring-red-500/30'
+              : 'bg-black text-white hover:bg-gray-900 border border-white/10 shadow-xl'
+          }`}
+          title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening... Click to send') : 'Gigidy AI — Tap to speak'}
+          aria-label={isListening ? 'Stop recording voice command' : 'Start recording voice command'}
+        >
+          {isProcessing ? (
+            <Loader2 className="w-6 h-6 animate-spin text-white" />
+          ) : (
+            <Mic className={`w-6 h-6 text-white ${isListening ? 'animate-pulse' : ''}`} />
+          )}
+        </motion.button>
+      </div>
+
+      {/* Speech Companion Popup Panel on the side */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 12 }}
+            transition={{ duration: 0.18 }}
+            className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-[9999] w-84 max-w-[calc(100vw-2rem)]"
+          >
+            <div className="bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
+                  <span className="text-xs font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                    Gigidy AI
+                  </span>
+                  <span className="text-[10px] font-mono text-gray-400">
+                    {isListening ? '[LISTENING]' : isProcessing ? '[PROCESSING]' : '[READY]'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  aria-label="Close assistant"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Live speech typing display */}
+              <div className="p-4 min-h-[96px] flex flex-col justify-center">
+                {isProcessing ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-gray-700 dark:text-gray-300">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-900 dark:text-gray-100" />
+                    <span className="text-xs font-medium">Processing command...</span>
+                  </div>
+                ) : transcript ? (
+                  <div className="text-xs text-gray-900 dark:text-gray-100 font-medium leading-relaxed bg-gray-50 dark:bg-gray-900 p-3 rounded-xl border border-gray-200 dark:border-gray-800">
+                    "{transcript}"
+                  </div>
+                ) : isListening ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                    <span className="text-xs text-gray-500">Listening to your voice... speak now</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 text-center py-2">
+                    Tap the mic to speak, or type your request below.
+                  </p>
+                )}
+              </div>
+
+              {/* Text input fallback */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (typedCommand.trim()) handleSubmit(typedCommand)
+                }}
+                className="p-2.5 pt-0 flex gap-1.5 items-center"
+              >
+                <input
+                  type="text"
+                  value={typedCommand}
+                  onChange={(e) => setTypedCommand(e.target.value)}
+                  placeholder="Or type a command..."
+                  disabled={isProcessing}
+                  className="flex-1 text-xs bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                />
+                <button
+                  type="submit"
+                  disabled={!typedCommand.trim() || isProcessing}
+                  className="h-8 w-8 rounded-xl bg-black hover:bg-gray-800 text-white flex items-center justify-center shrink-0 disabled:opacity-40 transition-colors"
+                  title="Send"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   )
 }

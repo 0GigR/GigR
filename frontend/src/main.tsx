@@ -15,6 +15,11 @@ initWebMCP()
 // Apply the user's saved display-currency preference at boot (default NGN).
 initCurrencyDisplay()
 
+// Automatically reload when a new deployment invalidates cached chunks
+window.addEventListener('vite:preloadError', () => {
+  window.location.reload()
+})
+
 // Wake up the backend (useful for serverless cold starts on Vercel hobby tier)
 const apiUrl = import.meta.env.VITE_API_URL || 'https://wispy-lilly-ksschkw-ee52198c.koyeb.app/api/v1'
 const docsUrl = apiUrl.replace(/\/api\/v1\/?$/, '/docs')

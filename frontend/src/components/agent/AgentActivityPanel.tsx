@@ -62,6 +62,7 @@ export default function AgentActivityPanel() {
   const [isVoiceActive, setIsVoiceActive] = useState(false)
   const voiceRecognitionRef = useRef<any>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   // Log ids we have already acted on, persisted for the session.
   const handledLogIds = useRef<Set<string>>(loadHandledNavIds())
@@ -168,6 +169,9 @@ export default function AgentActivityPanel() {
     if (!input.trim() || sending || isSubmitting) return
     const text = input
     setInput('')
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
     setSending(true)
     await submitCommand(text)
     setSending(false)
@@ -259,12 +263,17 @@ export default function AgentActivityPanel() {
             isVoiceActive ? "border-red-500 ring-2 ring-red-500/20" : "focus-within:border-indigo-500"
           )}>
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`
+              }}
               onKeyDown={handleKeyDown}
               placeholder={isVoiceActive ? "Listening... speak now" : "Ask Gigidy AI anything..."}
               rows={1}
-              className="flex-1 bg-transparent resize-none outline-none text-sm leading-snug max-h-28 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
+              className="flex-1 bg-transparent resize-none outline-none text-sm leading-snug max-h-32 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
               id="agent-input"
               style={{ scrollbarWidth: 'none' }}
             />
@@ -286,7 +295,7 @@ export default function AgentActivityPanel() {
               size="icon"
               onClick={handleSend}
               disabled={!input.trim() || sending || isSubmitting}
-              className="h-8 w-8 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shrink-0 disabled:opacity-40"
+              className="h-8 w-8 rounded-lg bg-black hover:bg-gray-800 text-white shrink-0 disabled:opacity-40"
               title="Send to Gigidy AI"
             >
               {sending || isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}

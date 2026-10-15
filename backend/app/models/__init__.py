@@ -16,3 +16,4 @@ from app.models.push_subscription import PushSubscription
 from .voice_call import VoiceCall
 from .announcement import Announcement
 from .password_reset_token import PasswordResetToken
+from .jury_panel import JuryPanel
