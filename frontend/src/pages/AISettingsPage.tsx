@@ -4,6 +4,7 @@ import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import CallSettingsCard from '@/components/agent/CallSettingsCard'
+import MemoryCards from '@/components/agent/MemoryCards'
 
 // Mirrors the backend guardrails in app/services/agent_policy.py — shown so the
 // limits the server actually enforces are visible, not implied.
@@ -150,6 +151,9 @@ export default function AISettingsPage() {
 
         {/* Phone Call Alerts */}
         <CallSettingsCard />
+
+        {/* Learned Agent Memory */}
+        <MemoryCards />
 
         {/* Toggle: Voice Button */}
         <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">

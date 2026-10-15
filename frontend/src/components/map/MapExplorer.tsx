@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Wrench, MapPin } from 'lucide-react'
+import { Briefcase, Wrench, MapPin, Sparkles } from 'lucide-react'
 import { fmtPrice } from '@/store/currencyStore'
 import { NeighborhoodMap, type MapPoint } from '@/components/NeighborhoodMap'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useAgentMapSync } from '@/hooks/useAgentMapSync'
 
 /**
  * The neighbourhood map plus its result list, sharing one selection.
@@ -35,6 +36,9 @@ export function MapExplorer({
   const [showHeat, setShowHeat] = useState(false)
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
+  const { isAgentSearching, activeSearchQuery, agentMarkers, hasAgentResults, clearAgentPins } =
+    useAgentMapSync()
+
   const handleResults = useCallback((next: MapPoint[]) => setPoints(next), [])
 
   // Map → list: when a pin is chosen on the map, bring its card into view.
@@ -43,14 +47,56 @@ export function MapExplorer({
     itemRefs.current[selectedId]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [selectedId])
 
-  const sorted = [...points].sort((a, b) => {
+  // Merge agent pins if available
+  const combinedPoints = useMemo<MapPoint[]>(() => {
+    if (!hasAgentResults) return points
+    const agentMapPoints: MapPoint[] = agentMarkers.map((m) => ({
+      id: m.id,
+      kind: m.kind,
+      lat: m.latitude,
+      lng: m.longitude,
+      title: m.title,
+      price: m.price,
+      distanceKm: m.distanceKm ?? undefined,
+    }))
+    const existingIds = new Set(agentMapPoints.map((p) => p.id))
+    const remainder = points.filter((p) => !existingIds.has(p.id))
+    return [...agentMapPoints, ...remainder]
+  }, [points, agentMarkers, hasAgentResults])
+
+  const sorted = [...combinedPoints].sort((a, b) => {
     const da = a.distanceKm ?? Number.POSITIVE_INFINITY
     const db = b.distanceKm ?? Number.POSITIVE_INFINITY
     return da - db
   })
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="space-y-3">
+      {/* Agent Live Search & Overlay Banners */}
+      {isAgentSearching && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-950/80 border border-violet-500/40 text-violet-200 text-xs animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping shrink-0" />
+          <span className="font-semibold">[AGENT ACTIVE]</span>
+          <span className="truncate">Scanning providers for &quot;{activeSearchQuery}&quot;</span>
+        </div>
+      )}
+      {hasAgentResults && (
+        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-violet-900/40 border border-violet-500/30 text-violet-100 text-xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-violet-300" />
+            <span className="font-semibold text-violet-300">[AGENT OVERLAY]</span>
+            <span>{agentMarkers.length} match(es) from your recent agent search</span>
+          </div>
+          <button
+            onClick={clearAgentPins}
+            className="text-xs text-violet-300 hover:text-white underline ml-2 cursor-pointer"
+          >
+            Clear Overlay
+          </button>
+        </div>
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
       <ErrorBoundary compact label="The map" resetKey={`${latitude},${longitude}`}>
         <NeighborhoodMap
           latitude={latitude}
@@ -149,5 +195,6 @@ export function MapExplorer({
         )}
       </div>
     </div>
-  )
+  </div>
+)
 }

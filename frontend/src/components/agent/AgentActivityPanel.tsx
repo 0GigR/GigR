@@ -391,6 +391,31 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
           </div>
         )}
 
+        {/* Inline multi-step plan card */}
+        {renderType === 'plan_summary' && Array.isArray(data?.child_tasks) && (
+          <div className="space-y-1.5 p-3 rounded-xl bg-violet-950/30 border border-violet-800/40 max-w-[90%]">
+            <div className="flex items-center justify-between pb-1.5 border-b border-violet-800/30">
+              <span className="text-xs font-semibold text-violet-200">Execution Plan</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-violet-900/60 text-violet-300">
+                [PLAN]
+              </span>
+            </div>
+            <div className="space-y-1">
+              {data.child_tasks.map((stepItem: any, idx: number) => (
+                <div key={stepItem.task_id || idx} className="flex items-center justify-between text-xs py-1 px-2 rounded bg-white/5 border border-white/5">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-[10px] font-mono text-violet-400">Step {stepItem.step_index || idx + 1}:</span>
+                    <span className="text-gray-200 truncate">{stepItem.title}</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 shrink-0 ml-2">
+                    [QUEUED]
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Dialog options */}
         {actionPayload?.options && (
           <DialogOptions options={actionPayload.options} onSelect={onDialogAction} />

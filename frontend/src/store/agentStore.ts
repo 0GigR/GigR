@@ -29,7 +29,7 @@ export interface AgentTask {
   id: string
   user_id: string
   command_text: string
-  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'auto_reply' | 'apply_job' | 'proactive_hunt' | 'generic' | 'pending'
+  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'auto_reply' | 'apply_job' | 'proactive_hunt' | 'plan' | 'generic' | 'pending'
   params: Record<string, unknown> | null
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_reply'
   result: Record<string, unknown> | null
@@ -188,6 +188,18 @@ interface AgentState {
   /** Reset current multi-turn session */
   resetSession: () => void
 
+  /** Learned memory key-values from the agent */
+  agentMemory: Record<string, unknown>
+
+  /** Fetch current agent memory from server */
+  fetchMemory: () => Promise<void>
+
+  /** Update agent memory keys */
+  updateMemory: (patch: Record<string, unknown>) => Promise<void>
+
+  /** Forget a specific agent memory key */
+  forgetMemoryKey: (key: string) => Promise<void>
+
   _agentWS: WebSocket | null
 }
 
@@ -215,6 +227,7 @@ export const useAgentStore = create<AgentState>()(
       voiceSettings: null,
       activeSessionId: null,
       resetSession: () => set({ activeSessionId: null }),
+      agentMemory: {},
       _pollTimer: null,
       _agentWS: null,
 
@@ -346,9 +359,40 @@ export const useAgentStore = create<AgentState>()(
             if (Object.keys(merged).length > 0) {
               set((s) => ({ aiSettings: { ...s.aiSettings, ...merged } }))
             }
+            if (server.memory && typeof server.memory === 'object') {
+              set({ agentMemory: server.memory as Record<string, unknown> })
+            }
           }
         } catch {
           // Backend might not have AI settings endpoint yet
+        }
+      },
+
+      fetchMemory: async () => {
+        try {
+          const { data } = await api.get('/ai/settings')
+          const mem = (data?.ai_settings?.memory ?? {}) as Record<string, unknown>
+          set({ agentMemory: mem })
+        } catch (err) {
+          console.error('[agentStore] Failed to fetch memory:', err)
+        }
+      },
+
+      updateMemory: async (patch: Record<string, unknown>) => {
+        try {
+          const { data } = await api.patch('/ai/memory', patch)
+          set({ agentMemory: data.memory ?? {} })
+        } catch (err) {
+          console.error('[agentStore] Failed to update memory:', err)
+        }
+      },
+
+      forgetMemoryKey: async (key: string) => {
+        try {
+          const { data } = await api.delete(`/ai/memory/${encodeURIComponent(key)}`)
+          set({ agentMemory: data.memory ?? {} })
+        } catch (err) {
+          console.error('[agentStore] Failed to forget memory key:', err)
         }
       },
 
