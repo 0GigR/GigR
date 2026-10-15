@@ -45,6 +45,11 @@ from ....models.agent_log import AgentLog
 from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, AgentTaskListOut
 from ....services.ws_manager import manager as _ws_manager
 from ....services.groq_client import extract_json as _extract_json
+from ....services.agent_guardrails import (
+    sanitize_user_input,
+    validate_intent,
+    build_enriched_system_prompt,
+)
 
 router = APIRouter()
 
@@ -96,11 +101,14 @@ async def _call_groq_with_fallback(client: httpx.AsyncClient, url: str, **kwargs
     from ....services.groq_client import call_with_key_rotation
     return await call_with_key_rotation(client, url, **kwargs)
 
-async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
+async def _parse_command_groq(text: str, memory: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
     """Call Groq Llama-3 to parse the command into structured intent.
     Returns None if Groq is not configured or the call fails."""
     if not settings.groq_keys_list:
         return None
+
+    clean_text = sanitize_user_input(text)
+    system_prompt = build_enriched_system_prompt(_GROQ_SYSTEM_PROMPT, memory=memory)
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -111,8 +119,8 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                 json={
                     "model": settings.GROQ_MODEL,
                     "messages": [
-                        {"role": "system", "content": _GROQ_SYSTEM_PROMPT},
-                        {"role": "user", "content": text},
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": clean_text},
                     ],
                     "temperature": 0.1,
                     # Generous headroom: gpt-oss spends a big chunk of the budget
@@ -123,7 +131,13 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                 },
             )
             content = response.json()["choices"][0]["message"]["content"] or ""
-            return _extract_json(content)
+            raw_json = _extract_json(content)
+            if raw_json:
+                validated = validate_intent(raw_json)
+                if validated:
+                    return validated.model_dump()
+                logger.warning("[agent] Groq output failed guardrails validation; falling back to rule-based")
+            return None
     except Exception as exc:
         logger.warning("[agent] Groq NLP failed (%s), falling back to rule-based", exc)
         return None
@@ -343,26 +357,14 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
 async def parse_command(text: str, memory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Parse a natural language command into structured intent.
 
-    Tries Groq Llama-3 first (better understanding). Falls back to
-    rule-based regex parser if Groq key is missing or the call fails.
+    Tries Groq Llama-3 first with context guardrails and memory enrichment.
+    Falls back to rule-based regex parser if Groq key is missing or validation fails.
     """
-    # Enrich text with memory context so Groq can fill in omitted details
-    enriched = text
-    if memory:
-        hints = []
-        if memory.get("last_search"):
-            hints.append(f"user previously searched for: {memory['last_search']}")
-        if memory.get("usual_price_job"):
-            hints.append(f"user's typical job budget: ₦{memory['usual_price_job']:,.0f}")
-        if memory.get("usual_price_service"):
-            hints.append(f"user's typical service rate: ₦{memory['usual_price_service']:,.0f}")
-        if hints:
-            enriched = f"{text} [context: {'; '.join(hints)}]"
-
-    groq_result = await _parse_command_groq(enriched)
+    clean_text = sanitize_user_input(text)
+    groq_result = await _parse_command_groq(clean_text, memory=memory)
     if groq_result and groq_result.get("task_type"):
         return groq_result
-    return _parse_command_rules(text)
+    return _parse_command_rules(clean_text)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
