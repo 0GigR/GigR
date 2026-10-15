@@ -99,6 +99,7 @@ interface AgentState {
   /** Epoch ms of the last time the user opened the agent panel. */
   lastReadAt: number | null
   isPanelOpen: boolean
+  isPaletteOpen: boolean
   isSubmitting: boolean
 
   // AI engine info (fetched from backend)
@@ -136,6 +137,11 @@ interface AgentState {
   openPanel: () => void
   closePanel: () => void
   togglePanel: () => void
+
+  /** Open / close the command palette modal */
+  openPalette: () => void
+  closePalette: () => void
+  togglePalette: () => void
 
   /** Mark all tasks as read (clears badge) */
   markAllRead: () => void
@@ -202,6 +208,7 @@ export const useAgentStore = create<AgentState>()(
       unreadCount: 0,
       lastReadAt: null,
       isPanelOpen: false,
+      isPaletteOpen: false,
       isSubmitting: false,
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
@@ -297,6 +304,18 @@ export const useAgentStore = create<AgentState>()(
         const { isPanelOpen, openPanel, closePanel } = get()
         if (isPanelOpen) closePanel()
         else openPanel()
+      },
+
+      openPalette: () => {
+        set({ isPaletteOpen: true })
+      },
+
+      closePalette: () => set({ isPaletteOpen: false }),
+
+      togglePalette: () => {
+        const { isPaletteOpen, openPalette, closePalette } = get()
+        if (isPaletteOpen) closePalette()
+        else openPalette()
       },
 
       markAllRead: () => set({ unreadCount: 0, lastReadAt: Date.now() }),
