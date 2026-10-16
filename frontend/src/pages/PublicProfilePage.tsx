@@ -36,6 +36,8 @@ type Service = components['schemas']['ServiceOut']
 interface PublicUser {
   id: string
   display_name: string
+  username?: string | null
+  handle?: string | null
   profile_image_url?: string | null
   is_verified: boolean
   role?: string | null
@@ -110,31 +112,34 @@ export default function PublicProfilePage() {
     enabled: !!userId,
   })
 
+  // Dependent queries use the verified UUID from the resolved profile
+  const targetUserId = profile?.id
+
   const { data: ratings } = useQuery<RatingOut[]>({
-    queryKey: ['ratings', userId],
+    queryKey: ['ratings', targetUserId],
     queryFn: async () => {
-      const response = await api.get(`/ratings/user/${userId}`)
+      const response = await api.get(`/ratings/user/${targetUserId}`)
       return response.data
     },
-    enabled: !!userId,
+    enabled: !!targetUserId,
   })
 
   const { data: vouches } = useQuery<Vouch[]>({
-    queryKey: ['vouches', userId],
+    queryKey: ['vouches', targetUserId],
     queryFn: async () => {
-      const response = await api.get(`/vouches/user/${userId}`)
+      const response = await api.get(`/vouches/user/${targetUserId}`)
       return response.data
     },
-    enabled: !!userId,
+    enabled: !!targetUserId,
   })
 
   const { data: services } = useQuery<Service[]>({
-    queryKey: ['userServices', userId],
+    queryKey: ['userServices', targetUserId],
     queryFn: async () => {
-      const response = await api.get(`/services/provider/${userId}`)
+      const response = await api.get(`/services/provider/${targetUserId}`)
       return response.data
     },
-    enabled: !!userId,
+    enabled: !!targetUserId,
   })
 
   // Dynamic SEO meta tags and Schema.org JSON-LD for search engine bots and social scrapers
@@ -147,7 +152,8 @@ export default function PublicProfilePage() {
     const metaDescription =
       profile.bio ||
       `${profile.display_name}'s verified neighborhood services, client reviews, and reputation on Gigr.`
-    const shareUrl = `${window.location.origin}/profile/${profile.id}`
+    const profileSlug = profile.username || profile.handle || profile.id
+    const shareUrl = `${window.location.origin}/profile/${encodeURIComponent(profileSlug)}`
     const imageUrl = profile.profile_image_url || `${window.location.origin}/icon.png`
 
     const updateOrCreateMeta = (attrName: string, attrVal: string, contentVal: string) => {
@@ -224,7 +230,8 @@ export default function PublicProfilePage() {
 
   const handleShare = async () => {
     if (!profile) return
-    const shareUrl = `${window.location.origin}/profile/${profile.id}`
+    const profileSlug = profile.username || profile.handle || profile.id
+    const shareUrl = `${window.location.origin}/profile/${encodeURIComponent(profileSlug)}`
     const shareTitle = `${profile.display_name} — Gigr Portfolio`
     const shareText = `Check out ${profile.display_name}'s verified services, reviews, and vouches on Gigr:`
 
@@ -353,6 +360,11 @@ export default function PublicProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold truncate">{profile.display_name}</h1>
+                {(profile.username || profile.handle) && (
+                  <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                    @{profile.username || profile.handle}
+                  </span>
+                )}
                 {profile.is_verified && (
                   <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 text-xs font-medium">
                     <ShieldCheck className="w-3 h-3 mr-1" />

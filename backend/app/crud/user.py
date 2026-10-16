@@ -1,6 +1,7 @@
 import base58 #
 from uuid import UUID
 from typing import List, Optional
+from fastapi import HTTPException
 from sqlalchemy import select, update as sql_update, delete as sql_delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.user import User
@@ -12,6 +13,41 @@ from ..core.config import settings
 
 async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User | None:
     result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+async def get_user_by_id_or_username(db: AsyncSession, identifier: str) -> User | None:
+    if not identifier:
+        return None
+    cleaned = str(identifier).strip().lower()
+
+    # 1. Try UUID parse
+    try:
+        user_uuid = UUID(cleaned)
+        result = await db.execute(select(User).where(User.id == user_uuid))
+        matched = result.scalar_one_or_none()
+        if matched:
+            return matched
+    except (ValueError, AttributeError):
+        pass
+
+    # 2. Try explicit username column match
+    result = await db.execute(select(User).where(func.lower(User.username) == cleaned))
+    matched = result.scalar_one_or_none()
+    if matched:
+        return matched
+
+    # 3. Match slugified display_name (e.g. "janet" or "janet-okafor")
+    result = await db.execute(
+        select(User).where(
+            func.lower(func.replace(User.display_name, " ", "-")) == cleaned
+        )
+    )
+    matched = result.scalar_one_or_none()
+    if matched:
+        return matched
+
+    # 4. Direct case-insensitive display_name match
+    result = await db.execute(select(User).where(func.lower(User.display_name) == cleaned))
     return result.scalar_one_or_none()
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -105,6 +141,26 @@ async def update_user(db: AsyncSession, user: User, user_in: UserUpdate) -> User
             merged = dict(getattr(user, field) or {})
             merged.update(value)
             setattr(user, field, merged)
+        elif field == "username":
+            if value:
+                cleaned_username = str(value).strip().lower().replace("@", "")
+                if cleaned_username:
+                    existing = await db.execute(
+                        select(User.id).where(
+                            func.lower(User.username) == cleaned_username,
+                            User.id != user.id,
+                        )
+                    )
+                    if existing.scalar_one_or_none():
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Username is already taken. Please choose another.",
+                        )
+                    setattr(user, field, cleaned_username)
+                else:
+                    setattr(user, field, None)
+            else:
+                setattr(user, field, None)
         else:
             setattr(user, field, value)
     await db.commit()
