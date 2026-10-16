@@ -56,10 +56,14 @@ class Job(Base):
     def latitude(self) -> float | None:
         if self.location is None:
             return None
-        return to_shape(self.location).y
+        from ..core.geo import extract_coordinates
+        lat, _ = extract_coordinates(self.location)
+        return lat
 
     @property
     def longitude(self) -> float | None:
         if self.location is None:
             return None
-        return to_shape(self.location).x
+        from ..core.geo import extract_coordinates
+        _, lon = extract_coordinates(self.location)
+        return lon

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
 from ..models.service import ServiceListing
 from ..schemas.service import ServiceCreate, ServiceUpdate
+from ..core.geo import to_wkt_point
 
 # Vouched providers are treated as this many km closer in nearby rankings.
 SERVICE_VOUCH_DISTANCE_BOOST_KM = 3.0
@@ -99,7 +100,7 @@ async def create_service(db: AsyncSession, provider_id: UUID, service_in: Servic
         price=effective_price,
         min_price=service_in.min_price,
         max_price=service_in.max_price,
-        location=f"SRID=4326;POINT({service_in.longitude} {service_in.latitude})",
+        location=to_wkt_point(service_in.latitude, service_in.longitude),
         radius_km=service_in.radius_km or 5.0,
         image_url=service_in.image_url,
     )
@@ -115,7 +116,7 @@ async def update_service(db: AsyncSession, service: ServiceListing, service_in: 
             continue  # handled together with longitude
         elif field == "longitude":
             if service_in.latitude is not None and service_in.longitude is not None:
-                service.location = f"SRID=4326;POINT({service_in.longitude} {service_in.latitude})"
+                service.location = to_wkt_point(service_in.latitude, service_in.longitude)
         else:
             setattr(service, field, value)
     await db.flush()
