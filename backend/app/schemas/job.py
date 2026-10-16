@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Any
 from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
@@ -46,6 +46,21 @@ class JobOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_milestones_present(cls, data: Any) -> Any:
+        # Prevent MissingGreenlet error if ORM instance has unloaded/expired milestones relationship
+        if hasattr(data, "_sa_instance_state"):
+            from sqlalchemy.orm import attributes
+            try:
+                state = attributes.instance_state(data)
+                if "milestones" not in state.dict:
+                    state.dict["milestones"] = []
+                    state.expired_attributes.discard("milestones")
+            except Exception:
+                pass
+        return data
 
 class JobStatusUpdate(BaseModel):
     status: str  # validated in endpoint
