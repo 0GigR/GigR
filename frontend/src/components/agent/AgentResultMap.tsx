@@ -18,10 +18,12 @@ export interface AgentMapItem {
   id: string
   title: string
   price: number
+  price_display?: string | null
   description?: string | null
   latitude?: number | null
   longitude?: number | null
   distance_km?: number | null
+  outside_radius?: boolean | null
   kind?: 'service' | 'job'
   provider_id?: string | null
   provider_name?: string | null
@@ -170,11 +172,14 @@ export default function AgentResultMap({
                       {geoItem.title}
                     </p>
                     <p className="text-xs font-bold text-violet-700 mb-1.5">
-                      ₦{Number(geoItem.price).toLocaleString()}
+                      {geoItem.price_display || (geoItem.price ? `₦${Number(geoItem.price).toLocaleString()}` : 'Negotiable')}
                     </p>
                     {geoItem.distance_km != null && (
                       <p className="text-[10px] text-gray-500 mb-2">
                         {geoItem.distance_km.toFixed(1)} km away
+                        {geoItem.outside_radius && (
+                          <span className="ml-1 text-amber-600 font-semibold">[Outside radius]</span>
+                        )}
                       </p>
                     )}
                     {onSelectItem && (

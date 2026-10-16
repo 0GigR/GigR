@@ -85,10 +85,27 @@ def _trim(text: Optional[str], limit: int = _DESC_CHARS) -> str:
 
 
 def _service_card(service: ServiceListing) -> Dict[str, Any]:
+    p = float(service.price) if getattr(service, "price", None) is not None else None
+    min_p = float(service.min_price) if getattr(service, "min_price", None) is not None else None
+    max_p = float(service.max_price) if getattr(service, "max_price", None) is not None else None
+    if p is not None and p > 0:
+        price_display = f"₦{p:,.0f}"
+    elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+        price_display = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+    elif min_p is not None and min_p > 0:
+        price_display = f"From ₦{min_p:,.0f}"
+    elif max_p is not None and max_p > 0:
+        price_display = f"Up to ₦{max_p:,.0f}"
+    else:
+        price_display = "Negotiable"
+
     return {
         "id": str(service.id),
         "title": service.title,
-        "price": float(service.price),
+        "price": p or min_p or 0.0,
+        "min_price": min_p,
+        "max_price": max_p,
+        "price_display": price_display,
         "description": _trim(service.description),
         "distance_km": getattr(service, "distance_km", None),
         "provider_id": str(service.provider_id),
@@ -96,10 +113,27 @@ def _service_card(service: ServiceListing) -> Dict[str, Any]:
 
 
 def _job_card(job: Job) -> Dict[str, Any]:
+    p = float(job.price) if getattr(job, "price", None) is not None else None
+    min_p = float(job.min_price) if getattr(job, "min_price", None) is not None else None
+    max_p = float(job.max_price) if getattr(job, "max_price", None) is not None else None
+    if p is not None and p > 0:
+        price_display = f"₦{p:,.0f}"
+    elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+        price_display = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+    elif min_p is not None and min_p > 0:
+        price_display = f"From ₦{min_p:,.0f}"
+    elif max_p is not None and max_p > 0:
+        price_display = f"Up to ₦{max_p:,.0f}"
+    else:
+        price_display = "Negotiable"
+
     return {
         "id": str(job.id),
         "title": job.title,
-        "price": float(job.price),
+        "price": p or min_p or 0.0,
+        "min_price": min_p,
+        "max_price": max_p,
+        "price_display": price_display,
         "status": job.status,
         "description": _trim(job.description),
         "distance_km": getattr(job, "distance_km", None),
@@ -140,7 +174,9 @@ async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, An
 
     search_query = str(args.get("query") or "").strip()
     price_ceiling = args.get("max_price")
-    search_radius_km = float(args.get("radius_km") or 10)
+    search_radius_raw = args.get("radius_km")
+    is_unlimited = search_radius_raw is not None and float(search_radius_raw) == 0
+    search_radius_km = 0.0 if is_unlimited else (float(search_radius_raw) if search_radius_raw is not None else 10.0)
     user_coords = _user_location(user)
 
     candidate_services = []
@@ -183,20 +219,36 @@ async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, An
                 )
             else:
                 candidate.distance_km = None
-        candidate_services.sort(
-            key=lambda s: (s.distance_km if s.distance_km is not None else 99999.0, float(s.price))
-        )
+
+        def _tool_svc_rank(s):
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                pricing_tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                pricing_tier = 1
+            else:
+                pricing_tier = 2  # Penalize missing pricing to the bottom
+            return (pricing_tier, s.distance_km if s.distance_km is not None else 99999.0)
+
+        candidate_services.sort(key=_tool_svc_rank)
 
     nearby_matches = [
         s for s in candidate_services
-        if s.distance_km is not None and s.distance_km <= search_radius_km
+        if is_unlimited or (s.distance_km is not None and s.distance_km <= search_radius_km)
     ] if user_coords else candidate_services
 
     active_matches = nearby_matches if nearby_matches else candidate_services
 
     if price_ceiling is not None:
         try:
-            budget_matches = [s for s in active_matches if float(s.price) <= float(price_ceiling)]
+            budget_matches = [
+                s for s in active_matches
+                if (getattr(s, "price", None) is not None and float(s.price) <= float(price_ceiling))
+                or (getattr(s, "min_price", None) is not None and float(s.min_price) <= float(price_ceiling))
+                or (getattr(s, "price", None) is None and getattr(s, "min_price", None) is None)
+            ]
             if budget_matches:
                 active_matches = budget_matches
         except (TypeError, ValueError):
@@ -204,11 +256,11 @@ async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, An
 
     cards = [_service_card(s) for s in active_matches[:_MAX_RESULTS]]
     outside_note = None
-    if user_coords and not nearby_matches and candidate_services:
+    if user_coords and not is_unlimited and not nearby_matches and candidate_services:
         nearest_distance = candidate_services[0].distance_km
         distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
         outside_note = (
-            f"None found within {search_radius_km:g} km, but found {len(candidate_services)} provider(s) "
+            f"None found within {search_radius_km:g} km, but recommended {len(candidate_services)} provider(s) "
             f"further away{distance_label}."
         )
 
@@ -229,23 +281,44 @@ async def _tool_search_jobs(db: AsyncSession, user: User, args: Dict[str, Any]) 
 
     query = str(args.get("query") or "").strip()
     min_price = args.get("min_price")
-    radius_km = float(args.get("radius_km") or 15)
+    raw_radius = args.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 15.0)
     location = _user_location(user)
 
     if location:
         jobs = await get_open_jobs_nearby(
             db, location["lat"], location["lng"], radius_km=radius_km,
-            exclude_user_id=user.id, limit=15,
+            exclude_user_id=user.id, limit=25,
         )
         if not jobs and query:
-            jobs = await search_jobs_by_text(db, query, limit=15)
+            jobs = await search_jobs_by_text(db, query, limit=25)
     else:
-        jobs = await search_jobs_by_text(db, query or "job", limit=15)
+        jobs = await search_jobs_by_text(db, query or "job", limit=25)
 
     jobs = [j for j in jobs if j.status == "open" and str(j.client_id) != str(user.id)]
+
+    def _tool_job_rank(j):
+        p = float(j.price) if getattr(j, "price", None) is not None else None
+        min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+        max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+        if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+            tier = 0
+        elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+            tier = 1
+        else:
+            tier = 2
+        return (tier, getattr(j, "distance_km", 99999.0) or 99999.0)
+
+    jobs.sort(key=_tool_job_rank)
+
     if min_price is not None:
         try:
-            jobs = [j for j in jobs if float(j.price) >= float(min_price)]
+            jobs = [
+                j for j in jobs
+                if (getattr(j, "price", None) is not None and float(j.price) >= float(min_price))
+                or (getattr(j, "max_price", None) is not None and float(j.max_price) >= float(min_price))
+            ]
         except (TypeError, ValueError):
             pass
 

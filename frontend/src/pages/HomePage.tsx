@@ -19,7 +19,9 @@ import {
   Plus,
   Search,
   ChevronDown,
+  Navigation,
 } from 'lucide-react'
+import { useRadiusStore, formatRadiusLabel, formatRadiusDescription, RADIUS_PRESETS } from '@/store/radiusStore'
 import type { components } from '@/types/api'
 
 type Job = components['schemas']['JobOut']
@@ -63,12 +65,13 @@ export default function HomePage() {
 
   // Shared device location (locationStore owns the request + server sync).
   const { latitude, longitude } = useGeolocation()
+  const { radiusKm, setRadiusKm } = useRadiusStore()
 
   const { data: nearbyServices } = useQuery<Service[]>({
-    queryKey: ['nearbyServicesHome', latitude, longitude],
+    queryKey: ['nearbyServicesHome', latitude, longitude, radiusKm],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
-        params: { lat: latitude, lon: longitude, radius: 20 },
+        params: { lat: latitude, lon: longitude, radius: radiusKm },
       })
       return Array.isArray(data) ? data : []
     },
@@ -99,6 +102,79 @@ export default function HomePage() {
           Welcome back, {user?.display_name?.split(' ')[0]}
         </h1>
         <p className="text-gray-500 mt-1">Your neighborhood trusted marketplace</p>
+      </div>
+
+      {/* Global Proximity & Search Radius HUD */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-50 dark:bg-violet-950/60 border border-violet-200 dark:border-violet-800 flex items-center justify-center text-violet-600 dark:text-violet-400">
+              <Navigation className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-sm">Global Search Radius</h3>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-950/70 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700 font-semibold">
+                  {formatRadiusLabel(radiusKm)}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {formatRadiusDescription(radiusKm)} · Syncs across Home, Services, Jobs, and AI Agent
+              </p>
+            </div>
+          </div>
+          {radiusKm > 0 && (
+            <button
+              type="button"
+              onClick={() => setRadiusKm(0)}
+              className="text-xs text-violet-600 dark:text-violet-400 hover:underline text-left sm:text-right shrink-0"
+            >
+              Expand to Worldwide
+            </button>
+          )}
+        </div>
+
+        {/* Interactive Preset Buttons */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          {RADIUS_PRESETS.map((preset) => {
+            const isActive = radiusKm === preset.value
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                onClick={() => setRadiusKm(preset.value)}
+                className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                  isActive
+                    ? 'bg-violet-600 text-white border-violet-600 shadow-sm'
+                    : 'bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                {preset.label} <span className={`text-[10px] ml-0.5 ${isActive ? 'text-violet-200' : 'text-gray-400'}`}>({preset.detail})</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Slider for smooth granular radius */}
+        <div className="pt-2">
+          <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+            <span>Street (100 m)</span>
+            <span className="font-mono text-gray-500 font-medium">
+              {radiusKm === 0 ? 'No Boundary' : `${radiusKm} km`}
+            </span>
+            <span>Worldwide (All)</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="50"
+            step="0.5"
+            value={radiusKm}
+            onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
+            className="w-full accent-violet-600 cursor-pointer"
+            aria-label="Adjust global search radius"
+          />
+        </div>
       </div>
 
       {/* Your numbers. Two figures a newcomer actually acts on are always

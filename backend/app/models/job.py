@@ -21,7 +21,7 @@ class Job(Base):
     description = Column(Text, nullable=False)
     status = Column(String(50), nullable=False, default="open")
     # open, assigned, funded, in_progress, completed, cancelled, disputed
-    price = Column(Numeric(10, 2), nullable=False)
+    price = Column(Numeric(10, 2), nullable=True, default=0)
     location = Column(Geography(geometry_type="POINT", srid=4326), nullable=True)
     escrow_address = Column(String(255), nullable=True)  # PDA of escrow account
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -35,6 +35,7 @@ class Job(Base):
     messages = relationship("Message", back_populates="job")
     disputes = relationship("Dispute", back_populates="job")
     scope_amendments = relationship("ScopeAmendment", back_populates="job")
+    milestones = relationship("JobMilestone", back_populates="job", cascade="all, delete-orphan", order_by="JobMilestone.milestone_index")
 
         # In addition to existing fields:
     contract_job_id = Column(String(50), unique=True, nullable=True)

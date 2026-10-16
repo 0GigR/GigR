@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Optional
-from sqlalchemy import select
+from typing import Optional, List
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from ....models.milestone import JobMilestone
+from ....schemas.milestone import MilestoneCreate, MilestoneOut
 from ....core.dependencies import get_db, get_current_user
 from ....crud.job import (
     get_job_by_id,
@@ -889,3 +891,245 @@ async def cancel_job_route(
     await db.commit()
     await db.refresh(job)
     return job
+
+
+# ── Milestone / Incremental Escrow Endpoints ─────────────────────────────────
+
+@router.get("/{job_id}/milestones", response_model=List[MilestoneOut])
+async def list_job_milestones(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all milestone escrows for a given job."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    result = await db.execute(
+        select(JobMilestone)
+        .where(JobMilestone.job_id == job_id)
+        .order_by(JobMilestone.milestone_index.asc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/{job_id}/milestones", response_model=MilestoneOut, status_code=status.HTTP_201_CREATED)
+async def create_job_milestone(
+    job_id: uuid.UUID,
+    milestone_in: MilestoneCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new staged milestone escrow for a job."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if current_user.id not in (job.client_id, job.provider_id):
+        raise HTTPException(status_code=403, detail="Only parties to the job can add milestones")
+
+    existing_res = await db.execute(
+        select(JobMilestone.milestone_index).where(JobMilestone.job_id == job_id)
+    )
+    indices = existing_res.scalars().all()
+    next_index = max(indices, default=0) + 1
+    idx = milestone_in.milestone_index or next_index
+
+    milestone = JobMilestone(
+        job_id=job_id,
+        milestone_index=idx,
+        title=milestone_in.title,
+        description=milestone_in.description,
+        amount=milestone_in.amount,
+        status="pending",
+        contract_milestone_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF),
+    )
+    db.add(milestone)
+    await db.commit()
+    await db.refresh(milestone)
+
+    other_user_id = job.provider_id if current_user.id == job.client_id else job.client_id
+    if other_user_id:
+        await create_notification(
+            db,
+            user_id=other_user_id,
+            title="New Milestone Added",
+            message=f'Milestone "{milestone.title}" (₦{float(milestone.amount):,.0f}) added to "{job.title}".',
+            link=f"/dashboard/jobs",
+            type="job",
+        )
+        await db.commit()
+
+    return milestone
+
+
+@router.post("/{job_id}/milestones/{milestone_id}/fund", response_model=MilestoneOut)
+async def fund_job_milestone(
+    job_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fund an incremental milestone escrow on Solana."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the client can fund a milestone")
+    if not job.provider_id:
+        raise HTTPException(status_code=400, detail="Job must be assigned to a provider before funding milestones")
+
+    result = await db.execute(
+        select(JobMilestone).where(and_(JobMilestone.id == milestone_id, JobMilestone.job_id == job_id))
+    )
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    if milestone.status == "funded":
+        return milestone
+    if milestone.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Cannot fund milestone with status '{milestone.status}'")
+
+    client_kp = _get_user_keypair(current_user)
+    provider_user = await get_user_by_id(db, job.provider_id)
+    if not provider_user or not provider_user.wallet_public_key:
+        raise HTTPException(status_code=404, detail="Provider wallet not configured")
+    provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
+
+    milestone_id_int = int(milestone.contract_milestone_id, 16)
+    escrow_pubkey, _ = Pubkey.find_program_address(
+        [b"escrow", bytes(client_kp.pubkey()), milestone_id_int.to_bytes(8, "little")],
+        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
+    )
+
+    vault_ata, _ = Pubkey.find_program_address(
+        [b"vault", bytes(escrow_pubkey)],
+        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
+    )
+
+    client_ata, _ = Pubkey.find_program_address(
+        [bytes(client_kp.pubkey()), bytes(Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")), bytes(USDC_MINT)],
+        Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+    )
+
+    ngn_rate = await get_ngn_usd_rate()
+    usd_amount = float(milestone.amount) / ngn_rate
+    amount = int(usd_amount * 1_000_000)
+
+    account_exists = await _get_solana_account(escrow_pubkey)
+    if not account_exists:
+        try:
+            await init_escrow(
+                client_kp=client_kp,
+                client_ata=str(client_ata),
+                vault_ata=str(vault_ata),
+                provider_pubkey=str(provider_pubkey),
+                mint=str(USDC_MINT),
+                job_id=milestone_id_int,
+                amount=amount,
+                escrow_pubkey=str(escrow_pubkey),
+            )
+        except Exception as e:
+            err_str = str(e)
+            if "already in use" in err_str or "custom program error: 0x0" in err_str:
+                pass
+            elif "3012" in err_str or "AccountNotInitialized" in err_str or "AccountNotFound" in err_str:
+                raise HTTPException(status_code=400, detail="Insufficient USDC: Your wallet lacks the required USDC. Please fund your wallet.")
+            elif "insufficient lamports" in err_str.lower() or "0x1" in err_str:
+                raise HTTPException(status_code=400, detail="Transaction failed: Insufficient SOL for network gas fees.")
+            else:
+                raise HTTPException(status_code=400, detail=f"Solana transaction failed: {err_str}")
+
+    milestone.status = "funded"
+    milestone.escrow_address = str(escrow_pubkey)
+    milestone.funded_at = datetime.now(timezone.utc)
+
+    if job.status in ("open", "assigned"):
+        job.status = "in_progress"
+
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Milestone Escrow Funded",
+        message=f'Milestone "{milestone.title}" (₦{float(milestone.amount):,.0f}) has been funded on-chain!',
+        link="/dashboard/jobs",
+        type="payment",
+    )
+    await db.commit()
+    await db.refresh(milestone)
+    return milestone
+
+
+@router.post("/{job_id}/milestones/{milestone_id}/release", response_model=MilestoneOut)
+async def release_job_milestone(
+    job_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Release an individual milestone escrow on Solana to the provider."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the client can release milestone payments")
+
+    result = await db.execute(
+        select(JobMilestone).where(and_(JobMilestone.id == milestone_id, JobMilestone.job_id == job_id))
+    )
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    if milestone.status == "released":
+        return milestone
+    if milestone.status != "funded" or not milestone.escrow_address:
+        raise HTTPException(status_code=400, detail=f"Milestone is not in funded state (status={milestone.status})")
+
+    client_kp = _get_user_keypair(current_user)
+    provider_user = await get_user_by_id(db, job.provider_id)
+    provider_pubkey = Pubkey.from_string(provider_user.wallet_public_key)
+
+    from spl.token.instructions import get_associated_token_address
+    provider_ata = get_associated_token_address(provider_pubkey, USDC_MINT)
+    escrow_pubkey = Pubkey.from_string(milestone.escrow_address)
+    vault_ata, _ = Pubkey.find_program_address(
+        [b"vault", bytes(escrow_pubkey)],
+        Pubkey.from_string(settings.GIGR_PROGRAM_ID),
+    )
+
+    if await _get_solana_account(escrow_pubkey):
+        try:
+            await release_escrow(
+                client_kp=client_kp,
+                platform_kp=get_platform_payer(),
+                provider_ata=str(provider_ata),
+                vault_ata=str(vault_ata),
+                escrow_address=str(escrow_pubkey),
+            )
+        except Exception as e:
+            err_str = str(e)
+            if "already closed" in err_str.lower() or "not found" in err_str.lower():
+                pass
+            else:
+                raise HTTPException(status_code=400, detail=f"Solana release failed: {err_str}")
+
+    milestone.status = "released"
+    milestone.released_at = datetime.now(timezone.utc)
+
+    # Check if all milestones are released
+    all_milestones_res = await db.execute(select(JobMilestone).where(JobMilestone.job_id == job_id))
+    all_milestones = all_milestones_res.scalars().all()
+    if all_milestones and all(m.status == "released" for m in all_milestones):
+        job.status = "completed"
+
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Milestone Released",
+        message=f'Milestone "{milestone.title}" (₦{float(milestone.amount):,.0f}) released to your wallet!',
+        link="/dashboard/jobs",
+        type="payment",
+    )
+    await db.commit()
+    await db.refresh(milestone)
+    return milestone

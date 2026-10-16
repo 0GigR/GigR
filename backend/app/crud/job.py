@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import select, update, or_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
 from ..core.text_search import tokenize_query, relevance_score
@@ -34,7 +35,11 @@ def hotness_score(job: Job, app_count: int, now: datetime | None = None) -> floa
     return HOTNESS_FRESHNESS_WEIGHT * freshness + HOTNESS_DEMAND_WEIGHT * demand
 
 async def get_job_by_id(db: AsyncSession, job_id: UUID) -> Job | None:
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    result = await db.execute(
+        select(Job)
+        .options(selectinload(Job.milestones))
+        .where(Job.id == job_id)
+    )
     return result.scalar_one_or_none()
 
 async def get_jobs_by_client(db: AsyncSession, client_id: UUID, limit: int = 20, offset: int = 0) -> List[Job]:
@@ -119,11 +124,12 @@ async def get_open_jobs_nearby(
     return [_with_distance(job, dist_m) for job, dist_m in rows]
 
 async def create_job(db: AsyncSession, client_id: UUID, job_in: JobCreate) -> Job:
+    effective_price = job_in.price if job_in.price is not None else (job_in.min_price or 0.0)
     job = Job(
         client_id=client_id,
         title=job_in.title,
         description=job_in.description,
-        price=job_in.price,
+        price=effective_price,
         min_price=job_in.min_price,
         max_price=job_in.max_price,
         image_url=job_in.image_url,

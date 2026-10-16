@@ -90,12 +90,15 @@ async def get_services_nearby(
     return [svc for _, _, svc in ranked][offset:offset + limit]
 
 async def create_service(db: AsyncSession, provider_id: UUID, service_in: ServiceCreate) -> ServiceListing:
+    effective_price = service_in.price if service_in.price is not None else (service_in.min_price or 0.0)
     service = ServiceListing(
         provider_id=provider_id,
         category_id=service_in.category_id,
         title=service_in.title,
         description=service_in.description,
-        price=service_in.price,
+        price=effective_price,
+        min_price=service_in.min_price,
+        max_price=service_in.max_price,
         location=f"SRID=4326;POINT({service_in.longitude} {service_in.latitude})",
         radius_km=service_in.radius_km or 5.0,
         image_url=service_in.image_url,
