@@ -16,7 +16,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
 import UserChip from '@/components/UserChip'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench
 } from 'lucide-react'
@@ -189,7 +189,18 @@ export default function ServicesPage() {
   const [address, setAddress] = useState<string | null>(null)
   const [catSearch, setCatSearch] = useState('')
   const [catSearchResults, setCatSearchResults] = useState<Category[]>([])
-  const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>(
+    tabParam === 'map' ? 'map' : tabParam === 'mine' ? 'mine' : 'browse'
+  )
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab')
+    if (requestedTab === 'map' || requestedTab === 'mine' || requestedTab === 'browse') {
+      setActiveTab(requestedTab)
+    }
+  }, [searchParams])
   const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
   // Search radius in KILOMETRES. This used to be a hardcoded 100000, and since
   // the API takes km that disabled radius filtering entirely — "nearby" meant

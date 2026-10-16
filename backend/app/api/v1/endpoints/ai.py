@@ -68,7 +68,7 @@ _GROQ_SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable assistant 
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
-  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "check_wallet" | "generic",
+  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "check_wallet" | "cancel_jobs" | "generic",
   "params": {
     "query": "search query string",
     "max_price": 5000,          // number in naira, null if not specified
@@ -76,7 +76,8 @@ Extract the user's intent from their message and return ONLY a JSON object with 
     "title": "title",           // for post_job or post_service
     "price": 5000,              // number in naira
     "radius_km": 10,            // distance in km, only if the user says one
-    "job_id": "optional id",    // for pay
+    "job_id": "optional id",    // for pay or cancel_jobs
+    "all_pending": false,       // for cancel_jobs: true if canceling all requests
     "page": "jobs|services|messages|activity|disputes|profile|home",  // for navigate
     "steps": [                  // for "plan" only: array of child subtasks
       {"task_type": "find_service", "params": {"query": "cleaner"}},
@@ -89,6 +90,7 @@ Extract the user's intent from their message and return ONLY a JSON object with 
 Rules:
 - Persona: You are Gigidy AI on Gigr. Tone must be warm, natural, and relatable for everyday Nigerian users (e.g. "Got you! Checking for good massage therapists near you now.", "On it, checking your wallet balance right away.", "Looking for open gigs around you.").
 - NEVER use stiff corporate chatbot speech (e.g. NEVER say "How can I assist you with Gigr services today?" or generic robotic filler).
+- "cancel_jobs" = user wants to cancel their requests, cancel jobs, or cancel all of them (e.g. "cancel all requests", "cancel my job", "cancel all of them yo"). Set all_pending to true if user said all/them/these.
 - "check_wallet" = user asks about their wallet balance, funds, SOL, USDC, or wallet address.
 - "find_service" = user wants to find someone to hire, OR user describes physical symptoms/needs ("my back hurts", "sore body" → query: "massage", "burst pipe" → query: "plumber", "insects in room" / "infested" → query: "fumigation").
 - max_price: null if not specified. NEVER invent or guess a budget or max_price unless the user explicitly stated a number. If user did not give a budget, max_price must be null.
@@ -276,6 +278,15 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
             page = nav_map[m.group(1)]
             return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
 
+    # ─── Cancel requests / jobs ──────────────────────────────────────
+    if re.search(r"\b(?:cancel|abort|withdraw|drop)\b", text_lower):
+        all_pending = bool(re.search(r"\b(?:all|them|these|everything)\b", text_lower))
+        return {
+            "task_type": "cancel_jobs",
+            "params": {"all_pending": all_pending, "query": text},
+            "response": "Cancelling your requests...",
+        }
+
     # ─── Wallet balance / funds check ────────────────────────────────
     if re.search(r"\b(?:wallet|balance|sol\b|usdc\b|funds?|how much money|my crypto)\b", text_lower):
         return {
@@ -308,7 +319,7 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
 
     # ─── Generic / greeting guard (before intent checks) ─────────────
     # Catch short greetings, rhetorical questions, and ambiguous inputs
-    _action_words = r"find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
+    _action_words = r"cancel|find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
     is_question = text_lower.endswith("?") or re.match(r"^(are|is|do|does|can|could|would|will|what|where|why|how|who)\b", text_lower)
     has_action = bool(re.search(_action_words, text_lower))
     
@@ -478,6 +489,18 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
     from ....crud.message import create_message
 
     try:
+        # Idempotency check: don't create duplicate requests for the same service
+        existing_res = await db.execute(
+            select(Job).where(
+                Job.client_id == task.user_id,
+                Job.service_listing_id == service.id,
+                Job.status.in_(["requested", "assigned", "in_progress"])
+            )
+        )
+        existing_job = existing_res.scalars().first()
+        if existing_job:
+            return f"You already have an active request for '{service.title}' (Job ID: {str(existing_job.id)[:8]})."
+
         price = task.params.get("max_price") or float(service.price)
         job_in = JobCreate(
             title=f"Request for: {service.title}",
@@ -652,6 +675,14 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
         )
 
     if filtered:
+        # Load provider profiles for the top results to display on map and cards
+        provider_ids = list({s.provider_id for s in filtered[:5] if s.provider_id})
+        providers_map = {}
+        if provider_ids:
+            p_res = await db.execute(select(User).where(User.id.in_(provider_ids)))
+            for p in p_res.scalars().all():
+                providers_map[p.id] = p
+
         service_cards = [
             {
                 "id": str(s.id),
@@ -661,6 +692,9 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                 "distance_km": distances.get(str(s.id)),
                 "latitude": float(s.latitude) if s.latitude is not None else None,
                 "longitude": float(s.longitude) if s.longitude is not None else None,
+                "provider_id": str(s.provider_id) if s.provider_id else None,
+                "provider_name": providers_map.get(s.provider_id).display_name if providers_map.get(s.provider_id) else None,
+                "provider_avatar": providers_map.get(s.provider_id).profile_image_url if providers_map.get(s.provider_id) else None,
             }
             for s in filtered[:5]
         ]
@@ -760,6 +794,14 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         )
 
     if filtered:
+        # Load client profiles for the top job postings
+        client_ids = list({j.client_id for j in filtered[:5] if j.client_id})
+        clients_map = {}
+        if client_ids:
+            c_res = await db.execute(select(User).where(User.id.in_(client_ids)))
+            for c in c_res.scalars().all():
+                clients_map[c.id] = c
+
         job_cards = [
             {
                 "id": str(j.id),
@@ -768,6 +810,9 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                 "description": getattr(j, 'description', '') or "",
                 "latitude": float(j.latitude) if j.latitude is not None else None,
                 "longitude": float(j.longitude) if j.longitude is not None else None,
+                "client_id": str(j.client_id) if j.client_id else None,
+                "client_name": clients_map.get(j.client_id).display_name if clients_map.get(j.client_id) else None,
+                "client_avatar": clients_map.get(j.client_id).profile_image_url if clients_map.get(j.client_id) else None,
             }
             for j in filtered[:5]
         ]
@@ -1154,50 +1199,8 @@ async def _suggest_price(raw_title: str, kind: str) -> float:
 
 
 async def _auto_price_fallback(task_id: str, kind: str, raw_title: str) -> None:
-    """After WAIT_FOR_REPLY_TIME, if the user hasn't given a price, pick one and post."""
-    await asyncio.sleep(WAIT_FOR_REPLY_TIME)
-    async with async_session() as db:
-        # Is the price dialog still open (i.e. the user hasn't answered)?
-        logs_res = await db.execute(
-            select(AgentLog).where(AgentLog.task_id == uuid.UUID(task_id))
-            .order_by(AgentLog.created_at.desc()).limit(20)
-        )
-        dialog_log = None
-        for lg in logs_res.scalars().all():
-            if lg.data and (lg.data.get("action_payload") or {}).get("type") == "provide_price":
-                dialog_log = lg
-                break
-        if not dialog_log:
-            return  # user already responded (payload cleared) — nothing to do
-
-        task_res = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
-        task = task_res.scalar_one_or_none()
-        if not task:
-            return
-
-        # Close the dialog so the user can't also submit a price now.
-        new_data = dict(dialog_log.data)
-        new_data.pop("action_payload", None)
-        dialog_log.data = new_data
-
-        price = await _suggest_price(raw_title, kind)
-        logger.info("[agent] Task %s: no price in %ds — AI chose ₦%.0f", task_id, WAIT_FOR_REPLY_TIME, price)
-
-        child = AgentTask(
-            user_id=task.user_id,
-            command_text=task.command_text,
-            task_type="post_job" if kind == "job" else "post_service",
-            params={"title": raw_title, "price": price},
-            status="queued",
-        )
-        db.add(child)
-        await _log(db, task.id, "info",
-                   f"No budget given in {WAIT_FOR_REPLY_TIME}s — I'll go with ₦{price:,.0f} and post it for you.")
-        await db.commit()
-        try:
-            await _ws_manager.notify_user(str(task.user_id), {"type": "agent_task_update", "task_id": task_id})
-        except Exception:
-            pass
+    """Disabled: Do not auto-post listings with guessed prices."""
+    return
 
 
 # Category matching now lives in services/agent_tools.py so the tool registry
@@ -1230,9 +1233,7 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
-        # If the user doesn't answer within WAIT_FOR_REPLY_TIME, the AI picks a
-        # price itself and proceeds (see _auto_price_fallback).
-        asyncio.create_task(_auto_price_fallback(str(task.id), "job", raw_title))
+        # Wait cleanly for user input without auto-guessing prices
         return {"created": False, "waiting_for_price": True}
 
     await _log(db, task.id, "action", "Writing a professional job listing...")
@@ -1314,7 +1315,7 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
-        asyncio.create_task(_auto_price_fallback(str(task.id), "service", raw_title))
+        # Wait cleanly for user input without auto-guessing prices
         return {"created": False, "waiting_for_price": True}
 
     # Category: honour an explicit choice (params carry it when the user picked
@@ -1860,6 +1861,27 @@ async def _handle_plan(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     }
 
 
+async def _handle_cancel_jobs(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Cancel pending requests or open jobs posted by the user."""
+    from ....services.agent_tools import _tool_cancel_jobs
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        await _log(db, task.id, "error", "User account not found.")
+        return {"cancelled": False, "count": 0}
+
+    params = task.params or {}
+    res = await _tool_cancel_jobs(db, user, params)
+    count = res.get("cancelled_count", 0)
+    note = res.get("note", "")
+    if count > 0:
+        await _log(db, task.id, "success", note)
+        await db.commit()
+    else:
+        await _log(db, task.id, "info", note)
+    return res
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 3: Agent loop — background asyncio coroutine
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2065,6 +2087,8 @@ async def _execute_task(task_id: str):
                     await _log(db, task.id, "success", f"Navigating to {page}...",
                                data={"navigate_to": route})
                     task.result = {"page": page, "navigate_to": route}
+                elif task.task_type == "cancel_jobs":
+                    task.result = await _handle_cancel_jobs(task, db)
                 else:  # generic — free-form command: run the tool-calling agent
                     from ....services import agent_tools
 

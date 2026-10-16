@@ -402,6 +402,25 @@ async def _tool_request_service(db: AsyncSession, user: User, args: Dict[str, An
     if str(service.provider_id) == str(user.id):
         return _error("the user owns this service")
 
+    # Idempotency check: don't create duplicate requests for the same service
+    existing_res = await db.execute(
+        select(Job).where(
+            Job.client_id == user.id,
+            Job.service_listing_id == service.id,
+            Job.status.in_(["requested", "assigned", "in_progress"])
+        )
+    )
+    existing_job = existing_res.scalars().first()
+    if existing_job:
+        return {
+            "ok": True,
+            "already_requested": True,
+            "job_id": str(existing_job.id),
+            "service": service.title,
+            "price": float(service.price),
+            "note": f"You already have an active request for '{service.title}' (Job ID: {str(existing_job.id)[:8]}).",
+        }
+
     location = None
     if service.latitude is not None and service.longitude is not None:
         location = f"SRID=4326;POINT({service.longitude} {service.latitude})"
@@ -498,9 +517,94 @@ async def _tool_navigate(db: AsyncSession, user: User, args: Dict[str, Any]) -> 
     return {"ok": True, "route": route, "page": page}
 
 
+async def _tool_cancel_jobs(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
+    from ..crud.job import cancel_job_offchain
+    from ..crud.notification import create_notification
+
+    job_id_raw = args.get("job_id")
+    all_pending = bool(args.get("all_pending"))
+    query = str(args.get("query") or "").strip().lower()
+
+    # Find jobs eligible for cancellation (client is current user, pre-funded: requested, open, assigned)
+    stmt = select(Job).where(
+        Job.client_id == user.id,
+        Job.status.in_(["requested", "open", "assigned"])
+    )
+    result = await db.execute(stmt)
+    eligible_jobs = list(result.scalars().all())
+
+    if not eligible_jobs:
+        return {
+            "ok": True,
+            "cancelled_count": 0,
+            "cancelled": [],
+            "note": "You have no pending requests or open jobs to cancel."
+        }
+
+    targets = []
+    if job_id_raw:
+        try:
+            target_uuid = UUID(str(job_id_raw))
+            targets = [j for j in eligible_jobs if j.id == target_uuid]
+        except (ValueError, TypeError):
+            pass
+    elif query and not all_pending:
+        targets = [j for j in eligible_jobs if query in (j.title or "").lower() or query in (j.description or "").lower()]
+        if not targets:
+            targets = eligible_jobs
+    else:
+        targets = eligible_jobs
+
+    if not targets:
+        return {
+            "ok": True,
+            "cancelled_count": 0,
+            "cancelled": [],
+            "note": f"No active requests found matching '{job_id_raw or query}'."
+        }
+
+    cancelled_titles = []
+    for job in targets:
+        await cancel_job_offchain(db, job)
+        cancelled_titles.append(job.title)
+        if job.provider_id:
+            try:
+                await create_notification(
+                    db,
+                    user_id=job.provider_id,
+                    title="Request Cancelled",
+                    message=f"Request for '{job.title}' was cancelled by {user.display_name or 'the client'}.",
+                    link="/dashboard/activity",
+                    type="cancelled",
+                )
+            except Exception:
+                pass
+
+    await db.flush()
+    return {
+        "ok": True,
+        "cancelled_count": len(targets),
+        "cancelled": cancelled_titles,
+        "note": f"Cancelled {len(targets)} request(s): {', '.join(cancelled_titles)}."
+    }
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _TOOL_TABLE: Dict[str, Dict[str, Any]] = {
+    "cancel_requests_or_jobs": {
+        "description": "Cancel pending service requests or open jobs posted by the user. Use when user asks to cancel their requests, cancel all of them, or cancel a specific request.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Specific job or request id to cancel, if known."},
+                "all_pending": {"type": "boolean", "description": "Set to true if user wants to cancel all pending requests or all open jobs."},
+                "query": {"type": "string", "description": "Filter by job title or service name, e.g. 'massage', 'fumigation'."},
+            },
+            "required": [],
+        },
+        "handler": _tool_cancel_jobs,
+    },
     "search_services": {
         "description": (
             "Find service providers the user could hire. Prefers providers near "
@@ -681,6 +785,7 @@ Rules:
 - NEVER invent a budget or max_price. If the user did not specify a price or budget, do not pass max_price.
 - When the user mentions physical symptoms or pain (e.g. "my back hurts", "sore body"), call search_services with a relevant query like "massage" or "physiotherapy" WITHOUT any max_price.
 - When the user asks about their wallet, balance, funds, SOL, or USDC, call get_wallet.
+- When the user asks to cancel their requests, cancel jobs, or cancel all of them, call cancel_requests_or_jobs to cancel them immediately.
 - Only apply to jobs, request services, or post jobs when the user actually asked for it.
 - You can NEVER move money. Escrow funding and release are manual actions the user
   performs in the app — never claim a payment happened.
@@ -691,6 +796,8 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     """A short human-readable line for the activity log."""
     if not result.get("ok", True):
         return f"{name} failed: {result.get('error')}"
+    if name == "cancel_requests_or_jobs":
+        return f"cancelled {result.get('cancelled_count', 0)} request(s)"
     if name in ("search_services", "search_jobs"):
         return f"{name}: {result.get('count', 0)} result(s)"
     if name == "my_jobs":

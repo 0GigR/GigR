@@ -769,7 +769,7 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
               <AgentResultMap
                 items={logPayload.services}
                 onSelectItem={(selectedId) => onDialogAction(`select_service:${selectedId}`)}
-                onNavigateToMap={() => onNavigate('/dashboard/explore')}
+                onNavigateToMap={() => onNavigate('/dashboard/services?tab=map')}
               />
             </Suspense>
             {logPayload.services.map((svc: any) => (
@@ -785,7 +785,7 @@ function AgentMessage({ log, onDialogAction, onNavigate }: {
               <AgentResultMap
                 items={logPayload.jobs}
                 onSelectItem={(selectedId) => onDialogAction(`select_job:${selectedId}`)}
-                onNavigateToMap={() => onNavigate('/dashboard/explore')}
+                onNavigateToMap={() => onNavigate('/dashboard/jobs?tab=map')}
               />
             </Suspense>
             {logPayload.jobs.map((job: any) => (
@@ -880,6 +880,7 @@ function AgentAvatar() {
 }
 
 function ServiceResultCard({ service, onRequest }: { service: any; onRequest: () => void }) {
+  const [requested, setRequested] = useState(false)
   return (
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
@@ -889,15 +890,27 @@ function ServiceResultCard({ service, onRequest }: { service: any; onRequest: ()
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{service.description}</p>
         )}
       </div>
-      <Button size="sm" className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-7 px-2.5"
-        onClick={onRequest}>
-        Request
+      <Button
+        size="sm"
+        disabled={requested}
+        className={`shrink-0 text-white text-xs h-7 px-2.5 transition-colors ${
+          requested
+            ? 'bg-gray-400 dark:bg-gray-700 text-gray-200 cursor-not-allowed'
+            : 'bg-indigo-600 hover:bg-indigo-700'
+        }`}
+        onClick={() => {
+          setRequested(true)
+          onRequest()
+        }}
+      >
+        {requested ? 'Requested' : 'Request'}
       </Button>
     </div>
   )
 }
 
 function JobResultCard({ job, onNavigate, onApply }: { job: any; onNavigate: (path: string) => void; onApply?: () => void }) {
+  const [applied, setApplied] = useState(false)
   return (
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
@@ -913,8 +926,20 @@ function JobResultCard({ job, onNavigate, onApply }: { job: any; onNavigate: (pa
           View <ChevronRight className="w-3 h-3" />
         </Button>
         {onApply && (
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-7 px-2.5" onClick={onApply}>
-            Apply
+          <Button
+            size="sm"
+            disabled={applied}
+            className={`text-white text-xs h-7 px-2.5 transition-colors ${
+              applied
+                ? 'bg-gray-400 dark:bg-gray-700 text-gray-200 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-700'
+            }`}
+            onClick={() => {
+              setApplied(true)
+              onApply()
+            }}
+          >
+            {applied ? 'Applied' : 'Apply'}
           </Button>
         )}
       </div>
