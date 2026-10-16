@@ -62,6 +62,7 @@ class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     display_name: str
+    username: Optional[str] = None
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     google_id: Optional[str] = None
@@ -90,6 +91,8 @@ class PublicUserOut(BaseModel):
     Deliberately omits email, phone_number, google_id, and ai_settings."""
     id: UUID
     display_name: str
+    username: Optional[str] = None
+    handle: Optional[str] = None
     profile_image_url: Optional[str] = None
     is_verified: bool
     role: Optional[str] = None
@@ -112,6 +115,7 @@ class PublicUserOut(BaseModel):
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    username: Optional[str] = Field(None, max_length=50)
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     ai_settings: Optional[Dict[str, Any]] = None
@@ -119,6 +123,18 @@ class UserUpdate(BaseModel):
     location_public: Optional[bool] = None
     bio: Optional[str] = Field(None, max_length=500)
     skills: Optional[List[str]] = None
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _clean_username(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            cleaned = v.strip().lower().replace("@", "")
+            if not cleaned:
+                return None
+            if len(cleaned) < 2:
+                raise ValueError("Username must be at least 2 characters")
+            return cleaned
+        return v
 
     @field_validator("phone_number", mode="before")
     @classmethod

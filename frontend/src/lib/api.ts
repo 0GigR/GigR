@@ -62,12 +62,19 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
+      // Guests with no stored tokens at all: /auth/me failing 401 is expected.
+      // Do not attempt a pointless refresh or bounce them away from public pages.
+      const storedRefresh = getRefreshToken()
+      const storedToken = getToken()
+      if (!storedRefresh && !storedToken) {
+        return Promise.reject(error)
+      }
+
       try {
         // Send the stored refresh token as well as relying on the cookie: with
         // third-party cookies blocked (iOS Safari, installed PWA) the cookie
         // never arrives, and refresh used to fail there — logging the user out
         // the moment the 24h access token expired.
-        const storedRefresh = getRefreshToken()
         const refreshRes = await api.post(
           '/auth/refresh',
           storedRefresh ? { refresh_token: storedRefresh } : {},
@@ -80,10 +87,21 @@ api.interceptors.response.use(
         if (refresh_token) saveRefreshToken(refresh_token)
         return api(originalRequest)
       } catch {
-        // Refresh failed – log out and redirect
+        // Refresh failed – log out and redirect only if on a protected route
         clearTokens()
         useAuthStore.getState().logout()
-        if (window.location.pathname !== '/') {
+
+        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+        const isPublicPage =
+          currentPath === '/' ||
+          currentPath.startsWith('/profile') ||
+          currentPath.startsWith('/user') ||
+          currentPath.startsWith('/login') ||
+          currentPath.startsWith('/register') ||
+          currentPath.startsWith('/forgot-password') ||
+          currentPath.startsWith('/reset-password')
+
+        if (!isPublicPage) {
           window.location.href = '/'
         }
         return Promise.reject(error)

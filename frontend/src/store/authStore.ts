@@ -5,6 +5,7 @@ interface User {
   id: string
   email: string
   display_name: string
+  username?: string | null
   phone_number?: string | null
   profile_image_url?: string | null
   google_id?: string | null
