@@ -18,8 +18,9 @@ import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
 import { symbolFor } from '@/lib/currency'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
+import { Link } from 'react-router-dom'
 import {
-  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown
+  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown, Share2, ExternalLink
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { processImageFile } from '@/lib/imageUtils'
@@ -201,9 +202,37 @@ export default function ProfilePage() {
   // Load Google Identity if available
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
-      <div>
-        <h1 className="text-3xl font-bold">Profile</h1>
-        <p className="text-gray-500">Your public identity and on‑chain reputation</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Profile</h1>
+          <p className="text-gray-500">Your public identity and on‑chain reputation</p>
+        </div>
+        {user?.id && (
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/profile/${user.id}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Public Portfolio
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const portfolioUrl = `${window.location.origin}/profile/${user.id}`
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(portfolioUrl)
+                  toast.success('Public portfolio link copied to clipboard!')
+                }
+              }}
+              className="text-xs h-8 border-gray-200 dark:border-gray-700"
+            >
+              <Share2 className="w-3.5 h-3.5 mr-1.5" />
+              Copy Share Link
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Basic Info Card with Edit */}
