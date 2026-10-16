@@ -107,9 +107,11 @@ function App() {
                 <Route path="admin" element={<AdminDashboard />} />
                 {/* Public profile inside dashboard for consistent nav */}
                 <Route path="user/:userId" element={<PublicProfilePage />} />
+                <Route path="profile/:userId" element={<PublicProfilePage />} />
               </Route>
-              {/* Legacy public route still works */}
+              {/* Public portfolio routes — open to guests, shared links, and web bots */}
               <Route path="/profile/:userId" element={<PublicProfilePage />} />
+              <Route path="/user/:userId" element={<PublicProfilePage />} />
               {/* Catch-all 404 Route — dashboard unknowns bounce home */}
               <Route path="*" element={<CatchAll />} />
             </Routes>
