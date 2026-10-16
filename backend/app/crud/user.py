@@ -15,7 +15,18 @@ async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User | None:
     return result.scalar_one_or_none()
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    result = await db.execute(select(User).where(User.email == email))
+    if not email:
+        return None
+    cleaned = email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == cleaned))
+    return result.scalar_one_or_none()
+
+async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
+    from ..core.phone import normalize_phone_number
+    normalized = normalize_phone_number(phone)
+    if not normalized:
+        return None
+    result = await db.execute(select(User).where(User.phone_number == normalized))
     return result.scalar_one_or_none()
 
 async def get_user_by_google_id(db: AsyncSession, google_id: str) -> User | None:
