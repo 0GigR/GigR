@@ -5,7 +5,8 @@
  * by the autonomous AI agent directly inside the activity log stream.
  */
 
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -22,6 +23,12 @@ export interface AgentMapItem {
   longitude?: number | null
   distance_km?: number | null
   kind?: 'service' | 'job'
+  provider_id?: string | null
+  provider_name?: string | null
+  provider_avatar?: string | null
+  client_id?: string | null
+  client_name?: string | null
+  client_avatar?: string | null
 }
 
 interface AgentResultMapProps {
@@ -71,6 +78,8 @@ export default function AgentResultMap({
         !isNaN(item.longitude)
     )
   }, [items])
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   if (!isMapFeatureActive || geoItems.length === 0) {
     return null
@@ -127,10 +136,36 @@ export default function AgentResultMap({
                 ? makeJobPin(geoItem.title, geoItem.price)
                 : makeServicePin(geoItem.title, geoItem.price)
 
+            const entityName = geoItem.provider_name || geoItem.client_name
+            const entityAvatar = geoItem.provider_avatar || geoItem.client_avatar
+            const entityUserId = geoItem.provider_id || geoItem.client_id
+            const isSelected = selectedIds.has(geoItem.id)
+
             return (
               <Marker key={geoItem.id} position={pointPosition} icon={pinIcon}>
                 <Popup className="agent-map-popup">
-                  <div className="p-1 min-w-[160px] text-gray-900">
+                  <div className="p-1 min-w-[170px] text-gray-900">
+                    {entityName && entityUserId && (
+                      <div className="flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-100">
+                        {entityAvatar ? (
+                          <img
+                            src={entityAvatar}
+                            alt={entityName}
+                            className="w-5 h-5 rounded-full object-cover shrink-0"
+                          />
+                        ) : (
+                          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                            {entityName.slice(0, 1).toUpperCase()}
+                          </span>
+                        )}
+                        <Link
+                          to={`/dashboard/user/${entityUserId}`}
+                          className="text-[11px] font-medium text-gray-800 hover:text-violet-600 truncate underline-offset-2 hover:underline"
+                        >
+                          {entityName}
+                        </Link>
+                      </div>
+                    )}
                     <p className="font-semibold text-xs leading-tight mb-0.5 truncate">
                       {geoItem.title}
                     </p>
@@ -145,10 +180,18 @@ export default function AgentResultMap({
                     {onSelectItem && (
                       <button
                         type="button"
-                        onClick={() => onSelectItem(geoItem.id)}
-                        className="w-full px-2 py-1 text-[11px] font-medium bg-violet-600 hover:bg-violet-700 text-white rounded transition-colors text-center"
+                        disabled={isSelected}
+                        onClick={() => {
+                          setSelectedIds((prev) => new Set(prev).add(geoItem.id))
+                          onSelectItem(geoItem.id)
+                        }}
+                        className={`w-full px-2 py-1 text-[11px] font-medium rounded transition-colors text-center ${
+                          isSelected
+                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            : 'bg-violet-600 hover:bg-violet-700 text-white'
+                        }`}
                       >
-                        Select Option
+                        {isSelected ? 'Requested' : 'Select Option'}
                       </button>
                     )}
                   </div>

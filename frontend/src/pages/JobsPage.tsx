@@ -114,7 +114,20 @@ export default function JobsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const displayCode = useCurrencyStore((s) => s.code)
-  const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>('open')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>(
+    tabParam === 'map' ? 'map' : tabParam === 'mine' ? 'mine' : 'open'
+  )
+  const [myJobGroupFilter, setMyJobGroupFilter] = useState<string>('all')
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab')
+    if (requestedTab === 'map' || requestedTab === 'mine' || requestedTab === 'open') {
+      setActiveTab(requestedTab)
+    }
+  }, [searchParams])
+
   // Radius (km) for the map + the "Near you" stat, so both describe the same area.
   const [mapRadius, setMapRadius] = useState(10)
   const geo = useGeolocation()
@@ -177,7 +190,6 @@ export default function JobsPage() {
 
   // Deep link: /dashboard/jobs?jobId=X (e.g. from a notification) opens that
   // job's detail modal directly, then cleans the query param.
-  const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const jobId = searchParams.get('jobId')
     if (!jobId) return
@@ -230,13 +242,25 @@ export default function JobsPage() {
     hasNextPage: hasMoreOpenJobs,
     isFetchingNextPage: loadingMoreOpenJobs,
   } = useInfiniteQuery<Job[]>({
-    queryKey: ['jobs', 'open', debouncedSearch, categoryFilter],
+    queryKey: ['jobs', 'open', debouncedSearch, categoryFilter, mapRadius, geo.latitude, geo.longitude],
     queryFn: async ({ pageParam = 0 }) => {
       // Public browse shows only genuinely open jobs — service requests
       // (status 'requested') are private client<->provider conversations and
       // must never appear here. The backend hides the caller's own jobs, so
       // no client-side filtering is needed.
-      const res = await api.get('/jobs/', { params: { status: 'open', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined, category_id: categoryFilter || undefined } })
+      const queryParams: Record<string, any> = {
+        status: 'open',
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q: debouncedSearch || undefined,
+        category_id: categoryFilter || undefined,
+      }
+      if (geo.latitude && geo.longitude && mapRadius > 0) {
+        queryParams.lat = geo.latitude
+        queryParams.lon = geo.longitude
+        queryParams.radius = mapRadius
+      }
+      const res = await api.get('/jobs/', { params: queryParams })
       const all = Array.isArray(res.data) ? res.data : []
       return all
     },
@@ -254,7 +278,9 @@ export default function JobsPage() {
   const openJobs = openJobsPages?.pages.flat() ?? []
   // Boundaries and summary figures used by the folded header/stats above.
   const activeFilterCount =
-    (categoryFilter ? 1 : 0) + (sortOrder && sortOrder !== 'newest' ? 1 : 0)
+    (categoryFilter ? 1 : 0) +
+    (sortOrder && sortOrder !== 'newest' ? 1 : 0) +
+    (mapRadius && mapRadius !== 10 ? 1 : 0)
   const nearbyCount =
     geo.latitude && geo.longitude
       ? openJobs.filter((j) => {
@@ -731,6 +757,19 @@ export default function JobsPage() {
               <SelectItem value="price_low">Price: Low to High</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={String(mapRadius)} onValueChange={(val) => setMapRadius(Number(val))}>
+            <SelectTrigger className="w-[160px] bg-background border-border">
+              <SelectValue placeholder="Distance" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="2">Within 2 km</SelectItem>
+              <SelectItem value="5">Within 5 km</SelectItem>
+              <SelectItem value="10">Within 10 km</SelectItem>
+              <SelectItem value="25">Within 25 km</SelectItem>
+              <SelectItem value="50">Within 50 km</SelectItem>
+              <SelectItem value="0">All / Nationwide</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -850,6 +889,42 @@ export default function JobsPage() {
         </TabsContent>
 
         <TabsContent value="mine" className="mt-6">
+          {/* Quick status filter pills for fast grouping */}
+          {processedMyJobs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-6">
+              <button
+                type="button"
+                onClick={() => setMyJobGroupFilter('all')}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  myJobGroupFilter === 'all'
+                    ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                All ({processedMyJobs.length})
+              </button>
+              {MY_JOB_GROUPS.map((group) => {
+                const count = processedMyJobs.filter((j) => group.statuses.includes(j.status)).length
+                if (count === 0) return null
+                const isSelected = myJobGroupFilter === group.key
+                return (
+                  <button
+                    key={group.key}
+                    type="button"
+                    onClick={() => setMyJobGroupFilter(isSelected ? 'all' : group.key)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {group.label} ({count})
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {myLoading ? (
             <div className="grid gap-4 md:grid-cols-2">
               {[1, 2].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)}
@@ -857,6 +932,7 @@ export default function JobsPage() {
           ) : processedMyJobs.length ? (
             <div className="space-y-8">
               {MY_JOB_GROUPS.map(group => {
+                if (myJobGroupFilter !== 'all' && group.key !== myJobGroupFilter) return null
                 const jobs = processedMyJobs.filter(j => group.statuses.includes(j.status))
                 if (!jobs.length) return null
                 return (
