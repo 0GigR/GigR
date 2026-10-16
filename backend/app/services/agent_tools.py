@@ -496,9 +496,8 @@ async def _tool_request_service(db: AsyncSession, user: User, args: Dict[str, An
 
     location = None
     if service.latitude is not None and service.longitude is not None:
-        location = f"SRID=4326;POINT({service.longitude} {service.latitude})"
-    if location is None:
-        location = None  # jobs may legitimately be location-less
+        from ..core.geo import to_wkt_point
+        location = to_wkt_point(service.latitude, service.longitude)
 
     job = await create_job(
         db,

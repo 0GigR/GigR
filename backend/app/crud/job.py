@@ -137,10 +137,11 @@ async def create_job(db: AsyncSession, client_id: UUID, job_in: JobCreate) -> Jo
         image_url=job_in.image_url,
         category_id=job_in.category_id,
         status="open",
-        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
+        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF),
     )
     if job_in.latitude is not None and job_in.longitude is not None:
-        job.location = f"SRID=4326;POINT({job_in.longitude} {job_in.latitude})"
+        from ..core.geo import to_wkt_point
+        job.location = to_wkt_point(job_in.latitude, job_in.longitude)
     db.add(job)
     await db.flush()
     # await db.refresh(job)

@@ -35,12 +35,14 @@ class ServiceListing(Base):
     def latitude(self) -> float | None:
         if self.location is None:
             return None
-        point = to_shape(self.location)
-        return point.y
+        from ..core.geo import extract_coordinates
+        lat, _ = extract_coordinates(self.location)
+        return lat
 
     @property
     def longitude(self) -> float | None:
         if self.location is None:
             return None
-        point = to_shape(self.location)
-        return point.x
+        from ..core.geo import extract_coordinates
+        _, lon = extract_coordinates(self.location)
+        return lon

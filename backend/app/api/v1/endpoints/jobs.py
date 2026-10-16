@@ -79,6 +79,9 @@ async def create_job_route(
     job = await create_job(db, current_user.id, job_in)
     await db.commit()
     job = (await get_job_by_id(db, job.id)) or job
+    if isinstance(job.location, str):
+        from ....core.geo import to_wkt_element
+        job.location = to_wkt_element(job.location)
 
     # Proactive agent: notify nearby providers with matching services (non-blocking)
     asyncio.create_task(_notify_matching_providers(str(job.id), current_user.display_name))
@@ -201,7 +204,8 @@ async def request_service(
     # were therefore invisible to every geo feature.
     request_location = None
     if service.latitude is not None and service.longitude is not None:
-        request_location = f"SRID=4326;POINT({service.longitude} {service.latitude})"
+        from ....core.geo import to_wkt_point
+        request_location = to_wkt_point(service.latitude, service.longitude)
 
     job = Job(
         client_id=current_user.id,
