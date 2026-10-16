@@ -133,8 +133,8 @@ function PhoneMockup() {
           <Shield className="w-4 h-4" />
         </span>
         <div className="text-left">
-          <p className="text-xs font-bold text-gray-900">Escrow protected</p>
-          <p className="text-[10px] text-gray-500">Funds locked on-chain</p>
+          <p className="text-xs font-bold text-gray-900">Protected payment</p>
+          <p className="text-[10px] text-gray-500">Held safely until you approve</p>
         </div>
       </div>
       <div className="absolute -right-40 top-36 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_7s_ease-in-out_infinite]">
@@ -142,8 +142,8 @@ function PhoneMockup() {
           <Star className="w-4 h-4" />
         </span>
         <div className="text-left">
-          <p className="text-xs font-bold text-gray-900">Vouch received</p>
-          <p className="text-[10px] text-gray-500">Minted as a cNFT</p>
+          <p className="text-xs font-bold text-gray-900">Verified neighbor</p>
+          <p className="text-[10px] text-gray-500">5-star local vouches</p>
         </div>
       </div>
       <div className="absolute -left-32 bottom-20 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_8s_ease-in-out_infinite]">
@@ -278,14 +278,14 @@ export default function LandingPage() {
             Trust works
             <br />
             <TypewriterText
-              texts={['neighborly', 'on-chain', 'verifiably']}
+              texts={['neighborly', 'effortlessly', 'dependably']}
               className="text-black"
             />
           </h1>
           <p className="mt-8 text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
-            The first neighborhood marketplace where <strong className="text-gray-900">reputation is real</strong> and{' '}
-            <strong className="text-gray-900">payments are guaranteed</strong> — without anyone needing to understand
-            blockchain.
+            The neighborhood marketplace where you get quality help from{' '}
+            <strong className="text-gray-900">trusted locals</strong>, clear upfront quotes, and{' '}
+            <strong className="text-gray-900">100% payment protection</strong> on every single job.
           </p>
           <div className="mt-12 flex gap-5 justify-center flex-wrap">
             <button
@@ -323,9 +323,24 @@ export default function LandingPage() {
         </h2>
         <div className="grid md:grid-cols-3 gap-10 md:gap-6 relative">
           {[
-            { step: '01', icon: Users, title: 'Post a job or service', desc: 'Describe what you need. Set your price. Your neighborhood sees it.' },
-            { step: '02', icon: Shield, title: 'Fund escrow securely', desc: 'Payment is locked in a smart contract. No one can touch it.' },
-            { step: '03', icon: Zap, title: 'Complete, get paid & reviewed', desc: 'Work done? Confirm and the money flows instantly. Then leave a vouch and a star rating.' },
+            {
+              step: '01',
+              icon: Users,
+              title: 'Post what you need',
+              desc: 'Describe the task and set your budget or choose fixed rates. Skilled, verified neighbors right nearby get notified immediately.',
+            },
+            {
+              step: '02',
+              icon: Shield,
+              title: 'Payment held safely',
+              desc: 'Your payment stays safely secured in escrow before work begins. It is never released until you inspect and approve the completed job.',
+            },
+            {
+              step: '03',
+              icon: Zap,
+              title: 'Approve & release in one tap',
+              desc: 'Once the work is done to your satisfaction, confirm with one tap to release payment instantly and leave a neighborly review.',
+            },
           ].map((item, i) => (
             <motion.div
               key={item.step}
@@ -354,42 +369,72 @@ export default function LandingPage() {
       {/* Feature Cards */}
       <section id="features" className="py-32 px-6 max-w-7xl mx-auto">
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-20">
-          Why trust Gigr?
+          Why neighbors love Gigr
         </h2>
         <div className="grid md:grid-cols-3 gap-10">
-          <FeatureCard icon={Bot} title="AI Assistant" description="Speak or type — your AI agent finds services, posts jobs, and even negotiates on your behalf, hands-free." delay={0} />
-          <FeatureCard icon={Shield} title="Smart Contract Escrow" description="Funds locked in Solana programs. No one, not even Gigr, can touch them until the work is done." delay={0.1} />
-          <FeatureCard icon={Users} title="Social Vouching" description="Every vouch is a permanent, tamper-proof cNFT. Your reputation travels with you." delay={0.2} />
-          <FeatureCard icon={Star} title="Ratings & Reviews" description="Real 1–5 star reviews tied to real completed jobs. See exactly who trusts whom, and why." delay={0.3} />
-          <FeatureCard icon={Gavel} title="Community Disputes" description="Disagreements are settled by a jury of verified neighbors voting on-chain — not a faceless support desk." delay={0.4} />
-          <FeatureCard icon={MapPin} title="Hyper-Local Map" description="See jobs and providers around you on a live neighborhood map. Trust starts close to home." delay={0.5} />
+          <FeatureCard
+            icon={Bot}
+            title="Hands-Free AI Assistant"
+            description="Speak or type what you need. Gigidy AI finds nearby pros, posts jobs, checks availability, and coordinates details effortlessly."
+            delay={0}
+          />
+          <FeatureCard
+            icon={Shield}
+            title="Protected Escrow Payments"
+            description="Clients never risk paying for unfinished work, and workers never worry about unpaid invoices. Funds are protected from start to finish."
+            delay={0.1}
+          />
+          <FeatureCard
+            icon={Users}
+            title="Real Local Reputation"
+            description="Every vouch comes from a real neighbor who actually hired and worked with that person. Authentic trust that cannot be faked or bought."
+            delay={0.2}
+          />
+          <FeatureCard
+            icon={Star}
+            title="Ratings You Can Rely On"
+            description="Genuine 1 to 5-star feedback linked to completed tasks. See who your community recommends before you invite anyone over."
+            delay={0.3}
+          />
+          <FeatureCard
+            icon={Gavel}
+            title="Fair Community Resolution"
+            description="If a dispute ever comes up, trusted local arbiters review photos and messages with human fairness, not an unhelpful automated bot."
+            delay={0.4}
+          />
+          <FeatureCard
+            icon={MapPin}
+            title="Interactive Neighborhood Map"
+            description="Find skilled helpers right on your street or adjust your search radius as far as you want. Reliable help is always around the corner."
+            delay={0.5}
+          />
         </div>
       </section>
 
       {/* Testimonials */}
       <section className="py-32 px-6 max-w-7xl mx-auto">
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-6">
-          Neighbors who trust Gigr
+          Loved by neighbors everywhere
         </h2>
         <p className="text-center text-gray-500 text-lg mb-16 max-w-2xl mx-auto">
-          Real jobs, real escrow, real reputation — from the people next door.
+          Real jobs, safe payments, and verified reputations — from the people next door.
         </p>
         <div className="grid md:grid-cols-3 gap-10">
           {[
             {
-              quote: 'I posted a phone repair at 9am and had it fixed by noon. The escrow meant I paid only when the work was done.',
+              quote: 'I posted a phone repair in the morning and had it fixed by noon. With escrow protection, I only paid once the screen was completely tested.',
               name: 'Ada O.',
               role: 'Homeowner, Lekki',
               initials: 'AO',
             },
             {
-              quote: 'Clients pay upfront into escrow, so I never chase payments anymore. My vouches got me my next three jobs.',
+              quote: 'Clients fund the job upfront into safe escrow, so I never spend weeks chasing payments. My neighborhood vouches keep new clients calling.',
               name: 'Chidi K.',
               role: 'Electrician, Surulere',
               initials: 'CK',
             },
             {
-              quote: 'The AI agent handled the whole back-and-forth for my branding job. I just reviewed and approved.',
+              quote: 'The AI assistant handled all the preliminary questions and details for my branding project. I just approved the final files and got paid.',
               name: 'Tobi A.',
               role: 'Freelance Designer',
               initials: 'TA',
@@ -434,9 +479,9 @@ export default function LandingPage() {
           className="relative z-10"
         >
           <h2 className="text-4xl md:text-6xl font-bold mb-6">
-            Ready to trust your neighborhood?
+            Ready to hire and work with confidence?
           </h2>
-          <p className="text-xl text-gray-600 mb-10">Join the pilot. First 200 users get free access.</p>
+          <p className="text-xl text-gray-600 mb-10">Join thousands of neighbors getting jobs done safely and easily.</p>
           <div className="relative inline-block">
             <div className="absolute -inset-5 rounded-full bg-gradient-to-r from-indigo-500/30 via-fuchsia-500/30 to-violet-500/30 blur-2xl animate-pulse" />
             <button
@@ -452,10 +497,10 @@ export default function LandingPage() {
               <CheckCircle className="w-4 h-4 text-green-600" /> Free to join
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-green-600" /> Escrow-protected
+              <Shield className="w-4 h-4 text-green-600" /> 100% Escrow protected
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <MessageCircle className="w-4 h-4 text-green-600" /> Local support
+              <MessageCircle className="w-4 h-4 text-green-600" /> Verified local help
             </span>
           </div>
         </motion.div>

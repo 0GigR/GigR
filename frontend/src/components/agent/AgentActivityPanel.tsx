@@ -64,10 +64,20 @@ export default function AgentActivityPanel() {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const speechBufferRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isAtBottomRef = useRef(true)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const navigate = useNavigate()
   // Log ids we have already acted on, persisted for the session.
   const handledLogIds = useRef<Set<string>>(loadHandledNavIds())
+
+  const handleScroll = useCallback(() => {
+    const element = scrollContainerRef.current
+    if (!element) return
+    const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+    // Sticky if within 90px of bottom
+    isAtBottomRef.current = distanceFromBottom < 90
+  }, [])
 
   const handleSendSpoken = useCallback(async (spokenPhrase: string) => {
     const cleanSpeech = spokenPhrase.trim()
@@ -77,6 +87,8 @@ export default function AgentActivityPanel() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
+    isAtBottomRef.current = true
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     setSending(true)
     await submitCommand(cleanSpeech)
     setSending(false)
@@ -177,15 +189,18 @@ export default function AgentActivityPanel() {
     }
   }, [])
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages only if user is already near the bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isAtBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [tasks])
 
   // Jump straight to the latest message whenever the panel is opened. Runs after
   // the slide-in animation/content mounts, so use a tick delay + instant scroll.
   useEffect(() => {
     if (!isPanelOpen) return
+    isAtBottomRef.current = true
     const id = setTimeout(() => {
       bottomRef.current?.scrollIntoView({ behavior: 'auto' })
     }, 120)
@@ -222,6 +237,8 @@ export default function AgentActivityPanel() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
+    isAtBottomRef.current = true
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     setSending(true)
     await submitCommand(text)
     setSending(false)
@@ -295,7 +312,11 @@ export default function AgentActivityPanel() {
         </div>
 
         {/* Chat thread */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-6"
+        >
           {sortedTasks.length === 0 ? (
             <EmptyState onChipClick={(text) => { setInput(text); setTimeout(() => document.getElementById('agent-input')?.focus(), 50) }} />
           ) : (
@@ -377,7 +398,7 @@ export default function AgentActivityPanel() {
 
 function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: string) => void }) {
   const { respondToDialog, cancelTask } = useAgentStore()
-  const [isStepsCollapsed, setIsStepsCollapsed] = useState(false)
+  const [isStepsCollapsed, setIsStepsCollapsed] = useState(true)
   const timeAgo = formatDistanceToNow(new Date(task.created_at), { addSuffix: true })
   const isActive = task.status === 'queued' || task.status === 'running'
 
