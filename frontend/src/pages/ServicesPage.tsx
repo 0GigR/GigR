@@ -19,7 +19,7 @@ import { useRadiusStore } from '@/store/radiusStore'
 import UserChip from '@/components/UserChip'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench
+  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench, ChevronDown
 } from 'lucide-react'
 import { MapExplorer } from '@/components/map/MapExplorer'
 import { ImageViewer } from '@/components/ImageViewer'
@@ -566,37 +566,16 @@ export default function ServicesPage() {
             <DialogTrigger asChild>
               <Button className="gigr-cta border-0"><Plus className="w-4 h-4 mr-2" /> New</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-md bg-background text-foreground max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editService ? 'Edit Service' : 'Create Service'}</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-3 py-2">
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-4">
-                    <PriceInput placeholder="Fixed Rate (Optional)" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
-                    <div>
-                      <div className="relative">
-                        <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">Service radius</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 mb-1.5">Or set a flexible price range:</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <PriceInput placeholder="Min Price (Optional)" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} />
-                      <PriceInput placeholder="Max Price (Optional)" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} />
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-1">Transparent prices are prioritized in search and by the AI agent.</p>
-                  </div>
-                </div>
 
                 {/* Category search & create */}
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Category *</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Category *</label>
                   {!formData.category_id ? (
-                    <div className="relative">
+                    <div className="relative mt-1">
                       <Input placeholder="Search or type a new category..." value={catSearch}
                         onChange={(e) => {
                           const val = e.target.value
@@ -611,7 +590,7 @@ export default function ServicesPage() {
                       {catSearch && catSearchResults.length > 0 && (
                         <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
                           {catSearchResults.map(cat => (
-                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm" onClick={() => {
+                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-sm" onClick={() => {
                               setFormData({...formData, category_id: cat.id})
                               setCatSearch(cat.name)
                               setCatSearchResults([])
@@ -631,8 +610,8 @@ export default function ServicesPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm bg-gray-100 px-3 py-1 rounded-full">{catSearch}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{catSearch}</span>
                       <Button size="sm" variant="ghost" onClick={() => { setFormData({...formData, category_id: ''}); setCatSearch('') }}>
                         <X className="w-4 h-4" />
                       </Button>
@@ -640,66 +619,108 @@ export default function ServicesPage() {
                   )}
                 </div>
 
-                {/* Image upload */}
-                <div>
-                  <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
-                    onChange={async e => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        const processed = await processImageFile(file)
-                        setImageFile(processed)
-                        setImagePreview(URL.createObjectURL(processed))
-                      }
-                    }}
-                  />
-                  {imagePreview ? (
-                    <div className="relative w-32 h-32">
-                      <img src={imagePreview} className="rounded-lg object-cover w-full h-full" />
-                      <X className="absolute top-1 right-1 h-4 w-4 bg-white rounded-full cursor-pointer" onClick={() => { setImageFile(null); setImagePreview(null) }} />
+                <div className="grid grid-cols-2 gap-3">
+                  <PriceInput placeholder="Fixed Rate (Optional)" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
+                  <div>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
                     </div>
-                  ) : (
-                    <Button variant="outline" onClick={() => fileRef.current?.click()} className="w-full">
-                      <ImagePlus className="w-4 h-4 mr-2" /> Add Photo (optional)
-                    </Button>
-                  )}
-                </div>
-
-                {/* Location */}
-                <div className="text-sm text-gray-500">
-                  {locLoading ? 'Getting location...' : locError ? (
-                    <span className="text-red-500 flex items-center gap-1"><X className="w-3 h-3 inline" />{locError} <Button size="sm" variant="ghost" onClick={refreshLoc}><RefreshCw className="w-3 h-3" /></Button></span>
-                  ) : address ? (
-                    <span className="flex items-center gap-1"><MapPin className="w-4 h-4 inline text-gray-500" /> {address}</span>
-                  ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
-                </div>
-
-                <div className="flex items-center gap-2 mt-2">
-                  <input 
-                    type="checkbox" 
-                    id="custom-location-service" 
-                    checked={useCustomLocation} 
-                    onChange={(e) => {
-                      setUseCustomLocation(e.target.checked)
-                      if (e.target.checked && !customLocation && (formData.latitude || latitude) && (formData.longitude || longitude)) {
-                        setCustomLocation({ lat: formData.latitude || latitude!, lng: formData.longitude || longitude! })
-                      }
-                    }} 
-                  />
-                  <label htmlFor="custom-location-service" className="text-sm font-medium">Use custom location (instead of current GPS)</label>
-                </div>
-                {useCustomLocation && customLocation && (
-                  <div className="mt-2">
-                    <LocationPicker 
-                      latitude={customLocation.lat} 
-                      longitude={customLocation.lng} 
-                      onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
-                    />
+                    <p className="text-[11px] text-gray-400 mt-0.5">Service radius</p>
                   </div>
-                )}
+                </div>
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
-                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
+                <Textarea rows={2} placeholder="Description (optional)" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+
+                {/* Collapsible: Advanced Pricing (Range) */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(formData.min_price || formData.max_price)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span>Price Range / Negotiation (Optional)</span>
+                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5 space-y-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <PriceInput placeholder="Min Price" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} />
+                      <PriceInput placeholder="Max Price" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} />
+                    </div>
+                    <p className="text-[11px] text-gray-400">Transparent prices are prioritized in search and by the AI agent.</p>
+                  </div>
+                </details>
+
+                {/* Collapsible: Photo Upload */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(imagePreview)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span>Service Photo (Optional)</span>
+                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5">
+                    <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
+                      onChange={async e => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const processed = await processImageFile(file)
+                          setImageFile(processed)
+                          setImagePreview(URL.createObjectURL(processed))
+                        }
+                      }}
+                    />
+                    {imagePreview ? (
+                      <div className="relative w-28 h-28 mx-auto">
+                        <img src={imagePreview} className="rounded-lg object-cover w-full h-full border border-gray-200 dark:border-gray-700" />
+                        <X className="absolute -top-2 -right-2 h-5 w-5 bg-red-600 text-white rounded-full p-0.5 cursor-pointer shadow" onClick={() => { setImageFile(null); setImagePreview(null) }} />
+                      </div>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="w-full">
+                        <ImagePlus className="w-4 h-4 mr-2" /> Select Photo
+                      </Button>
+                    )}
+                  </div>
+                </details>
+
+                {/* Collapsible: Location & Map Pin */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(useCustomLocation)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span className="truncate pr-2">Location: {address || (latitude ? `${latitude.toFixed(3)}, ${longitude?.toFixed(3)}` : 'Current GPS')}</span>
+                    <ChevronDown className="w-4 h-4 shrink-0 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5 space-y-2">
+                    <div className="text-gray-500">
+                      {locLoading ? 'Getting location...' : locError ? (
+                        <span className="text-red-500 flex items-center gap-1"><X className="w-3 h-3 inline" />{locError} <Button size="sm" variant="ghost" onClick={refreshLoc}><RefreshCw className="w-3 h-3" /></Button></span>
+                      ) : address ? (
+                        <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 inline text-gray-500" /> {address}</span>
+                      ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <input 
+                        type="checkbox" 
+                        id="custom-location-service" 
+                        checked={useCustomLocation} 
+                        onChange={(e) => {
+                          setUseCustomLocation(e.target.checked)
+                          if (e.target.checked && !customLocation && (formData.latitude || latitude) && (formData.longitude || longitude)) {
+                            setCustomLocation({ lat: formData.latitude || latitude!, lng: formData.longitude || longitude! })
+                          }
+                        }} 
+                      />
+                      <label htmlFor="custom-location-service" className="font-medium cursor-pointer">Set custom map location</label>
+                    </div>
+                    {useCustomLocation && customLocation && (
+                      <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                        <LocationPicker 
+                          latitude={customLocation.lat} 
+                          longitude={customLocation.lng} 
+                          onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
+                  <Button size="sm" onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
                     {isCreating || createMutation.isPending || updateMutation.isPending
                       ? (editService ? 'Saving...' : 'Creating...')
                       : (editService ? 'Save Changes' : 'Create')}

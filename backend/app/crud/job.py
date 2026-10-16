@@ -45,6 +45,7 @@ async def get_job_by_id(db: AsyncSession, job_id: UUID) -> Job | None:
 async def get_jobs_by_client(db: AsyncSession, client_id: UUID, limit: int = 20, offset: int = 0) -> List[Job]:
     result = await db.execute(
         select(Job)
+        .options(selectinload(Job.milestones))
         .where(Job.client_id == client_id)
         .order_by(Job.created_at.desc())
         .limit(limit)
@@ -55,6 +56,7 @@ async def get_jobs_by_client(db: AsyncSession, client_id: UUID, limit: int = 20,
 async def get_jobs_by_provider(db: AsyncSession, provider_id: UUID, limit: int = 20, offset: int = 0) -> List[Job]:
     result = await db.execute(
         select(Job)
+        .options(selectinload(Job.milestones))
         .where(Job.provider_id == provider_id)
         .order_by(Job.created_at.desc())
         .limit(limit)

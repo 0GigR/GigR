@@ -35,7 +35,7 @@ class Job(Base):
     messages = relationship("Message", back_populates="job")
     disputes = relationship("Dispute", back_populates="job")
     scope_amendments = relationship("ScopeAmendment", back_populates="job")
-    milestones = relationship("JobMilestone", back_populates="job", cascade="all, delete-orphan", order_by="JobMilestone.milestone_index")
+    milestones = relationship("JobMilestone", back_populates="job", cascade="all, delete-orphan", order_by="JobMilestone.milestone_index", lazy="selectin")
 
         # In addition to existing fields:
     contract_job_id = Column(String(50), unique=True, nullable=True)

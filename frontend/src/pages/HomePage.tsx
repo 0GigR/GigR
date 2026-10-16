@@ -167,8 +167,8 @@ export default function HomePage() {
           <input
             type="range"
             min="0"
-            max="50"
-            step="0.5"
+            max="500"
+            step="1"
             value={radiusKm}
             onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
             className="w-full accent-violet-600 cursor-pointer"

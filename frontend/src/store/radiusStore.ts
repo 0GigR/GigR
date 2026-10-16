@@ -30,7 +30,10 @@ export const RADIUS_PRESETS: RadiusPreset[] = [
   { value: 5, label: '5 km', detail: 'District' },
   { value: 10, label: '10 km', detail: 'City' },
   { value: 25, label: '25 km', detail: 'Metro' },
-  { value: 50, label: '50 km', detail: 'State' },
+  { value: 50, label: '50 km', detail: 'Region' },
+  { value: 100, label: '100 km', detail: 'State' },
+  { value: 250, label: '250 km', detail: 'Country' },
+  { value: 500, label: '500 km', detail: 'Continent' },
   { value: 0, label: 'All', detail: 'Worldwide' },
 ]
 
@@ -48,7 +51,10 @@ export function formatRadiusDescription(km: number): string {
   if (km <= 7) return 'Local district (~5 km)'
   if (km <= 15) return 'City area (~10 km)'
   if (km <= 35) return 'Metropolitan area (~25 km)'
-  return `Extended region (~${km} km)`
+  if (km <= 75) return 'Extended region (~50 km)'
+  if (km <= 175) return 'State / Province (~100 km)'
+  if (km <= 350) return 'National scope (~250 km)'
+  return `Continental scale (~${km} km)`
 }
 
 function readStoredRadius(): number {

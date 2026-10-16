@@ -78,7 +78,7 @@ async def create_job_route(
 ):
     job = await create_job(db, current_user.id, job_in)
     await db.commit()
-    await db.refresh(job)
+    job = (await get_job_by_id(db, job.id)) or job
 
     # Proactive agent: notify nearby providers with matching services (non-blocking)
     asyncio.create_task(_notify_matching_providers(str(job.id), current_user.display_name))
@@ -251,7 +251,7 @@ async def request_service(
             html_content=f"<p>{current_user.display_name} has requested your service <strong>{service.title}</strong>. <a href='{frontend_url}/dashboard/jobs/{job.id}'>View request</a></p>"
         )
 
-    return job
+    return (await get_job_by_id(db, job.id)) or job
 
 
 @router.post("/{job_id}/accept-request", response_model=JobOut)
@@ -270,7 +270,7 @@ async def accept_request(
 
     job.status = "assigned"
     await db.commit()
-    await db.refresh(job)
+    job = (await get_job_by_id(db, job.id)) or job
 
     # In‑app notification via chat
     from ....crud.message import create_message
@@ -495,7 +495,7 @@ async def assign_job_route(
 
     job = await assign_job(db, job, assign_data.provider_id)
     await db.commit()
-    await db.refresh(job)
+    job = (await get_job_by_id(db, job.id)) or job
 
     from ....crud.application import get_applications_for_job
     from ....crud.message import create_message
@@ -590,8 +590,7 @@ async def fund_job_route(
             type="payment",
         )
         await db.commit()
-        await db.refresh(job)
-        return job
+        return (await get_job_by_id(db, job_id)) or job
 
     # --- IDEMPOTENCY CHECK ---
     # If the escrow PDA already exists on-chain, the money is already escrowed.
@@ -703,8 +702,7 @@ async def release_job_route(
             type="payment",
         )
         await db.commit()
-        await db.refresh(job)
-        return job
+        return (await get_job_by_id(db, job_id)) or job
 
     # --- IDEMPOTENCY CHECK ---
     # If the escrow PDA no longer exists, the funds were already released.
@@ -765,7 +763,7 @@ async def submit_work_route(
     job.work_submitted_at = now
     job.auto_release_at = now + timedelta(seconds=settings.AUTO_RELEASE_SECONDS)
     await db.commit()
-    await db.refresh(job)
+    job = (await get_job_by_id(db, job.id)) or job
 
     # In-app + email notification to the client
     from ....crud.message import create_message
@@ -829,8 +827,7 @@ async def cancel_job_route(
             )
 
         await db.commit()
-        await db.refresh(job)
-        return job
+        return (await get_job_by_id(db, job.id)) or job
 
     # Post‑funding: only client can cancel on‑chain
     if job.client_id != current_user.id:
@@ -889,8 +886,8 @@ async def cancel_job_route(
 
     job = await update_job_status(db, job, "cancelled")
     await db.commit()
-    await db.refresh(job)
-    return job
+    return (await get_job_by_id(db, job.id)) or job
+
 
 
 # ── Milestone / Incremental Escrow Endpoints ─────────────────────────────────
