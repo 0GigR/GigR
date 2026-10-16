@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
+from ..core.phone import normalize_phone_number
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -9,9 +10,47 @@ class UserCreate(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=100)
     phone_number: Optional[str] = None
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def _normalize_phone(cls, v: Any) -> Any:
+        if not v:
+            return None
+        return normalize_phone_number(str(v))
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _clean_name(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _validate_password(cls, v: Any) -> Any:
+        if v is not None and isinstance(v, str) and len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # Accepts either email or normalized phone number
     password: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _clean_identifier(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            cleaned = v.strip()
+            if "@" in cleaned:
+                return cleaned.lower()
+            return cleaned
+        return v
 
 class UserGoogleAuth(BaseModel):
     # One of these. `token` = Google ID token (GoogleLogin button).
@@ -80,6 +119,13 @@ class UserUpdate(BaseModel):
     location_public: Optional[bool] = None
     bio: Optional[str] = Field(None, max_length=500)
     skills: Optional[List[str]] = None
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def _normalize_phone(cls, v: Any) -> Any:
+        if not v:
+            return None
+        return normalize_phone_number(str(v))
 
 class UserLocationUpdate(BaseModel):
     latitude: float
