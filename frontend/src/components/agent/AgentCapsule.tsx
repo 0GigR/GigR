@@ -97,7 +97,7 @@ export default function AgentCapsule() {
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
-                  className="w-1 h-1 rounded-full bg-violet-400 animate-bounce"
+                  className="w-1 h-1 rounded-full bg-white animate-bounce"
                   style={{ animationDelay: `${i * 120}ms` }}
                 />
               ))}
@@ -111,14 +111,14 @@ export default function AgentCapsule() {
         {/* Dialog state — action chips */}
         {mode === 'dialog' && options.length > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
-            <span className="text-[10px] font-mono text-violet-400 tracking-wider">[PENDING]</span>
+            <span className="text-[10px] font-mono text-gray-300 tracking-wider">[PENDING]</span>
             <div className="flex flex-wrap gap-1.5">
               {options.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => submitCommand(opt.value)}
-                  className="text-xs px-2.5 py-1 rounded-full bg-violet-700 hover:bg-violet-600 text-white transition-colors"
+                  className="text-xs px-2.5 py-1 rounded-full bg-white hover:bg-gray-200 text-black font-medium transition-colors"
                 >
                   {opt.label}
                 </button>

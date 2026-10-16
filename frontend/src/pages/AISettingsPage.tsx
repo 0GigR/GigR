@@ -183,7 +183,7 @@ export default function AISettingsPage() {
         <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
           <div className="space-y-1">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-violet-500" />
+              <Settings2 className="w-4 h-4 text-gray-700 dark:text-gray-300" />
               Sound Design
             </h3>
             <p className="text-sm text-gray-500 leading-relaxed">
@@ -200,15 +200,15 @@ export default function AISettingsPage() {
             }}
             className={cn(
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 mt-1',
-              aiSettings.soundEnabled ? 'bg-violet-600' : 'bg-gray-200 dark:bg-gray-700',
+              aiSettings.soundEnabled ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700',
             )}
             aria-pressed={aiSettings.soundEnabled}
             aria-label="Toggle agent sound effects"
           >
             <span
               className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                aiSettings.soundEnabled ? 'translate-x-6' : 'translate-x-1',
+                'inline-block h-4 w-4 transform rounded-full shadow transition-transform',
+                aiSettings.soundEnabled ? 'translate-x-6 bg-white dark:bg-black' : 'translate-x-1 bg-white',
               )}
             />
           </button>

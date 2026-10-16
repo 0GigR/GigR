@@ -1208,13 +1208,13 @@ export default function JobsPage() {
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 p-3 space-y-2 mt-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Shield className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+                <Shield className="w-4 h-4 text-gray-800 dark:text-gray-200" />
                 <span className="font-semibold text-xs tracking-wide">Milestone Escrows (Staged Payments)</span>
               </div>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs px-2"
+                className="h-7 text-xs px-2 border-gray-200 dark:border-gray-700"
                 onClick={() => setShowAddMilestone(!showAddMilestone)}
               >
                 {showAddMilestone ? 'Cancel' : '+ Add Milestone'}
@@ -1223,7 +1223,7 @@ export default function JobsPage() {
 
             {/* Add Milestone Form */}
             {showAddMilestone && (
-              <div className="p-2.5 rounded-lg border border-dashed border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-950/20 space-y-2">
+              <div className="p-2.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 space-y-2">
                 <Input
                   placeholder="Milestone title (e.g. Deposit & Materials, Phase 1)"
                   value={newMilestoneTitle}
@@ -1243,7 +1243,7 @@ export default function JobsPage() {
                 />
                 <Button
                   size="sm"
-                  className="w-full h-7 text-xs bg-violet-600 text-white hover:bg-violet-700"
+                  className="w-full h-7 text-xs bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
                   disabled={!newMilestoneTitle || !newMilestoneAmount || createMilestoneMutation.isPending}
                   onClick={() =>
                     createMilestoneMutation.mutate({
@@ -1284,7 +1284,7 @@ export default function JobsPage() {
                             [{m.status.toUpperCase()}]
                           </span>
                         </div>
-                        <p className="font-semibold text-violet-600 dark:text-violet-400">
+                        <p className="font-semibold text-gray-900 dark:text-gray-100">
                           {fmtPrice(parseFloat(m.amount))}
                         </p>
                       </div>
@@ -1294,7 +1294,7 @@ export default function JobsPage() {
                         {isClient && m.status === 'pending' && (
                           <Button
                             size="sm"
-                            className="h-7 text-xs bg-violet-600 hover:bg-violet-700 text-white"
+                            className="h-7 text-xs bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
                             onClick={() => fundMilestoneMutation.mutate(m.id)}
                             disabled={fundMilestoneMutation.isPending}
                           >
