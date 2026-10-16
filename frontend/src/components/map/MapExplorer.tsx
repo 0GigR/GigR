@@ -82,22 +82,22 @@ export function MapExplorer({
     <div className="space-y-3">
       {/* Agent Live Search & Overlay Banners */}
       {isAgentSearching && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-950/80 border border-violet-500/40 text-violet-200 text-xs animate-pulse">
-          <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping shrink-0" />
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-gray-200 text-xs animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
           <span className="font-semibold">[AGENT ACTIVE]</span>
           <span className="truncate">Scanning providers for &quot;{activeSearchQuery}&quot;</span>
         </div>
       )}
       {hasAgentResults && (
-        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-violet-900/40 border border-violet-500/30 text-violet-100 text-xs">
+        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-gray-100 text-xs">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-violet-300" />
-            <span className="font-semibold text-violet-300">[AGENT OVERLAY]</span>
+            <Sparkles className="w-3.5 h-3.5 text-gray-300" />
+            <span className="font-semibold text-white">[AGENT OVERLAY]</span>
             <span>{agentMarkers.length} match(es) from your recent agent search</span>
           </div>
           <button
             onClick={clearAgentPins}
-            className="text-xs text-violet-300 hover:text-white underline ml-2 cursor-pointer"
+            className="text-xs text-gray-400 hover:text-white underline ml-2 cursor-pointer"
           >
             Clear Overlay
           </button>
@@ -139,17 +139,17 @@ export function MapExplorer({
                 className="absolute inset-0 animate-rotate-beam"
                 style={{
                   background:
-                    'conic-gradient(from 0deg, transparent 0deg, rgba(139, 92, 246, 0.18) 30deg, transparent 60deg)',
+                    'conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.12) 30deg, transparent 60deg)',
                   transformOrigin: 'center center',
                 }}
               />
               {/* Crosshair centre reticle */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="relative w-12 h-12">
-                  <div className="absolute inset-0 rounded-full border border-violet-400/40" />
-                  <div className="absolute inset-3 rounded-full border border-violet-400/60" />
-                  <div className="absolute top-1/2 left-0 right-0 h-px bg-violet-400/40 -translate-y-1/2" />
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-violet-400/40 -translate-x-1/2" />
+                  <div className="absolute inset-0 rounded-full border border-white/30" />
+                  <div className="absolute inset-3 rounded-full border border-white/50" />
+                  <div className="absolute top-1/2 left-0 right-0 h-px bg-white/30 -translate-y-1/2" />
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-white/30 -translate-x-1/2" />
                 </div>
               </div>
             </div>
@@ -159,9 +159,9 @@ export function MapExplorer({
 
       {/* Target reticle HUD panel — shows when a pin or list item is active */}
       {reticlePoint && (
-        <div className="p-3 rounded-xl bg-gray-950/90 border border-violet-700/40 text-xs space-y-2">
+        <div className="p-3 rounded-xl bg-gray-950/95 border border-gray-800 text-xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="font-semibold text-violet-200 truncate max-w-[70%]">
+            <span className="font-semibold text-white truncate max-w-[70%]">
               {reticlePoint.title}
             </span>
             <button
@@ -184,7 +184,7 @@ export function MapExplorer({
           {reticlePoint.price !== undefined && (
             <p className="text-gray-400">
               Price:{' '}
-              <span className="text-violet-300 font-semibold">
+              <span className="text-gray-200 font-semibold">
                 {fmtPrice(reticlePoint.price)}
               </span>
             </p>
@@ -197,7 +197,7 @@ export function MapExplorer({
                 submitCommand(`Request ${reticlePoint.title}`)
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1 px-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-white text-[11px] font-mono transition-colors"
+              className="flex-1 py-1 px-2 rounded-lg bg-white hover:bg-gray-200 text-black text-[11px] font-mono font-medium transition-colors"
             >
               [REQUEST]
             </button>
@@ -210,7 +210,7 @@ export function MapExplorer({
                 )
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1 px-2 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-white text-[11px] font-mono transition-colors"
+              className="flex-1 py-1 px-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 text-[11px] font-mono transition-colors"
             >
               [AUTO-NEGOTIATE]
             </button>

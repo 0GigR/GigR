@@ -529,7 +529,7 @@ export default function ServicesPage() {
             aria-pressed={activeTab === value}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               activeTab === value
-                ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm'
+                ? 'bg-black text-white dark:bg-white dark:text-black shadow-sm'
                 : 'text-gray-500 hover:text-black dark:hover:text-white'
             }`}
           >
@@ -818,7 +818,7 @@ export default function ServicesPage() {
                       toast.error(extractError(err, 'Failed to sync service radius'))
                     }
                   }}
-                  className="text-xs h-8 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  className="text-xs h-8 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                   Sync all services to current radius ({radius > 0 ? `${radius} km` : '25 km'})

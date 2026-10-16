@@ -585,17 +585,17 @@ function NegotiationProgressCard({
 }: NegotiationProgressCardProps) {
   const ceiling = Math.max(originalPrice, targetPrice, counterPrice ?? 0) * 1.05
   const bars: Array<{ label: string; amount: number; colour: string }> = [
-    { label: 'Listing', amount: originalPrice, colour: 'bg-gray-500' },
-    { label: 'Target', amount: targetPrice, colour: 'bg-violet-500' },
+    { label: 'Listing', amount: originalPrice, colour: 'bg-gray-600' },
+    { label: 'Target', amount: targetPrice, colour: 'bg-white' },
   ]
   if (counterPrice !== undefined && counterPrice > 0) {
-    bars.push({ label: 'Counter', amount: counterPrice, colour: 'bg-indigo-400' })
+    bars.push({ label: 'Counter', amount: counterPrice, colour: 'bg-gray-400' })
   }
 
   return (
-    <div className="p-3 rounded-xl bg-gray-950/60 border border-indigo-800/40 space-y-3 max-w-[90%]">
+    <div className="p-3 rounded-xl bg-gray-950/90 border border-gray-800 space-y-3 max-w-[90%]">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-mono text-indigo-300 tracking-wider">
+        <span className="text-[10px] font-mono text-gray-300 tracking-wider">
           [NEGOTIATION] Round {round}
         </span>
         {savings > 0 && (
