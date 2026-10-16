@@ -39,7 +39,9 @@ async def update_my_location(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await update_user_location(db, current_user, loc.latitude, loc.longitude)
+    user = await update_user_location(
+        db, current_user, loc.latitude, loc.longitude, loc.sync_services_mode or "all"
+    )
     return user
 
 

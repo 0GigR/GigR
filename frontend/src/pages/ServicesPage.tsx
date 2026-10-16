@@ -403,7 +403,8 @@ export default function ServicesPage() {
   })
 
   const resetForm = () => {
-    setFormData({ category_id: '', title: '', description: '', price: '', min_price: '', max_price: '', latitude: 0, longitude: 0, radius_km: '5.0' })
+    const initialRadius = radius > 0 ? String(radius) : '10.0'
+    setFormData({ category_id: '', title: '', description: '', price: '', min_price: '', max_price: '', latitude: 0, longitude: 0, radius_km: initialRadius })
     setEditService(null)
     setImageFile(null)
     setImagePreview(null)
@@ -780,7 +781,29 @@ export default function ServicesPage() {
           </div>
         ) : (
           <div key="mine" className="animate-in fade-in duration-200">
-            <h2 className="text-lg font-semibold mb-4">My Services</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <h2 className="text-lg font-semibold">My Services</h2>
+              {processedMine.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const currentRadius = radius > 0 ? radius : 25
+                    try {
+                      await api.post('/services/my-services/sync-radius', { radius_km: currentRadius })
+                      queryClient.invalidateQueries({ queryKey: ['myServices'] })
+                      toast.success(`Updated all active services to ${currentRadius} km coverage radius`)
+                    } catch (err: any) {
+                      toast.error(extractError(err, 'Failed to sync service radius'))
+                    }
+                  }}
+                  className="text-xs h-8 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  Sync all services to current radius ({radius > 0 ? `${radius} km` : '25 km'})
+                </Button>
+              )}
+            </div>
             {myLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {[1,2].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
