@@ -84,3 +84,4 @@ class UserUpdate(BaseModel):
 class UserLocationUpdate(BaseModel):
     latitude: float
     longitude: float
+    sync_services_mode: Optional[str] = "all"  # "all", "none"

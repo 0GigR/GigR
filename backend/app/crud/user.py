@@ -187,23 +187,28 @@ async def delete_user(db: AsyncSession, user: User) -> None:
     await db.delete(user)
     await db.commit()
 
-async def update_user_location(db: AsyncSession, user: User, latitude: float, longitude: float) -> User:
+async def update_user_location(
+    db: AsyncSession,
+    user: User,
+    latitude: float,
+    longitude: float,
+    sync_services_mode: str = "all",
+) -> User:
     from sqlalchemy import text
     user.last_location = text(f"ST_SetSRID(ST_MakePoint({longitude}, {latitude}), 4326)")
     user.last_seen_at = text("NOW()")
     user.location_lat = latitude
     user.location_lng = longitude
 
-    # Keep the provider's listings with them. A service carried its own copy of
-    # the coordinates, so after moving, the pin stayed at the old neighbourhood
-    # forever and nearby clients stopped finding them.
-    from sqlalchemy import update as _update
-    from ..models.service import ServiceListing
-    await db.execute(
-        _update(ServiceListing)
-        .where(ServiceListing.provider_id == user.id)
-        .values(location=f"SRID=4326;POINT({longitude} {latitude})")
-    )
+    # Only sync provider's service listing coordinates if requested
+    if sync_services_mode == "all":
+        from sqlalchemy import update as _update
+        from ..models.service import ServiceListing
+        await db.execute(
+            _update(ServiceListing)
+            .where(ServiceListing.provider_id == user.id)
+            .values(location=f"SRID=4326;POINT({longitude} {latitude})")
+        )
     await db.commit()
     await db.refresh(user)
     return user
