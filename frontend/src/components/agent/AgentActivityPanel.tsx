@@ -881,11 +881,32 @@ function AgentAvatar() {
 
 function ServiceResultCard({ service, onRequest }: { service: any; onRequest: () => void }) {
   const [requested, setRequested] = useState(false)
+  const priceDisplay =
+    service.price_display ||
+    (service.price && Number(service.price) > 0
+      ? `₦${Number(service.price).toLocaleString()}`
+      : 'Negotiable')
+
   return (
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
         <p className="font-medium text-sm truncate">{service.title}</p>
-        <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5">₦{Number(service.price).toLocaleString()}</p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold">{priceDisplay}</p>
+          {service.distance_km != null && (
+            <span className="text-[11px] text-gray-400 font-mono">
+              {Number(service.distance_km).toFixed(1)} km
+            </span>
+          )}
+          {service.outside_radius && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-400 border border-amber-800/40 font-semibold">
+              [OUTSIDE RADIUS]
+            </span>
+          )}
+        </div>
+        {service.provider_name && (
+          <p className="text-[11px] text-gray-400 mt-0.5">by {service.provider_name}</p>
+        )}
         {service.description && (
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{service.description}</p>
         )}
@@ -911,11 +932,32 @@ function ServiceResultCard({ service, onRequest }: { service: any; onRequest: ()
 
 function JobResultCard({ job, onNavigate, onApply }: { job: any; onNavigate: (path: string) => void; onApply?: () => void }) {
   const [applied, setApplied] = useState(false)
+  const priceDisplay =
+    job.price_display ||
+    (job.price && Number(job.price) > 0
+      ? `₦${Number(job.price).toLocaleString()}`
+      : 'Negotiable')
+
   return (
     <div className="flex items-center justify-between gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 shadow-sm">
       <div className="min-w-0">
         <p className="font-medium text-sm truncate">{job.title}</p>
-        <p className="text-xs text-emerald-600 font-semibold mt-0.5">₦{Number(job.price).toLocaleString()}</p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <p className="text-xs text-emerald-600 font-semibold">{priceDisplay}</p>
+          {job.distance_km != null && (
+            <span className="text-[11px] text-gray-400 font-mono">
+              {Number(job.distance_km).toFixed(1)} km
+            </span>
+          )}
+          {job.outside_radius && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/40 text-amber-400 border border-amber-800/40 font-semibold">
+              [OUTSIDE RADIUS]
+            </span>
+          )}
+        </div>
+        {job.client_name && (
+          <p className="text-[11px] text-gray-400 mt-0.5">posted by {job.client_name}</p>
+        )}
         {job.description && (
           <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{job.description}</p>
         )}

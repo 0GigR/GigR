@@ -13,6 +13,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import api, { getToken } from '@/lib/api'
+import { useRadiusStore } from './radiusStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -245,9 +246,10 @@ export const useAgentStore = create<AgentState>()(
           }
 
           // /ai/command queues a task with session_id for multi-turn context
+          const currentRadiusKm = useRadiusStore.getState().radiusKm
           const { data } = await api.post<AgentTask>(
             '/ai/command',
-            { text, session_id: sessionId },
+            { text, session_id: sessionId, radius_km: currentRadiusKm },
             { timeout: 30000 }
           )
           set((s) => ({

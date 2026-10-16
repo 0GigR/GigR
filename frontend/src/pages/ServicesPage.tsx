@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
+import { useRadiusStore } from '@/store/radiusStore'
 import UserChip from '@/components/UserChip'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
@@ -127,7 +128,18 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           )}
         </div>
         <div className="flex justify-between items-center mt-2">
-          <span className="font-semibold text-black">{fmtPrice(parseFloat(service.price as string))}</span>
+          <span className="font-semibold text-black dark:text-white">
+            {(() => {
+              const p = service.price != null ? parseFloat(service.price as string) : null
+              const minP = service.min_price != null ? parseFloat(service.min_price as string) : null
+              const maxP = service.max_price != null ? parseFloat(service.max_price as string) : null
+              if (p && p > 0) return fmtPrice(p)
+              if (minP && maxP && minP > 0 && maxP > 0) return `${fmtPrice(minP)} – ${fmtPrice(maxP)}`
+              if (minP && minP > 0) return `From ${fmtPrice(minP)}`
+              if (maxP && maxP > 0) return `Up to ${fmtPrice(maxP)}`
+              return 'Negotiable'
+            })()}
+          </span>
           <span className="text-gray-400 text-xs">{service.radius_km} km radius</span>
         </div>
       </CardContent>
@@ -202,11 +214,8 @@ export default function ServicesPage() {
     }
   }, [searchParams])
   const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
-  // Search radius in KILOMETRES. This used to be a hardcoded 100000, and since
-  // the API takes km that disabled radius filtering entirely — "nearby" meant
-  // the whole planet. Shared with the map's radius selector so the list and the
-  // map always describe the same area.
-  const [radius, setRadius] = useState(10)
+  // Search radius connected to global radiusStore.
+  const { radiusKm: radius, setRadiusKm: setRadius } = useRadiusStore()
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
@@ -218,6 +227,7 @@ export default function ServicesPage() {
   
   const [formData, setFormData] = useState({
     category_id: '', title: '', description: '', price: '',
+    min_price: '', max_price: '',
     latitude: 0, longitude: 0, radius_km: '5.0',
   })
 
@@ -393,7 +403,7 @@ export default function ServicesPage() {
   })
 
   const resetForm = () => {
-    setFormData({ category_id: '', title: '', description: '', price: '', latitude: 0, longitude: 0, radius_km: '5.0' })
+    setFormData({ category_id: '', title: '', description: '', price: '', min_price: '', max_price: '', latitude: 0, longitude: 0, radius_km: '5.0' })
     setEditService(null)
     setImageFile(null)
     setImagePreview(null)
@@ -403,7 +413,7 @@ export default function ServicesPage() {
 
   const handleCreateOrUpdate = async () => {
     if (isCreating) return
-    if (!formData.category_id || !formData.title || !formData.price) return toast.error('Fill required fields')
+    if (!formData.category_id || !formData.title) return toast.error('Category and title are required')
     const finalLat = useCustomLocation && customLocation ? customLocation.lat : (formData.latitude || latitude)
     const finalLng = useCustomLocation && customLocation ? customLocation.lng : (formData.longitude || longitude)
     if (!finalLat || !finalLng) return toast.error('Location is required')
@@ -424,11 +434,13 @@ export default function ServicesPage() {
         try { imageUrl = await uploadFile(imageFile) } catch { return }
       }
 
-      const payload = {
+      const payload: any = {
         category_id: formData.category_id,
         title: formData.title,
         description: formData.description || undefined,
-        price: formData.price,
+        price: formData.price ? parseFloat(formData.price) : undefined,
+        min_price: formData.min_price ? parseFloat(formData.min_price) : undefined,
+        max_price: formData.max_price ? parseFloat(formData.max_price) : undefined,
         latitude: finalLat,
         longitude: finalLng,
         radius_km: formData.radius_km,
@@ -451,7 +463,9 @@ export default function ServicesPage() {
       category_id: service.category_id,
       title: service.title,
       description: service.description || '',
-      price: String(service.price),
+      price: service.price ? String(service.price) : '',
+      min_price: service.min_price ? String(service.min_price) : '',
+      max_price: service.max_price ? String(service.max_price) : '',
       latitude: service.latitude,
       longitude: service.longitude,
       radius_km: String(service.radius_km),
@@ -556,14 +570,24 @@ export default function ServicesPage() {
               <div className="space-y-4 py-4">
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
                 <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                <div className="grid grid-cols-2 gap-4">
-                  <PriceInput placeholder="Price *" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
-                  <div>
-                    <div className="relative">
-                      <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 gap-4">
+                    <PriceInput placeholder="Fixed Rate (Optional)" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
+                    <div>
+                      <div className="relative">
+                        <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Service radius</p>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">Service radius</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1.5">Or set a flexible price range:</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <PriceInput placeholder="Min Price (Optional)" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} />
+                      <PriceInput placeholder="Max Price (Optional)" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} />
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">Transparent prices are prioritized in search and by the AI agent.</p>
                   </div>
                 </div>
 

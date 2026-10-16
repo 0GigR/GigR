@@ -18,7 +18,7 @@ const OSM_FALLBACK_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-const RADIUS_CHOICES = [1, 5, 10, 25, 50]
+const RADIUS_CHOICES = [0.2, 0.5, 1, 5, 10, 25, 0]
 const CLUSTER_CELL_PX = 70
 
 const JOB_COLOR = '#2563eb'
@@ -554,18 +554,20 @@ export function NeighborhoodMap({
 
         {/* Search radius, drawn to scale so "nearby" is visible, not implied —
             and gently animated so the covered area reads as live. */}
-        <Circle
-          center={[latitude, longitude]}
-          radius={radius * 1000}
-          pathOptions={{
-            color: JOB_COLOR,
-            weight: 1.5,
-            opacity: 0.7,
-            fillColor: JOB_COLOR,
-            fillOpacity: 0.06,
-            className: 'gigr-radius-circle',
-          }}
-        />
+        {radius > 0 && (
+          <Circle
+            center={[latitude, longitude]}
+            radius={radius * 1000}
+            pathOptions={{
+              color: JOB_COLOR,
+              weight: 1.5,
+              opacity: 0.7,
+              fillColor: JOB_COLOR,
+              fillOpacity: 0.06,
+              className: 'gigr-radius-circle',
+            }}
+          />
+        )}
 
         <Marker position={[latitude, longitude]} icon={userLocationIcon} zIndexOffset={2000}>
           <Popup>You are here</Popup>
@@ -621,7 +623,7 @@ export function NeighborhoodMap({
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
-                  {km} km
+                  {km === 0 ? 'All' : km < 1 ? `${Math.round(km * 1000)}m` : `${km}km`}
                 </button>
               )
             })}

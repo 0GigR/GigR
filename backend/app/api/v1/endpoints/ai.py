@@ -631,7 +631,11 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                     break
 
     # Respect the distance the user asked for. If none nearby, gracefully widen to nationwide.
-    radius_km = params.get("radius_km") or 10.0
+    raw_radius = params.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 10.0)
+    radius_label = "Worldwide (no distance limit)" if is_unlimited else f"within {radius_km:g} km"
+
     distances: Dict[str, float] = {}
     within = []
     if user_lat and user_lng:
@@ -640,33 +644,51 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                 continue
             km = _haversine_km(user_lat, user_lng, float(service.latitude), float(service.longitude))
             distances[str(service.id)] = round(km, 1)
-            if km <= radius_km:
+            if is_unlimited or km <= radius_km:
                 within.append(service)
 
-        services.sort(key=lambda s: distances.get(str(s.id), 99999.0))
-        within.sort(key=lambda s: distances.get(str(s.id), 99999.0))
+        def _svc_rank_tuple(s):
+            # Prioritize listings with transparent pricing; penalize missing/unspecified rates to the end
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                pricing_tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                pricing_tier = 1
+            else:
+                pricing_tier = 2  # No prices listed -> ranked last
+            return (pricing_tier, distances.get(str(s.id), 99999.0))
+
+        services.sort(key=_svc_rank_tuple)
+        within.sort(key=_svc_rank_tuple)
 
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
-            f"Evaluating {len(services)} candidate provider(s) within {radius_km:g} km radius..."
+            f"Evaluating {len(services)} candidate provider(s) ({radius_label}), prioritizing transparent pricing..."
         )
 
     target_pool = within if (user_lat and user_lng and within) else services
     outside_radius_note = None
-    if user_lat and user_lng and not within and services:
+    if user_lat and user_lng and not is_unlimited and not within and services:
         nearest_distance = distances.get(str(services[0].id))
         distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
-        outside_radius_note = f"None within {radius_km:g} km, but found {len(services)} provider(s) further away{distance_label}"
+        outside_radius_note = f"None within your {radius_km:g} km radius. Found {len(services)} provider(s) outside your radius{distance_label}"
         await _log(
             db, task.id, "think",
-            f"No providers found within {radius_km:g} km. Widened search nationwide: showing nearest {len(services)} provider(s){distance_label}."
+            f"No providers found within your {radius_km:g} km radius. Widened search: recommending {len(services)} provider(s) outside your radius{distance_label}."
         )
 
-    if max_price:
-        filtered = [s for s in target_pool if float(s.price) <= max_price]
-    else:
-        filtered = target_pool
+    def _matches_budget(s):
+        if not max_price:
+            return True
+        p = float(s.price) if getattr(s, "price", None) is not None else None
+        min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+        effective_p = p if (p is not None and p > 0) else min_p
+        return effective_p is None or effective_p <= max_price
+
+    filtered = [s for s in target_pool if _matches_budget(s)]
 
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
@@ -683,23 +705,48 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
             for p in p_res.scalars().all():
                 providers_map[p.id] = p
 
-        service_cards = [
-            {
+        service_cards = []
+        for s in filtered[:5]:
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+
+            if p is not None and p > 0:
+                price_str = f"₦{p:,.0f}"
+            elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+                price_str = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+            elif min_p is not None and min_p > 0:
+                price_str = f"From ₦{min_p:,.0f}"
+            elif max_p is not None and max_p > 0:
+                price_str = f"Up to ₦{max_p:,.0f}"
+            else:
+                price_str = "Negotiable (Unlisted rate)"
+
+            dist_val = distances.get(str(s.id))
+            is_outside = bool(user_lat and user_lng and not is_unlimited and dist_val is not None and dist_val > radius_km)
+
+            service_cards.append({
                 "id": str(s.id),
                 "title": s.title,
-                "price": float(s.price),
+                "price": p or min_p or 0.0,
+                "min_price": min_p,
+                "max_price": max_p,
+                "price_display": price_str,
                 "description": s.description or "",
-                "distance_km": distances.get(str(s.id)),
+                "distance_km": dist_val,
+                "outside_radius": is_outside,
                 "latitude": float(s.latitude) if s.latitude is not None else None,
                 "longitude": float(s.longitude) if s.longitude is not None else None,
                 "provider_id": str(s.provider_id) if s.provider_id else None,
                 "provider_name": providers_map.get(s.provider_id).display_name if providers_map.get(s.provider_id) else None,
                 "provider_avatar": providers_map.get(s.provider_id).profile_image_url if providers_map.get(s.provider_id) else None,
-            }
-            for s in filtered[:5]
-        ]
+            })
+
         dialog_options = [
-            {"label": f"{s['title']} — ₦{s['price']:,.0f}", "action": f"select_service:{s['id']}"}
+            {
+                "label": f"{s['title']} — {s['price_display']}" + (f" ({s['distance_km']:g} km away, outside radius)" if s['outside_radius'] else ""),
+                "action": f"select_service:{s['id']}"
+            }
             for s in service_cards
         ]
         dialog_options.append({"label": "Post a job instead", "action": "post_job"})
@@ -725,9 +772,9 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                    })
         return {"found": True, "count": len(filtered), "services": service_cards}
     else:
-        closest = sorted(target_pool, key=lambda s: float(s.price))[:3]
+        closest = sorted(target_pool, key=lambda s: float(s.price or 0))[:3]
         if closest and max_price:
-            names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
+            names = [f"{s.title} — ₦{float(s.price or 0):,.0f}" for s in closest]
             await _log(db, task.id, "warning",
                        f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
 
@@ -764,33 +811,64 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     jobs = await search_jobs_by_text(db, query, limit=50)
     jobs = [j for j in jobs if j.client_id != task.user_id and j.status == "open"]
 
-    # Real proximity filter: compute Haversine distance from the searcher to each
-    # job that has a location. Keep those within 25 km (fall back to all if <3).
-    job_radius_km = params.get("radius_km") or 15.0
+    # Respect the distance the user asked for.
+    raw_radius = params.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    job_radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 15.0)
+    radius_label = "Worldwide (all regions)" if is_unlimited else f"within {job_radius_km:g} km"
+
+    distances: Dict[str, float] = {}
+    within = []
     if user_lat and user_lng:
-        with_distance = []
         for j in jobs:
             jlat, jlng = j.latitude, j.longitude
             if jlat is not None and jlng is not None:
                 d = _haversine_km(user_lat, user_lng, float(jlat), float(jlng))
-                if d <= job_radius_km:
-                    with_distance.append((d, j))
-        jobs = [j for _, j in sorted(with_distance, key=lambda x: x[0])]
+                distances[str(j.id)] = round(d, 1)
+                if is_unlimited or d <= job_radius_km:
+                    within.append(j)
+
+        def _job_rank_tuple(j):
+            p = float(j.price) if getattr(j, "price", None) is not None else None
+            min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+            max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                tier = 1
+            else:
+                tier = 2
+            return (tier, distances.get(str(j.id), 99999.0))
+
+        jobs.sort(key=_job_rank_tuple)
+        within.sort(key=_job_rank_tuple)
+
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
-            f"Scanning open gig postings matching '{query}' within {job_radius_km:g} km..."
+            f"Scanning open gig postings matching '{query}' ({radius_label}), prioritizing transparent rates..."
+        )
+
+    target_pool = within if (user_lat and user_lng and within) else jobs
+    outside_radius_note = None
+    if user_lat and user_lng and not is_unlimited and not within and jobs:
+        nearest_distance = distances.get(str(jobs[0].id))
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_radius_note = f"None within your {job_radius_km:g} km radius. Found {len(jobs)} job(s) outside your radius{distance_label}"
+        await _log(
+            db, task.id, "think",
+            f"No jobs found within your {job_radius_km:g} km radius. Widened search: recommending {len(jobs)} job(s) outside your radius{distance_label}."
         )
 
     if min_price:
-        filtered = [j for j in jobs if float(j.price) >= min_price]
+        filtered = [j for j in target_pool if (float(j.price or 0) >= min_price or float(j.max_price or 0) >= min_price)]
     else:
-        filtered = jobs
+        filtered = target_pool
 
     if settings.FEATURE_AGENT_REASONING_VISIBLE:
         await _log(
             db, task.id, "think",
-            f"Identified {len(jobs)} active job(s); {len(filtered)} meeting rate criteria."
+            f"Identified {len(target_pool)} candidate job(s); {len(filtered)} meeting rate criteria."
         )
 
     if filtered:
@@ -802,24 +880,53 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
             for c in c_res.scalars().all():
                 clients_map[c.id] = c
 
-        job_cards = [
-            {
+        job_cards = []
+        for j in filtered[:5]:
+            p = float(j.price) if getattr(j, "price", None) is not None else None
+            min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+            max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+
+            if p is not None and p > 0:
+                price_str = f"₦{p:,.0f}"
+            elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+                price_str = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+            elif min_p is not None and min_p > 0:
+                price_str = f"From ₦{min_p:,.0f}"
+            elif max_p is not None and max_p > 0:
+                price_str = f"Up to ₦{max_p:,.0f}"
+            else:
+                price_str = "Negotiable (Unlisted budget)"
+
+            dist_val = distances.get(str(j.id))
+            is_outside = bool(user_lat and user_lng and not is_unlimited and dist_val is not None and dist_val > job_radius_km)
+
+            job_cards.append({
                 "id": str(j.id),
                 "title": j.title,
-                "price": float(j.price),
-                "description": getattr(j, 'description', '') or "",
+                "price": p or min_p or 0.0,
+                "min_price": min_p,
+                "max_price": max_p,
+                "price_display": price_str,
+                "description": getattr(j, "description", "") or "",
+                "distance_km": dist_val,
+                "outside_radius": is_outside,
                 "latitude": float(j.latitude) if j.latitude is not None else None,
                 "longitude": float(j.longitude) if j.longitude is not None else None,
                 "client_id": str(j.client_id) if j.client_id else None,
                 "client_name": clients_map.get(j.client_id).display_name if clients_map.get(j.client_id) else None,
                 "client_avatar": clients_map.get(j.client_id).profile_image_url if clients_map.get(j.client_id) else None,
-            }
-            for j in filtered[:5]
-        ]
-        await _log(db, task.id, "success", f"Found {len(filtered)} open job(s) matching '{query}':",
+            })
+
+        found_msg = f"Found {len(filtered)} open job(s) matching '{query}'"
+        if outside_radius_note:
+            found_msg += f" ({outside_radius_note})"
+        found_msg += ":"
+
+        await _log(db, task.id, "success", found_msg,
                    data={
                        "render_type": "job_cards",
                        "jobs": job_cards,
+                       "outside_radius_note": outside_radius_note,
                    })
         return {"found": True, "count": len(filtered), "jobs": job_cards}
     else:
@@ -2041,10 +2148,11 @@ async def _execute_task(task_id: str):
                     parsed = await parse_command(task.command_text, memory=memory, session_history=session_history)
                     task.task_type = parsed.get("task_type", "generic")
 
-                    # Merge original params (like ai_negotiate_enabled, session_id) with parsed params
+                    # Merge original params (like ai_negotiate_enabled, session_id, radius_km) with parsed params
                     orig_params = task.params or {}
-                    new_params = parsed.get("params", {})
-                    task.params = {**orig_params, **new_params}
+                    new_params = parsed.get("params", {}) or {}
+                    non_null_new = {k: v for k, v in new_params.items() if v is not None}
+                    task.params = {**orig_params, **non_null_new}
 
                     logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
                     await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
@@ -2665,6 +2773,8 @@ async def submit_command(
     params = {}
     if request.session_id:
         params["session_id"] = request.session_id
+    if request.radius_km is not None:
+        params["radius_km"] = request.radius_km
 
     # For negotiate tasks, inject the user's negotiate preference
     if "ai_negotiate_enabled" in request.dict(exclude_unset=True):

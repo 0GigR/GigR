@@ -8,7 +8,7 @@ class ServiceCreate(BaseModel):
     category_id: UUID
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    price: Decimal
+    price: Optional[Decimal] = None
     min_price: Optional[Decimal] = None      # new
     max_price: Optional[Decimal] = None      # new
     latitude: float
@@ -21,6 +21,8 @@ class ServiceUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     price: Optional[Decimal] = None
+    min_price: Optional[Decimal] = None
+    max_price: Optional[Decimal] = None
     is_active: Optional[bool] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -33,7 +35,7 @@ class ServiceOut(BaseModel):
     category_id: UUID
     title: str
     description: Optional[str] = None
-    price: Decimal
+    price: Optional[Decimal] = None
     min_price: Optional[Decimal] = None      # new
     max_price: Optional[Decimal] = None      # new
     is_active: bool
