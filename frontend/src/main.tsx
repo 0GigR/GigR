@@ -16,8 +16,15 @@ initWebMCP()
 initCurrencyDisplay()
 
 // Automatically reload when a new deployment invalidates cached chunks
-window.addEventListener('vite:preloadError', () => {
-  window.location.reload()
+window.addEventListener('vite:preloadError', (event: any) => {
+  event?.preventDefault?.()
+  const reloadKey = 'gigr_preload_reload'
+  const lastReload = sessionStorage.getItem(reloadKey)
+  const now = Date.now()
+  if (!lastReload || now - parseInt(lastReload, 10) > 15000) {
+    sessionStorage.setItem(reloadKey, String(now))
+    window.location.reload()
+  }
 })
 
 // Wake up the backend (useful for serverless cold starts on Vercel hobby tier)

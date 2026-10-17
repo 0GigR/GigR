@@ -6,27 +6,54 @@ import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import DashboardLayout from '@/components/DashboardLayout'
 
-// ── Route-level code splitting ──────────────────────────────────────────────
-// Every page is loaded on demand via React.lazy. Leaflet (map pages), framer-motion
-// (landing/activity/messages) and heic2any (image upload pages) are only ever
-// imported from these lazy chunks, so they leave the initial bundle entirely.
-const LandingPage = lazy(() => import('@/pages/LandingPage'))
-const LoginPage = lazy(() => import('@/pages/LoginPage'))
-const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
-const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
-const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
-const HomePage = lazy(() => import('@/pages/HomePage'))
-const JobsPage = lazy(() => import('@/pages/JobsPage'))
-const ServicesPage = lazy(() => import('@/pages/ServicesPage'))
-const ServiceDetailPage = lazy(() => import('@/pages/ServiceDetailPage'))
-const ActivityPage = lazy(() => import('@/pages/ActivityPage'))
-const MessagesPage = lazy(() => import('@/pages/MessagesPage'))
-const DisputesPage = lazy(() => import('@/pages/DisputesPage'))
-const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
-const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'))
-const PublicProfilePage = lazy(() => import('@/pages/PublicProfilePage'))
-const AISettingsPage = lazy(() => import('@/pages/AISettingsPage'))
-const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
+// ── Route-level code splitting with resilient chunk reload ────────────────────
+// Every page is loaded on demand. When a new deployment is pushed to production,
+// older cached tabs might request stale chunk hashes. lazyWithRetry catches any
+// dynamic import failure and reloads the window to fetch the new deployment cleanly.
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>,
+) {
+  return lazy(async () => {
+    try {
+      return await factory()
+    } catch (err: any) {
+      const isChunkError =
+        err?.message?.includes('dynamically imported module') ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.message?.includes('Loading chunk') ||
+        err?.name === 'ChunkLoadError'
+
+      const reloadKey = 'gigr_chunk_reload'
+      const lastReload = sessionStorage.getItem(reloadKey)
+      const now = Date.now()
+
+      if (isChunkError && (!lastReload || now - parseInt(lastReload, 10) > 15000)) {
+        sessionStorage.setItem(reloadKey, String(now))
+        window.location.reload()
+        return new Promise<{ default: T }>(() => {})
+      }
+      throw err
+    }
+  })
+}
+
+const LandingPage = lazyWithRetry(() => import('@/pages/LandingPage'))
+const LoginPage = lazyWithRetry(() => import('@/pages/LoginPage'))
+const RegisterPage = lazyWithRetry(() => import('@/pages/RegisterPage'))
+const ForgotPasswordPage = lazyWithRetry(() => import('@/pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazyWithRetry(() => import('@/pages/ResetPasswordPage'))
+const HomePage = lazyWithRetry(() => import('@/pages/HomePage'))
+const JobsPage = lazyWithRetry(() => import('@/pages/JobsPage'))
+const ServicesPage = lazyWithRetry(() => import('@/pages/ServicesPage'))
+const ServiceDetailPage = lazyWithRetry(() => import('@/pages/ServiceDetailPage'))
+const ActivityPage = lazyWithRetry(() => import('@/pages/ActivityPage'))
+const MessagesPage = lazyWithRetry(() => import('@/pages/MessagesPage'))
+const DisputesPage = lazyWithRetry(() => import('@/pages/DisputesPage'))
+const ProfilePage = lazyWithRetry(() => import('@/pages/ProfilePage'))
+const AdminDashboard = lazyWithRetry(() => import('@/pages/AdminDashboard'))
+const PublicProfilePage = lazyWithRetry(() => import('@/pages/PublicProfilePage'))
+const AISettingsPage = lazyWithRetry(() => import('@/pages/AISettingsPage'))
+const NotFoundPage = lazyWithRetry(() => import('@/pages/NotFoundPage'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
