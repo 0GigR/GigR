@@ -51,7 +51,7 @@ _PAYOUT_ACCEPTED = {"PENDING", "PROCESSING", "SUCCESS"}
 def rail_for_job(job: Job) -> str:
     """Which rail holds this job's money.
 
-    Stored per job so flipping ``PAYMENT_RAIL`` never strands an escrow that was
+    Stored per job so switching rails never strands an escrow that was
     funded under the other rail. Jobs funded before the column existed carry a
     Solana ``escrow_address`` and no ``payment_rail``.
     """

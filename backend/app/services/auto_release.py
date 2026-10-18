@@ -27,7 +27,7 @@ from . import paypal_escrow
 logger = logging.getLogger(__name__)
 
 SCAN_INTERVAL = 60  # seconds
-# Solana rail only — unset when PAYMENT_RAIL=paypal
+# Solana rail only — unset when Solana is not configured
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 

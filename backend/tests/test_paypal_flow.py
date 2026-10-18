@@ -108,7 +108,7 @@ class FakePayPal:
 
 
 @pytest.fixture
-def fake_paypal(monkeypatch) -> FakePayPal:
+def fake_paypal(monkeypatch, client) -> FakePayPal:
     fake = FakePayPal()
     for name in ("create_order", "get_order", "capture_order", "refund_capture",
                  "create_payout", "verify_webhook"):
@@ -118,8 +118,9 @@ def fake_paypal(monkeypatch) -> FakePayPal:
         return 1600.0
 
     monkeypatch.setattr(paypal_escrow, "get_ngn_usd_rate", rate)
-    monkeypatch.setattr(settings, "PAYMENT_RAIL", "paypal")
     monkeypatch.setattr(settings, "PLATFORM_FEE_PERCENT", 0.0)
+    # The rail comes from the frontend build; these tests act as a PayPal frontend.
+    monkeypatch.setitem(client.headers, "X-Payment-Rail", "paypal")
     return fake
 
 

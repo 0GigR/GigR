@@ -136,7 +136,6 @@ SECRET_KEY=any-long-random-string
 ADMIN_SECRET=any-other-random-string
 FRONTEND_URL=http://localhost:5173
 
-PAYMENT_RAIL=paypal
 PAYPAL_ENV=sandbox
 PAYPAL_CLIENT_ID=...          # sandbox app credentials
 PAYPAL_CLIENT_SECRET=...
@@ -148,14 +147,14 @@ GROQ_API_KEYS=...             # free at console.groq.com — enables the agent +
 Everything else (Google sign-in, email, image uploads, push) is optional and the
 feature simply stays off without its keys. Tables are created/migrated on startup.
 
-### Switching between PayPal and Solana
+### Choosing PayPal or Solana
 
-Both rails run at once. The Solana / PayPal toggle in the app header sends an
-`X-Payment-Rail` header, and the backend handles each request on that rail. With
-PayPal selected no Solana UI appears (no wallet, USDC or cNFT badges); with Solana
-selected it is the original app. `PAYMENT_RAIL` in `.env` is just the default for
-visitors who haven't picked. Each job remembers the rail that funded it, so
-switching never strands money already in escrow.
+The rail is a frontend build setting: `VITE_PAYMENT_RAIL=paypal|solana` (default
+`solana`). The frontend sends it as `X-Payment-Rail` and the backend handles each
+request on that rail; the backend has no rail setting. With `paypal` no Solana UI
+appears (no wallet, USDC or cNFT badges); with `solana` it is the original app.
+Deploy the frontend twice to offer both against one backend. Each job remembers the
+rail that funded it.
 
 ### Tests
 
@@ -194,7 +193,7 @@ render.yaml                             one-click Render deploy
 
 **What was added for the hackathon** (the project existed before; PayPal + agentic commerce
 were added from Oct 1, 2026): PayPal Orders/Payments/Payouts/Webhooks escrow rail and
-payment ledger; the `PAYMENT_RAIL` switch with a rail-aware UI; agent
+payment ledger; the `VITE_PAYMENT_RAIL` frontend setting with a rail-aware UI; agent
 `prepare_escrow_payment`/`payment_status` tools and rail-aware WebMCP tools; the AI
 dispute arbiter with split resolutions; AG Grid ledger; PayPal-anchored vouches;
 Render blueprint; the `tests/unit` + `test_paypal_flow.py` suites.

@@ -52,7 +52,7 @@ async def _get_solana_account(pubkey: Pubkey) -> bool:
         pass
     return False
 
-# USDC Devnet mint (Solana rail only — unset when PAYMENT_RAIL=paypal)
+# USDC Devnet mint (Solana rail only — unset when Solana is not configured)
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 router = APIRouter()

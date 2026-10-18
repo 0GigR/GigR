@@ -30,7 +30,6 @@ jobs:
       # Dummy values — the smoke suite stubs external services, but app.main
       # parses some of these at import time, so they must be syntactically valid.
       # PayPal is replaced by an in-memory fake (tests/test_paypal_flow.py).
-      PAYMENT_RAIL: paypal
       GIGR_PROGRAM_ID: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
       SOLANA_RPC_URL: https://api.devnet.solana.com
       PLATFORM_KEYPAIR: "[]"

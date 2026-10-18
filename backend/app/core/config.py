@@ -1,19 +1,11 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 from typing import Optional
 
 
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = Field(..., env="DATABASE_URL")
-
-    # ── Payment rail ──────────────────────────────────────────────────────────
-    # The DEFAULT escrow rail, used when a caller hasn't picked one. Both rails run
-    # side by side: whichever has credentials configured is offered, and the
-    # frontend toggle sends the user's choice in the X-Payment-Rail header (see
-    # core/rail.py). Left empty it resolves to "solana" if the Solana settings are
-    # present (the original app), otherwise "paypal".
-    PAYMENT_RAIL: str = Field(default="", env="PAYMENT_RAIL")
 
     # ── PayPal (REST API v2 Orders + Payments + v1 Payouts + Webhooks) ────────
     # Create a sandbox REST app at https://developer.paypal.com/dashboard/applications
@@ -26,7 +18,7 @@ class Settings(BaseSettings):
     # Percentage of every released escrow that Gigr keeps (0 = no fee).
     PLATFORM_FEE_PERCENT: float = Field(default=0.0, env="PLATFORM_FEE_PERCENT")
 
-    # Solana (only required when PAYMENT_RAIL=solana — see _require_rail_config)
+    # Solana (optional: the Solana rail is offered when all five are set)
     GIGR_PROGRAM_ID: str = Field(default="", env=("GIGR_PROGRAM_ID", "BAROS_PROGRAM_ID"))
     SOLANA_RPC_URL: str = Field(default="", env="SOLANA_RPC_URL")
     PLATFORM_KEYPAIR: str = Field(default="", env="PLATFORM_KEYPAIR")
@@ -250,14 +242,6 @@ class Settings(BaseSettings):
             v = "https://" + v
         return v
 
-    @field_validator("PAYMENT_RAIL")
-    @classmethod
-    def _normalise_rail(cls, v: str) -> str:
-        v = (v or "").strip().lower()
-        if v not in ("", "paypal", "solana"):
-            raise ValueError("PAYMENT_RAIL must be 'paypal' or 'solana'")
-        return v
-
     @field_validator("PAYPAL_ENV")
     @classmethod
     def _normalise_paypal_env(cls, v: str) -> str:
@@ -265,30 +249,6 @@ class Settings(BaseSettings):
         if v not in ("sandbox", "live"):
             raise ValueError("PAYPAL_ENV must be 'sandbox' or 'live'")
         return v
-
-    @model_validator(mode="after")
-    def _require_rail_config(self) -> "Settings":
-        """Fail at boot — not at the first escrow — when the chosen rail is half-configured.
-
-        The PayPal rail is allowed to boot without credentials so the rest of the
-        app (browse, chat, AI) still runs; ``paypal_enabled`` tells the UI whether
-        checkout is actually available.
-        """
-        if not self.PAYMENT_RAIL:
-            self.PAYMENT_RAIL = "solana" if self.solana_enabled else "paypal"
-        if self.PAYMENT_RAIL == "solana":
-            missing = [
-                name for name in (
-                    "GIGR_PROGRAM_ID", "SOLANA_RPC_URL", "PLATFORM_KEYPAIR",
-                    "WALLET_ENCRYPTION_KEY", "USDC_MINT_DEVNET",
-                )
-                if not getattr(self, name)
-            ]
-            if missing:
-                raise ValueError(
-                    "PAYMENT_RAIL=solana requires these settings: " + ", ".join(missing)
-                )
-        return self
 
     @property
     def solana_enabled(self) -> bool:
@@ -301,13 +261,22 @@ class Settings(BaseSettings):
 
     @property
     def available_rails(self) -> list:
-        """Rails a caller may choose between. The default rail is always listed."""
+        """Rails a caller may choose between: each one whose settings are present."""
         rails = []
-        if self.solana_enabled or self.PAYMENT_RAIL == "solana":
+        if self.solana_enabled:
             rails.append("solana")
-        if self.paypal_enabled or self.PAYMENT_RAIL == "paypal":
+        if self.paypal_enabled:
             rails.append("paypal")
         return rails
+
+    @property
+    def default_rail(self) -> str:
+        """Rail for a request that doesn't say (webhooks, workers, old clients).
+
+        The rail is chosen by the frontend (``VITE_PAYMENT_RAIL``) and sent as
+        ``X-Payment-Rail``; there is deliberately no backend setting for it.
+        """
+        return "solana" if self.solana_enabled or not self.paypal_enabled else "paypal"
 
     @property
     def paypal_enabled(self) -> bool:

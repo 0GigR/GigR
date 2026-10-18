@@ -90,14 +90,22 @@ def make_provider(job: Job, email="pro@example.com") -> User:
 
 # ── rail resolution ──────────────────────────────────────────────────────────
 def test_rail_for_job(monkeypatch):
-    monkeypatch.setattr(settings, "PAYMENT_RAIL", "paypal")
+    from app.core import rail
+    monkeypatch.setattr(settings, "PAYPAL_CLIENT_ID", "id")
+    monkeypatch.setattr(settings, "PAYPAL_CLIENT_SECRET", "secret")
+    for name in ("GIGR_PROGRAM_ID", "SOLANA_RPC_URL", "PLATFORM_KEYPAIR",
+                 "WALLET_ENCRYPTION_KEY", "USDC_MINT_DEVNET"):
+        monkeypatch.setattr(settings, name, "x")
+    token = rail.set_request_rail("paypal")  # what the frontend's X-Payment-Rail does
     assert esc.rail_for_job(make_job()) == "paypal"
     assert esc.rail_for_job(make_job(payment_rail="solana")) == "solana"
     # funded on-chain before the column existed → stays on Solana even after the switch
     assert esc.rail_for_job(make_job(escrow_address="9xQe...pda")) == "solana"
     assert esc.rail_for_job(make_job(escrow_address="paypal:CAP1")) == "paypal"
-    monkeypatch.setattr(settings, "PAYMENT_RAIL", "solana")
+    rail.reset_request_rail(token)
+    token = rail.set_request_rail("solana")
     assert esc.rail_for_job(make_job()) == "solana"
+    rail.reset_request_rail(token)
 
 
 async def test_quote_amount_converts_naira_to_usd_cents():
