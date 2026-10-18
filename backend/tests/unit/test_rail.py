@@ -67,3 +67,30 @@ async def test_every_request_carries_the_rail_end_to_end(both_rails, monkeypatch
             "Access-Control-Request-Headers": "x-payment-rail,authorization"})
         assert pre.status_code == 200
         assert "x-payment-rail" in pre.headers["access-control-allow-headers"].lower()
+
+
+def test_agent_task_stamps_rail_without_a_column_default():
+    """The startup migration renders column defaults as SQL, so these must have none."""
+    from app.models.agent_task import AgentTask, _stamp_caller_context
+
+    for name in ("payment_rail", "frontend_origin"):
+        assert AgentTask.__table__.c[name].default is None
+
+    rail.adopt("paypal", "https://pay.example.com")
+    try:
+        task = AgentTask(user_id=None, command_text="x")
+        _stamp_caller_context(None, None, task)
+        assert (task.payment_rail, task.frontend_origin) == ("paypal", "https://pay.example.com")
+    finally:
+        rail.adopt(None, None)
+
+
+def test_no_column_in_the_schema_has_a_callable_default_the_migration_would_choke_on():
+    """Guard for the crash that took the backend down: ALTER TABLE ... DEFAULT '<function ...>'."""
+    from app.core.database import Base
+    import app.main  # noqa: F401  (imports every model)
+
+    bad = [f"{t.name}.{c.name}" for t in Base.metadata.tables.values() for c in t.columns
+           if c.default is not None and c.default.is_callable and not c.primary_key
+           and c.name in ("payment_rail", "frontend_origin")]
+    assert bad == []
