@@ -5,6 +5,9 @@ import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tansta
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
+import { useRail } from '@/lib/config'
+import { startPayPalCheckout, redirectToPayPal } from '@/lib/paypal'
+import { PaymentTimeline } from '@/components/PaymentTimeline'
 import { haversineKm } from '@/lib/geo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -412,11 +415,25 @@ export default function JobsPage() {
     onError: (err: any) => toast.error(extractError(err, 'Assign failed')),
   })
 
+  // Which rail funds escrow: PayPal approval redirect, or the on-chain Solana call.
+  const { isPayPal } = useRail()
+
   const fundMutation = useMutation({
     mutationFn: async (jobId: string) => {
+      if (isPayPal) {
+        // Create a PayPal order; the client approves it on PayPal, then returns
+        // to /dashboard/paypal/return where it's captured into escrow.
+        return { checkout: await startPayPalCheckout(jobId) }
+      }
       await api.post(`/jobs/${jobId}/fund`)
+      return { checkout: null }
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res?.checkout) {
+        toast.success('Opening PayPal to approve your payment…')
+        redirectToPayPal(res.checkout)
+        return
+      }
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Escrow funded on Solana!')
     },
@@ -441,8 +458,8 @@ export default function JobsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
-      toast.success('Vouch recorded – cNFT minting...')
-      setTimeout(() => {
+      toast.success(isPayPal ? 'Vouch recorded — verified by the PayPal payout.' : 'Vouch recorded – cNFT minting...')
+      if (!isPayPal) setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['jobs'] })
         queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
         toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
@@ -955,13 +972,13 @@ export default function JobsPage() {
             </Select>
             <Textarea placeholder="Describe what you want done." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
             <PriceInput placeholder="Price *" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
-            {/* Live NGN → USDC conversion hint (only when entering in Naira; the
+            {/* Live NGN → USD (USDC on Solana) conversion hint (only when entering in Naira; the
                 PriceInput already shows the ₦ equivalent in other currencies) */}
             {displayCode === 'NGN' && ngnRate && formData.price && parseFloat(formData.price) > 0 && (
               <p className="text-xs text-gray-500 -mt-2">
                 {fmtPrice(parseFloat(formData.price))} ≈{' '}
                 <span className="font-medium text-green-700">
-                  ${(parseFloat(formData.price) / ngnRate).toFixed(2)} USDC
+                  ${(parseFloat(formData.price) / ngnRate).toFixed(2)} {isPayPal ? 'USD via PayPal' : 'USDC'}
                 </span>
                 {' '}(rate: ₦{ngnRate.toFixed(0)}/USD)
               </p>
@@ -1054,7 +1071,8 @@ export default function JobsPage() {
             <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
               <p>Status: {statusBadge(contractRoomJob.status)}</p>
               <p>Price: {fmtPrice(parseFloat(contractRoomJob.price as string))}</p>
-              {contractRoomJob.escrow_address && <p className="text-xs text-green-600">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
+              {contractRoomJob.escrow_address && !contractRoomJob.escrow_address.startsWith('paypal:') && <p className="text-xs text-green-600">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
+              <PaymentTimeline jobId={contractRoomJob.id} />
               {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc(contractRoomJob.image_url!)} />}
             </div>
           )}
@@ -1192,9 +1210,13 @@ export default function JobsPage() {
         }
         description={
           confirmAction?.type === 'fund'
-            ? `Are you sure you want to fund "${confirmAction?.title}"? USDC will be locked in a smart contract.`
+            ? (isPayPal
+              ? `Fund "${confirmAction?.title}" through PayPal? You'll approve the payment on PayPal and it is held in escrow until you release it.`
+              : `Are you sure you want to fund "${confirmAction?.title}"? USDC will be locked in a smart contract.`)
             : confirmAction?.type === 'release'
-            ? `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`
+            ? (isPayPal
+              ? `Release payment for "${confirmAction?.title}"? The held funds will be sent to the provider's PayPal account.`
+              : `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`)
             : confirmAction?.type === 'accept'
             ? `Accept "${confirmAction?.title}"? The client can then fund the escrow.`
             : confirmAction?.type === 'cancel'

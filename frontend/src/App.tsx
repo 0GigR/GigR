@@ -26,6 +26,8 @@ const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard'))
 const PublicProfilePage = lazy(() => import('@/pages/PublicProfilePage'))
 const AISettingsPage = lazy(() => import('@/pages/AISettingsPage'))
+const PayPalReturnPage = lazy(() => import('@/pages/PayPalReturnPage'))
+const PaymentsPage = lazy(() => import('@/pages/PaymentsPage'))
 const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 const queryClient = new QueryClient({
@@ -100,6 +102,8 @@ function App() {
                 <Route path="services" element={<ServicesPage />} />
                 <Route path="services/:id" element={<ServiceDetailPage />} />
                 <Route path="activity" element={<ActivityPage />} />
+                <Route path="paypal/return" element={<PayPalReturnPage />} />
+                <Route path="payments" element={<PaymentsPage />} />
                 <Route path="messages" element={<MessagesPage />} />
                 <Route path="disputes" element={<DisputesPage />} />
                 <Route path="profile" element={<ProfilePage />} />

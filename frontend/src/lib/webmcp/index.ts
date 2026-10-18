@@ -72,6 +72,13 @@ export function initWebMCP(): void {
     api: adapter,
     currentUser,
     setDisplayCurrency: (code) => applyDisplayCurrency(code as CurrencyCode),
+    openUrl: (url) => {
+      try {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } catch {
+        /* popup blocked — the tool result still carries the link */
+      }
+    },
   })
 
   const registrar = createRegistrar({

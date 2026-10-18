@@ -1,4 +1,5 @@
 import { fmtPrice } from '@/store/currencyStore'
+import { vouchProof, VOUCH_TONE_CLASS } from '@/lib/vouch'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -333,8 +334,8 @@ export default function PublicProfilePage() {
                       <span className="text-gray-500">completed work</span>
                     )}
                     {v.cnf_nft_id && (
-                      <span className="ml-1.5 text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full border border-purple-200">
-                        cNFT on-chain
+                      <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full border ${VOUCH_TONE_CLASS[vouchProof(v.cnf_nft_id).tone]}`}>
+                        {vouchProof(v.cnf_nft_id).label}
                       </span>
                     )}
                   </div>

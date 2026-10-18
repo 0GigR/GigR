@@ -425,6 +425,13 @@ function DialogOptions({ options, onSelect }: {
 
   const handleClick = (action: string) => {
     if (selected) return
+    // "open_url:<link>" — e.g. the PayPal approval page the agent prepared. The
+    // human opens it themselves; the server never needs to hear about it (PayPal
+    // returns them to /dashboard/paypal/return, which captures the payment).
+    if (action.startsWith('open_url:')) {
+      window.location.assign(action.slice('open_url:'.length))
+      return
+    }
     setSelected(action)
     onSelect(action)
   }

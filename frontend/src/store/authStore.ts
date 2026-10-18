@@ -14,6 +14,8 @@ interface User {
   ai_enabled?: boolean
   location_public?: boolean
   permissions?: string[] | null
+  /** PayPal account released escrow is paid to (PayPal rail). */
+  paypal_email?: string | null
   /** Server-side UI preferences (onboarding dismissal and similar). */
   ui_settings?: Record<string, unknown> | null
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { vouchProof } from '@/lib/vouch'
 import { fmtPrice } from '@/store/currencyStore'
 import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
@@ -271,9 +272,13 @@ export default function HomePage() {
                         <AvatarFallback className="bg-black text-white text-xs">V</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">On‑chain vouch received</p>
+                        <p className="text-sm font-medium">
+                          {vouchProof(vouch.cnf_nft_id).tone === 'paypal' ? 'Verified vouch received' : 'On‑chain vouch received'}
+                        </p>
                         <p className="text-xs text-gray-500">
-                          cNFT: {vouch.cnf_nft_id?.slice(0, 10)}...
+                          {vouchProof(vouch.cnf_nft_id).tone === 'paypal'
+                            ? `PayPal payout ${vouch.cnf_nft_id?.slice(7, 17)}...`
+                            : `cNFT: ${vouch.cnf_nft_id?.slice(0, 10)}...`}
                         </p>
                       </div>
                     </div>

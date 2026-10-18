@@ -13,6 +13,7 @@ import PushPromptBanner from '@/components/PushPromptBanner'
 import LocationPromptBanner from '@/components/LocationPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
+import { useRail } from '@/lib/config'
 
 // Heavy/framer-motion widgets are lazy-loaded so they don't ship in the initial
 // bundle (the dashboard shell must stay light for fast first paint after login).
@@ -23,6 +24,7 @@ const AgentActivityPanel = lazy(() => import('@/components/agent/AgentActivityPa
 const CallReminderPrompt = lazy(() => import('@/components/agent/CallReminderPrompt'))
 const GlobalItemModal = lazy(() => import('@/components/GlobalItemModal'))
 import {
+  Receipt,
   LayoutDashboard,
   Briefcase,
   Wrench,
@@ -99,6 +101,7 @@ export default function DashboardLayout() {
 
   const isAdmin = user?.role === 'admin' || user?.role === 'superadmin'
   const aiEnabled = user?.ai_enabled !== false
+  const { isPayPal } = useRail()
 
   const handleRefresh = async () => {
     setIsRefreshing(true)
@@ -139,6 +142,7 @@ export default function DashboardLayout() {
     { to: '/dashboard/profile', icon: User, label: 'Profile' },
   ]
   const secondaryNav: NavItem[] = [
+    ...(isPayPal ? [{ to: '/dashboard/payments', icon: Receipt, label: 'Payments' }] : []),
     ...(hasDisputes ? [{ to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' }] : []),
     ...(aiEnabled ? [{ to: '/dashboard/ai-settings', icon: Bot, label: 'AI Settings' }] : []),
     ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),

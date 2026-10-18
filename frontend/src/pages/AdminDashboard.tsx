@@ -15,6 +15,9 @@ import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { processImageFile } from '@/lib/imageUtils'
+import { AiArbiterPanel } from '@/components/AiArbiterPanel'
+import { PaymentsLedger } from '@/components/PaymentsLedger'
+import { useRail } from '@/lib/config'
 
 // Cloudinary image upload
 async function uploadFile(file: File): Promise<string> {
@@ -40,6 +43,7 @@ export default function AdminDashboard() {
   const queryClient = useQueryClient()
   const [newAdminEmail, setNewAdminEmail] = useState('')
   const isSuperadmin = user?.role === 'superadmin'
+  const { isPayPal } = useRail()
 
   // Courtroom state
   const [selectedDispute, setSelectedDispute] = useState<any>(null)
@@ -345,6 +349,7 @@ export default function AdminDashboard() {
           {hasPerm('announce:manage') && <TabsTrigger value="announce">Announce</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Open Disputes</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="resolved">Resolved</TabsTrigger>}
+          {isPayPal && <TabsTrigger value="payments">Payments</TabsTrigger>}
           {hasAnyModeration && <TabsTrigger value="moderation">Moderation</TabsTrigger>}
           {isSuperadmin && <TabsTrigger value="admins">Admins</TabsTrigger>}
         </TabsList>
@@ -396,6 +401,14 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent className="text-sm space-y-2">
                 <p>{d.reason}</p>
+                {d.payment_rail === 'paypal' && (
+                  <AiArbiterPanel
+                    disputeId={d.id}
+                    recommendation={d.ai_recommendation}
+                    escrowedUsd={d.escrowed_usd}
+                    paymentState={d.payment_state}
+                  />
+                )}
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => {
                     setSelectedDispute(d)
@@ -414,6 +427,12 @@ export default function AdminDashboard() {
             </Card>
           ))}
         </TabsContent>
+
+        {isPayPal && (
+          <TabsContent value="payments" className="mt-6">
+            <PaymentsLedger scope="admin" />
+          </TabsContent>
+        )}
 
         <TabsContent value="resolved" className="mt-6">
           {isLoading ? <Skeleton className="h-24 w-full" /> : 

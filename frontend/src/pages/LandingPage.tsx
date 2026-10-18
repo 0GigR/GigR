@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
+import { useRail } from '@/lib/config'
 import { Navigate } from 'react-router-dom'
 
 // ---------- Subtle animated background blobs (silver/grey) ----------
@@ -125,6 +126,7 @@ function CategoryMarquee() {
 
 // ---------- Phone mockup of the live app ----------
 function PhoneMockup() {
+  const { isPayPal } = useRail()
   return (
     <div className="relative mx-auto mt-16 md:mt-20">
       {/* Floating proof chips (desktop) */}
@@ -134,7 +136,7 @@ function PhoneMockup() {
         </span>
         <div className="text-left">
           <p className="text-xs font-bold text-gray-900">Escrow protected</p>
-          <p className="text-[10px] text-gray-500">Funds locked on-chain</p>
+          <p className="text-[10px] text-gray-500">{isPayPal ? 'Funds held in PayPal escrow' : 'Funds locked on-chain'}</p>
         </div>
       </div>
       <div className="absolute -right-40 top-36 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_7s_ease-in-out_infinite]">
@@ -143,7 +145,7 @@ function PhoneMockup() {
         </span>
         <div className="text-left">
           <p className="text-xs font-bold text-gray-900">Vouch received</p>
-          <p className="text-[10px] text-gray-500">Minted as a cNFT</p>
+          <p className="text-[10px] text-gray-500">{isPayPal ? 'Verified by a PayPal payout' : 'Minted as a cNFT'}</p>
         </div>
       </div>
       <div className="absolute -left-32 bottom-20 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_8s_ease-in-out_infinite]">
@@ -241,6 +243,7 @@ export default function LandingPage() {
   const scale = useTransform(scrollYProgress, [0, 0.5], [0.9, 1])
   const opacity = useTransform(scrollYProgress, [0, 0.3], [0.5, 1])
 
+  const { isPayPal } = useRail()
   const { user } = useAuthStore()
   if (user) {
     return <Navigate to="/dashboard" replace />
@@ -278,14 +281,14 @@ export default function LandingPage() {
             Trust works
             <br />
             <TypewriterText
-              texts={['neighborly', 'on-chain', 'verifiably']}
+              texts={isPayPal ? ['neighborly', 'safely', 'verifiably'] : ['neighborly', 'on-chain', 'verifiably']}
               className="text-black"
             />
           </h1>
           <p className="mt-8 text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
             The first neighborhood marketplace where <strong className="text-gray-900">reputation is real</strong> and{' '}
-            <strong className="text-gray-900">payments are guaranteed</strong> — without anyone needing to understand
-            blockchain.
+            <strong className="text-gray-900">payments are guaranteed</strong> —{' '}
+            {isPayPal ? 'held in PayPal escrow and released by your AI assistant or you.' : 'without anyone needing to understand blockchain.'}
           </p>
           <div className="mt-12 flex gap-5 justify-center flex-wrap">
             <button
@@ -324,7 +327,7 @@ export default function LandingPage() {
         <div className="grid md:grid-cols-3 gap-10 md:gap-6 relative">
           {[
             { step: '01', icon: Users, title: 'Post a job or service', desc: 'Describe what you need. Set your price. Your neighborhood sees it.' },
-            { step: '02', icon: Shield, title: 'Fund escrow securely', desc: 'Payment is locked in a smart contract. No one can touch it.' },
+            { step: '02', icon: Shield, title: 'Fund escrow securely', desc: isPayPal ? 'You approve a PayPal payment. It is held in escrow — the provider is only paid when you release it.' : 'Payment is locked in a smart contract. No one can touch it.' },
             { step: '03', icon: Zap, title: 'Complete, get paid & reviewed', desc: 'Work done? Confirm and the money flows instantly. Then leave a vouch and a star rating.' },
           ].map((item, i) => (
             <motion.div
@@ -358,10 +361,10 @@ export default function LandingPage() {
         </h2>
         <div className="grid md:grid-cols-3 gap-10">
           <FeatureCard icon={Bot} title="AI Assistant" description="Speak or type — your AI agent finds services, posts jobs, and even negotiates on your behalf, hands-free." delay={0} />
-          <FeatureCard icon={Shield} title="Smart Contract Escrow" description="Funds locked in Solana programs. No one, not even Gigr, can touch them until the work is done." delay={0.1} />
-          <FeatureCard icon={Users} title="Social Vouching" description="Every vouch is a permanent, tamper-proof cNFT. Your reputation travels with you." delay={0.2} />
+          <FeatureCard icon={Shield} title={isPayPal ? 'PayPal-Backed Escrow' : 'Smart Contract Escrow'} description={isPayPal ? 'Payment is captured through PayPal and held until the work is done, then paid straight to the provider — or refunded if it goes wrong.' : 'Funds locked in Solana programs. No one, not even Gigr, can touch them until the work is done.'} delay={0.1} />
+          <FeatureCard icon={Users} title="Social Vouching" description={isPayPal ? 'Every vouch is tied to a real, paid-out PayPal transaction — reputation that cannot be faked.' : 'Every vouch is a permanent, tamper-proof cNFT. Your reputation travels with you.'} delay={0.2} />
           <FeatureCard icon={Star} title="Ratings & Reviews" description="Real 1–5 star reviews tied to real completed jobs. See exactly who trusts whom, and why." delay={0.3} />
-          <FeatureCard icon={Gavel} title="Community Disputes" description="Disagreements are settled by a jury of verified neighbors voting on-chain — not a faceless support desk." delay={0.4} />
+          <FeatureCard icon={Gavel} title="Community Disputes" description="Disagreements are settled by a jury of verified neighbors and a fair admin court — release, refund, or split the escrow." delay={0.4} />
           <FeatureCard icon={MapPin} title="Hyper-Local Map" description="See jobs and providers around you on a live neighborhood map. Trust starts close to home." delay={0.5} />
         </div>
       </section>
