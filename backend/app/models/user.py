@@ -17,6 +17,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)               # null for OAuth users
     google_id = Column(String(255), unique=True, nullable=True)
     display_name = Column(String(100), nullable=False)
+    username = Column(String(50), unique=True, nullable=True, index=True)
     phone_number = Column(String(20), nullable=True)
     profile_image_url = Column(String(500), nullable=True)
     is_verified = Column(Boolean, default=False)

@@ -26,6 +26,8 @@ class AgentLogOut(BaseModel):
 class AgentCommandRequest(BaseModel):
     """What the client sends when submitting a voice/text command."""
     text: str
+    session_id: Optional[str] = None
+    radius_km: Optional[float] = None
 
 
 class AgentTaskOut(BaseModel):

@@ -1,6 +1,7 @@
 import base58 #
 from uuid import UUID
 from typing import List, Optional
+from fastapi import HTTPException
 from sqlalchemy import select, update as sql_update, delete as sql_delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.user import User
@@ -14,8 +15,54 @@ async def get_user_by_id(db: AsyncSession, user_id: UUID) -> User | None:
     result = await db.execute(select(User).where(User.id == user_id))
     return result.scalar_one_or_none()
 
+async def get_user_by_id_or_username(db: AsyncSession, identifier: str) -> User | None:
+    if not identifier:
+        return None
+    cleaned = str(identifier).strip().lower()
+
+    # 1. Try UUID parse
+    try:
+        user_uuid = UUID(cleaned)
+        result = await db.execute(select(User).where(User.id == user_uuid))
+        matched = result.scalar_one_or_none()
+        if matched:
+            return matched
+    except (ValueError, AttributeError):
+        pass
+
+    # 2. Try explicit username column match
+    result = await db.execute(select(User).where(func.lower(User.username) == cleaned))
+    matched = result.scalar_one_or_none()
+    if matched:
+        return matched
+
+    # 3. Match slugified display_name (e.g. "janet" or "janet-okafor")
+    result = await db.execute(
+        select(User).where(
+            func.lower(func.replace(User.display_name, " ", "-")) == cleaned
+        )
+    )
+    matched = result.scalar_one_or_none()
+    if matched:
+        return matched
+
+    # 4. Direct case-insensitive display_name match
+    result = await db.execute(select(User).where(func.lower(User.display_name) == cleaned))
+    return result.scalar_one_or_none()
+
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    result = await db.execute(select(User).where(User.email == email))
+    if not email:
+        return None
+    cleaned = email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == cleaned))
+    return result.scalar_one_or_none()
+
+async def get_user_by_phone(db: AsyncSession, phone: str) -> User | None:
+    from ..core.phone import normalize_phone_number
+    normalized = normalize_phone_number(phone)
+    if not normalized:
+        return None
+    result = await db.execute(select(User).where(User.phone_number == normalized))
     return result.scalar_one_or_none()
 
 async def get_user_by_google_id(db: AsyncSession, google_id: str) -> User | None:
@@ -96,6 +143,26 @@ async def update_user(db: AsyncSession, user: User, user_in: UserUpdate) -> User
             merged = dict(getattr(user, field) or {})
             merged.update(value)
             setattr(user, field, merged)
+        elif field == "username":
+            if value:
+                cleaned_username = str(value).strip().lower().replace("@", "")
+                if cleaned_username:
+                    existing = await db.execute(
+                        select(User.id).where(
+                            func.lower(User.username) == cleaned_username,
+                            User.id != user.id,
+                        )
+                    )
+                    if existing.scalar_one_or_none():
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Username is already taken. Please choose another.",
+                        )
+                    setattr(user, field, cleaned_username)
+                else:
+                    setattr(user, field, None)
+            else:
+                setattr(user, field, None)
         else:
             setattr(user, field, value)
     await db.commit()
@@ -189,23 +256,28 @@ async def delete_user(db: AsyncSession, user: User) -> None:
     await db.delete(user)
     await db.commit()
 
-async def update_user_location(db: AsyncSession, user: User, latitude: float, longitude: float) -> User:
-    from sqlalchemy import text
-    user.last_location = text(f"ST_SetSRID(ST_MakePoint({longitude}, {latitude}), 4326)")
+async def update_user_location(
+    db: AsyncSession,
+    user: User,
+    latitude: float,
+    longitude: float,
+    sync_services_mode: str = "all",
+) -> User:
+    from ..core.geo import to_wkt_point
+    user.last_location = to_wkt_point(latitude, longitude)
     user.last_seen_at = text("NOW()")
     user.location_lat = latitude
     user.location_lng = longitude
 
-    # Keep the provider's listings with them. A service carried its own copy of
-    # the coordinates, so after moving, the pin stayed at the old neighbourhood
-    # forever and nearby clients stopped finding them.
-    from sqlalchemy import update as _update
-    from ..models.service import ServiceListing
-    await db.execute(
-        _update(ServiceListing)
-        .where(ServiceListing.provider_id == user.id)
-        .values(location=f"SRID=4326;POINT({longitude} {latitude})")
-    )
+    # Only sync provider's service listing coordinates if requested
+    if sync_services_mode == "all":
+        from sqlalchemy import update as _update
+        from ..core.geo import to_wkt_point
+        await db.execute(
+            _update(ServiceListing)
+            .where(ServiceListing.provider_id == user.id)
+            .values(location=to_wkt_point(latitude, longitude))
+        )
     await db.commit()
     await db.refresh(user)
     return user

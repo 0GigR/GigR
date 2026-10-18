@@ -21,8 +21,9 @@ import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
 import { symbolFor } from '@/lib/currency'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 
+import { Link } from 'react-router-dom'
 import {
-  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown
+  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown, Share2, ExternalLink
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { processImageFile } from '@/lib/imageUtils'
@@ -67,12 +68,21 @@ export default function ProfilePage() {
   const [showAllStats, setShowAllStats] = useState(false)
   const [editing, setEditing] = useState(false)
   const [displayName, setDisplayName] = useState(user?.display_name || '')
+  const [username, setUsername] = useState(user?.username || '')
   const [phoneNumber, setPhoneNumber] = useState(user?.phone_number || '')
   const [bio, setBio] = useState((user as any)?.bio || '')
   const [skillsInput, setSkillsInput] = useState('')
   const [skills, setSkills] = useState<string[]>((user as any)?.skills || [])
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
   const [profileImagePreview, setProfileImagePreview] = useState<string | null>(null)
+
+  const portfolioSlug =
+    user?.username ||
+    (user?.display_name
+      ? user.display_name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '')
+      : '') ||
+    user?.id ||
+    ''
 
   // Fetch all relevant data
   const { data: vouchesReceived, isLoading: vouchesLoading } = useQuery<Vouch[]>({
@@ -171,10 +181,18 @@ export default function ProfilePage() {
 
   // Update profile mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: { display_name?: string; phone_number?: string; profile_image_url?: string; bio?: string; skills?: string[] }) => {
+    mutationFn: async (data: {
+      display_name?: string
+      username?: string
+      phone_number?: string
+      profile_image_url?: string
+      bio?: string
+      skills?: string[]
+    }) => {
       await api.patch('/users/me', data)
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await fetchUser()
       queryClient.invalidateQueries({ queryKey: ['auth'] })
       toast.success('Profile updated')
       setEditing(false)
@@ -194,6 +212,7 @@ export default function ProfilePage() {
     }
     updateMutation.mutate({
       display_name: displayName,
+      username: username.trim().replace(/^@/, '') || undefined,
       phone_number: phoneNumber,
       profile_image_url: imageUrl,
       bio: bio || undefined,
@@ -209,9 +228,37 @@ export default function ProfilePage() {
   // Load Google Identity if available
   return (
     <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
-      <div>
-        <h1 className="text-3xl font-bold">Profile</h1>
-        <p className="text-gray-500">Your public identity and on‑chain reputation</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold">Profile</h1>
+          <p className="text-gray-500">Your public identity and on‑chain reputation</p>
+        </div>
+        {user?.id && (
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/profile/${encodeURIComponent(portfolioSlug)}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              View Public Portfolio
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const portfolioUrl = `${window.location.origin}/profile/${encodeURIComponent(portfolioSlug)}`
+                if (navigator.clipboard) {
+                  navigator.clipboard.writeText(portfolioUrl)
+                  toast.success('Public portfolio link copied to clipboard!')
+                }
+              }}
+              className="text-xs h-8 border-gray-200 dark:border-gray-700"
+            >
+              <Share2 className="w-3.5 h-3.5 mr-1.5" />
+              Copy Share Link
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Basic Info Card with Edit */}
@@ -255,16 +302,40 @@ export default function ProfilePage() {
             <div className="flex-1 space-y-3 w-full">
               {editing ? (
                 <>
-                  <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
-                  <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone" />
-                  <textarea
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="Write a short bio (max 500 chars)..."
-                    maxLength={500}
-                    rows={3}
-                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black resize-none"
-                  />
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Display Name</label>
+                    <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Username (Portfolio handle)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
+                      <Input
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                        placeholder="yourname"
+                        className="pl-7 font-mono text-sm"
+                      />
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Public portfolio: {window.location.origin}/profile/{username ? username : (user?.username || 'handle')}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Phone Number</label>
+                    <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Bio</label>
+                    <textarea
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
+                      placeholder="Write a short bio (max 500 chars)..."
+                      maxLength={500}
+                      rows={3}
+                      className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white resize-none"
+                    />
+                  </div>
                   <div>
                     <p className="text-xs text-gray-500 mb-1.5">Skills (press Enter to add)</p>
                     <div className="flex flex-wrap gap-1.5 mb-2">
@@ -300,8 +371,13 @@ export default function ProfilePage() {
                 </>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 text-lg font-semibold">
-                    {user?.display_name}
+                  <div className="flex flex-wrap items-center gap-2 text-lg font-semibold">
+                    <span>{user?.display_name}</span>
+                    {user?.username && (
+                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 font-normal">
+                        @{user.username}
+                      </span>
+                    )}
                     {user?.is_verified && <Badge className="bg-green-100 text-green-700">Verified</Badge>}
                   </div>
                   {(user as any)?.bio && (
@@ -321,7 +397,17 @@ export default function ProfilePage() {
                     )}
                     <div className="flex items-center gap-2"><Calendar className="w-4 h-4" /> Joined {user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Unknown'}</div>
                   </div>
-                  <Button variant="outline" onClick={() => setEditing(true)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDisplayName(user?.display_name || '')
+                      setUsername(user?.username || '')
+                      setPhoneNumber(user?.phone_number || '')
+                      setBio((user as any)?.bio || '')
+                      setSkills((user as any)?.skills || [])
+                      setEditing(true)
+                    }}
+                  >
                     Edit Profile
                   </Button>
                 </>

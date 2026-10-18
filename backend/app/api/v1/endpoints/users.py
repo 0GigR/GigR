@@ -39,7 +39,9 @@ async def update_my_location(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user = await update_user_location(db, current_user, loc.latitude, loc.longitude)
+    user = await update_user_location(
+        db, current_user, loc.latitude, loc.longitude, loc.sync_services_mode or "all"
+    )
     return user
 
 
@@ -89,7 +91,7 @@ async def get_my_balance(current_user: User = Depends(get_current_user)):
     usdc_balance = "0.00"
 
     try:
-        async with AsyncClient(settings.SOLANA_RPC_URL, timeout=30) as client:
+        async with AsyncClient(settings.SOLANA_RPC_URL, timeout=8) as client:
             # SOL balance
             sol_resp = await client.get_balance(pubkey)
             lamports = sol_resp.value
@@ -267,13 +269,25 @@ async def get_user_by_id_route(
     from sqlalchemy import func as sqlfunc
     from ....models.rating import Rating  # noqa: keep import local to avoid circular
     from ....models.vouch import Vouch  # noqa: keep import local to avoid circular
-    user = await get_user_by_id(db, user_id)
+    from ....crud.user import get_user_by_id_or_username
+    import re
+
+    user = await get_user_by_id_or_username(db, user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     out = PublicUserOut.model_validate(user)
     if not getattr(user, "location_public", False):
         out.location_lat = None
         out.location_lng = None
+
+    # Compute handle for clean portfolio URLs
+    if getattr(user, "username", None):
+        out.username = user.username
+        out.handle = user.username
+    else:
+        clean_slug = re.sub(r"[^\w\s-]", "", user.display_name or "").strip().lower()
+        clean_slug = re.sub(r"[-\s]+", "-", clean_slug)
+        out.handle = clean_slug or str(user.id)[:8]
     # Inject computed rating stats
     rating_res = await db.execute(
         select(sqlfunc.avg(Rating.score), sqlfunc.count(Rating.id))

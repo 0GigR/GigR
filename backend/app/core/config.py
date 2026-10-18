@@ -311,6 +311,42 @@ class Settings(BaseSettings):
             and self.PUBLIC_BASE_URL
         )
 
+    # ── Agent feature flags ────────────────────────────────────────────────────
+    # All FEATURE_AGENT_* flags are declared here and read ONLY from this module.
+    # Never call os.getenv or process.env for these elsewhere in the codebase.
+    # Default: all open (False only for premium/unbuilt features).
+    FEATURE_AGENT_MULTI_TURN: bool = Field(
+        default=True, env="FEATURE_AGENT_MULTI_TURN"
+    )
+    FEATURE_AGENT_REASONING_VISIBLE: bool = Field(
+        default=True, env="FEATURE_AGENT_REASONING_VISIBLE"
+    )
+    FEATURE_AGENT_MAP_RESULTS: bool = Field(
+        default=True, env="FEATURE_AGENT_MAP_RESULTS"
+    )
+    FEATURE_AGENT_PROACTIVE_SURFACE: bool = Field(
+        default=True, env="FEATURE_AGENT_PROACTIVE_SURFACE"
+    )
+    FEATURE_AGENT_STREAMING: bool = Field(
+        default=False, env="FEATURE_AGENT_STREAMING"
+    )
+    FEATURE_AGENT_SMART_APPLY: bool = Field(
+        default=False, env="FEATURE_AGENT_SMART_APPLY"
+    )
+    FEATURE_AGENT_PLANNER: bool = Field(
+        default=False, env="FEATURE_AGENT_PLANNER"
+    )
+    # Off by default. Flip to True when a payment subscription check is wired.
+    FEATURE_AGENT_PREMIUM: bool = Field(
+        default=False, env="FEATURE_AGENT_PREMIUM"
+    )
+    FEATURE_AGENT_GUARDRAILS: bool = Field(
+        default=True, env="FEATURE_AGENT_GUARDRAILS"
+    )
+    FEATURE_AGENT_COMMAND_PALETTE: bool = Field(
+        default=True, env="FEATURE_AGENT_COMMAND_PALETTE"
+    )
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

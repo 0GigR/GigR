@@ -13,13 +13,14 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import api, { getToken } from '@/lib/api'
+import { useRadiusStore } from './radiusStore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface AgentLog {
   id: string
   task_id: string
-  level: 'info' | 'action' | 'success' | 'error' | 'warning'
+  level: 'info' | 'action' | 'success' | 'error' | 'warning' | 'think'
   message: string
   data?: Record<string, unknown> | null
   created_at: string
@@ -29,7 +30,7 @@ export interface AgentTask {
   id: string
   user_id: string
   command_text: string
-  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'auto_reply' | 'apply_job' | 'proactive_hunt' | 'generic' | 'pending'
+  task_type: 'search' | 'find_service' | 'find_job' | 'negotiate' | 'post_job' | 'post_service' | 'navigate' | 'pay' | 'reply_message' | 'auto_reply' | 'apply_job' | 'proactive_hunt' | 'plan' | 'check_wallet' | 'generic' | 'pending'
   params: Record<string, unknown> | null
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_reply'
   result: Record<string, unknown> | null
@@ -53,6 +54,8 @@ export interface AISettings {
   voiceEnabled: boolean
   /** Speech recognition language code */
   voiceLanguage: string
+  /** Whether agent sound effects are played (Web Audio API synthesis) */
+  soundEnabled: boolean
 }
 
 // ─── Voice-call settings (server state: ai_settings.call + user.phone_number) ───
@@ -99,6 +102,7 @@ interface AgentState {
   /** Epoch ms of the last time the user opened the agent panel. */
   lastReadAt: number | null
   isPanelOpen: boolean
+  isPaletteOpen: boolean
   isSubmitting: boolean
 
   // AI engine info (fetched from backend)
@@ -136,6 +140,11 @@ interface AgentState {
   openPanel: () => void
   closePanel: () => void
   togglePanel: () => void
+
+  /** Open / close the command palette modal */
+  openPalette: () => void
+  closePalette: () => void
+  togglePalette: () => void
 
   /** Mark all tasks as read (clears badge) */
   markAllRead: () => void
@@ -176,6 +185,24 @@ interface AgentState {
   /** Close the agent push WS */
   disconnectAgentWS: () => void
 
+  /** Active multi-turn conversational session ID */
+  activeSessionId: string | null
+
+  /** Reset current multi-turn session */
+  resetSession: () => void
+
+  /** Learned memory key-values from the agent */
+  agentMemory: Record<string, unknown>
+
+  /** Fetch current agent memory from server */
+  fetchMemory: () => Promise<void>
+
+  /** Update agent memory keys */
+  updateMemory: (patch: Record<string, unknown>) => Promise<void>
+
+  /** Forget a specific agent memory key */
+  forgetMemoryKey: (key: string) => Promise<void>
+
   _agentWS: WebSocket | null
 }
 
@@ -185,6 +212,7 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   autonomyLevel: 'off',
   voiceEnabled: true,
   voiceLanguage: 'en-US',
+  soundEnabled: false,
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -196,10 +224,14 @@ export const useAgentStore = create<AgentState>()(
       unreadCount: 0,
       lastReadAt: null,
       isPanelOpen: false,
+      isPaletteOpen: false,
       isSubmitting: false,
       engineInfo: null,
       aiSettings: DEFAULT_AI_SETTINGS,
       voiceSettings: null,
+      activeSessionId: null,
+      resetSession: () => set({ activeSessionId: null }),
+      agentMemory: {},
       _pollTimer: null,
       _agentWS: null,
 
@@ -207,10 +239,19 @@ export const useAgentStore = create<AgentState>()(
         if (get().isSubmitting) return null
         set({ isSubmitting: true })
         try {
-          // /ai/command just queues a task (parsing happens in the background loop),
-          // but the DB round-trip can occasionally spike past the default 15s under
-          // load, so give it more headroom.
-          const { data } = await api.post<AgentTask>('/ai/command', { text }, { timeout: 30000 })
+          let sessionId = get().activeSessionId
+          if (!sessionId) {
+            sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+            set({ activeSessionId: sessionId })
+          }
+
+          // /ai/command queues a task with session_id for multi-turn context
+          const currentRadiusKm = useRadiusStore.getState().radiusKm
+          const { data } = await api.post<AgentTask>(
+            '/ai/command',
+            { text, session_id: sessionId, radius_km: currentRadiusKm },
+            { timeout: 30000 }
+          )
           set((s) => ({
             tasks: [data, ...s.tasks],
             unreadCount: s.unreadCount + 1,
@@ -283,6 +324,18 @@ export const useAgentStore = create<AgentState>()(
         else openPanel()
       },
 
+      openPalette: () => {
+        set({ isPaletteOpen: true })
+      },
+
+      closePalette: () => set({ isPaletteOpen: false }),
+
+      togglePalette: () => {
+        const { isPaletteOpen, openPalette, closePalette } = get()
+        if (isPaletteOpen) closePalette()
+        else openPalette()
+      },
+
       markAllRead: () => set({ unreadCount: 0, lastReadAt: Date.now() }),
 
       fetchEngineInfo: async () => {
@@ -311,9 +364,40 @@ export const useAgentStore = create<AgentState>()(
             if (Object.keys(merged).length > 0) {
               set((s) => ({ aiSettings: { ...s.aiSettings, ...merged } }))
             }
+            if (server.memory && typeof server.memory === 'object') {
+              set({ agentMemory: server.memory as Record<string, unknown> })
+            }
           }
         } catch {
           // Backend might not have AI settings endpoint yet
+        }
+      },
+
+      fetchMemory: async () => {
+        try {
+          const { data } = await api.get('/ai/settings')
+          const mem = (data?.ai_settings?.memory ?? {}) as Record<string, unknown>
+          set({ agentMemory: mem })
+        } catch (err) {
+          console.error('[agentStore] Failed to fetch memory:', err)
+        }
+      },
+
+      updateMemory: async (patch: Record<string, unknown>) => {
+        try {
+          const { data } = await api.patch('/ai/memory', patch)
+          set({ agentMemory: data.memory ?? {} })
+        } catch (err) {
+          console.error('[agentStore] Failed to update memory:', err)
+        }
+      },
+
+      forgetMemoryKey: async (key: string) => {
+        try {
+          const { data } = await api.delete(`/ai/memory/${encodeURIComponent(key)}`)
+          set({ agentMemory: data.memory ?? {} })
+        } catch (err) {
+          console.error('[agentStore] Failed to forget memory key:', err)
         }
       },
 

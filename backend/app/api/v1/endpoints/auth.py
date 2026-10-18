@@ -33,13 +33,27 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     existing = await get_user_by_email(db, user_in.email)
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+    if user_in.phone_number:
+        from ....crud.user import get_user_by_phone
+        existing_phone = await get_user_by_phone(db, user_in.phone_number)
+        if existing_phone:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone number already registered")
     user = await create_user(db, user_in)
     return user
 
 
 @router.post("/login")
 async def login(login_in: UserLogin, response: Response, db: AsyncSession = Depends(get_db)):
-    user = await get_user_by_email(db, login_in.email)
+    identifier = login_in.email.strip()
+    user = None
+    if "@" in identifier:
+        user = await get_user_by_email(db, identifier.lower())
+    else:
+        from ....crud.user import get_user_by_phone
+        user = await get_user_by_phone(db, identifier)
+        if not user:
+            user = await get_user_by_email(db, identifier.lower())
+
     if not user or not user.hashed_password:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if not verify_password(login_in.password, user.hashed_password):
@@ -306,24 +320,42 @@ async def logout(response: Response):
     return {"message": "Logged out"}
 
 
-# ── Forgot / reset password (non-OAuth users) ─────────────────────────────────
+def _send_auth_email_background(to_email: str, subject: str, html_body: str) -> None:
+    """Non-blocking email dispatch via Brevo."""
+    import asyncio
+    async def _send() -> None:
+        try:
+            from ....services.brevo_client import send_email
+            await send_email(to_email, subject, html_body)
+        except Exception as exc:
+            logger.warning("[auth] Background email failed for %s: %s", to_email, exc)
+    asyncio.create_task(_send())
+
+
+# ── Forgot / reset password (non-OAuth and OAuth users) ───────────────────────
 
 @router.post("/forgot-password")
 async def forgot_password(
     payload: dict = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Email a one-time reset link if the address belongs to an account with a
-    password. Always returns the same message — don't leak which emails exist."""
+    """Email a one-time reset link. Always returns a generic message to prevent
+    user enumeration."""
     from secrets import token_urlsafe
     import hashlib
     from ....models.password_reset_token import PasswordResetToken
-    from ....api.v1.endpoints import jobs as _jobs
 
-    email = str(payload.get("email") or "").strip().lower()
-    user = await get_user_by_email(db, email) if email else None
+    raw_identifier = str(payload.get("email") or "").strip()
+    user = None
+    if "@" in raw_identifier:
+        user = await get_user_by_email(db, raw_identifier.lower())
+    elif raw_identifier:
+        from ....crud.user import get_user_by_phone
+        user = await get_user_by_phone(db, raw_identifier)
+        if not user:
+            user = await get_user_by_email(db, raw_identifier.lower())
 
-    if user and user.hashed_password:
+    if user and user.email:
         token = token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         db.add(PasswordResetToken(
@@ -335,17 +367,38 @@ async def forgot_password(
 
         frontend_url = (settings.FRONTEND_URL or "https://gigrr.vercel.app").rstrip("/")
         reset_url = f"{frontend_url}/reset-password?token={token}"
-        html = f"""<!DOCTYPE html>
-<html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif">
-<div style="max-width:520px;margin:0 auto;padding:24px;background:#ffffff;border-radius:16px">
-<h1 style="font-size:20px;margin:0 0 12px;color:#111">Reset your Gigr password</h1>
-<p style="font-size:15px;line-height:1.6;color:#333;margin:0">We got a request to reset the password for your Gigr account. This link expires in <strong>1 hour</strong>.</p>
-<p style="margin:20px 0 0"><a href="{reset_url}" style="display:inline-block;background:#000;color:#fff;padding:12px 24px;border-radius:9999px;text-decoration:none;font-weight:600">Reset password</a></p>
-<p style="margin:24px 0 0;font-size:12px;color:#999">If you didn't request this, you can safely ignore this email.</p>
-</div></body></html>"""
-        _jobs._send_email_background(user.email, "Reset your Gigr password", html)
+        user_name = user.display_name or "there"
 
-    return {"message": "If that email is registered with a password, a reset link has been sent."}
+        is_oauth_account = not user.hashed_password
+        context_msg = (
+            "We received a request to set a password for your Gigr account (which was registered with Google). "
+            "Setting a password lets you sign in with both your email and password."
+            if is_oauth_account
+            else "We received a request to reset the password for your Gigr account."
+        )
+
+        html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111827">
+  <div style="max-width:560px;margin:32px auto;padding:32px 24px;background-color:#ffffff;border-radius:16px;border:1px solid #e5e7eb;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+    <div style="margin-bottom:24px">
+      <h2 style="font-size:22px;font-weight:700;margin:0 0 8px;color:#111827">Reset your Gigr password</h2>
+      <p style="font-size:14px;color:#4b5563;margin:0">Hello {user_name},</p>
+    </div>
+    <p style="font-size:14px;line-height:1.6;color:#374151;margin:0 0 20px">{context_msg} This link expires in <strong>1 hour</strong>.</p>
+    <div style="margin:28px 0;text-align:center">
+      <a href="{reset_url}" style="display:inline-block;background-color:#000000;color:#ffffff;padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:600;font-size:14px">Reset Password</a>
+    </div>
+    <p style="font-size:12px;color:#6b7280;line-height:1.5;margin:0 0 16px">If the button does not work, copy and paste this link into your browser:<br><span style="color:#2563eb;word-break:break-all">{reset_url}</span></p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 16px" />
+    <p style="margin:0;font-size:12px;color:#9ca3af">If you did not request a password reset, you can safely ignore this email.</p>
+  </div>
+</body>
+</html>"""
+        _send_auth_email_background(user.email, "Reset your Gigr password", html)
+
+    return {"message": "If that email or phone number belongs to an account, a reset link has been sent to the registered email."}
 
 
 @router.post("/reset-password")
@@ -373,11 +426,11 @@ async def reset_password(
         raise HTTPException(status_code=400, detail="Invalid or expired reset link")
 
     user = await get_user_by_id(db, row.user_id)
-    if not user or not user.hashed_password:
+    if not user:
         raise HTTPException(status_code=400, detail="Invalid reset link")
 
     user.hashed_password = get_password_hash(new_password)
     await db.delete(row)
     await db.commit()
-    return {"message": "Password updated. You can now sign in."}
+    return {"message": "Password updated successfully. You can now sign in."}
 
