@@ -6,6 +6,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { FundWalletButton } from '@/components/FundWalletButton'
+import { PayoutAccountCard } from '@/components/PayoutAccountCard'
+import { useRail } from '@/lib/config'
 import { CURRENCIES, type CurrencyCode } from '@/lib/currency'
 import { useCurrencyStore, applyDisplayCurrency } from '@/store/currencyStore'
 
@@ -14,6 +16,7 @@ type Step = {
   title: string
   desc: string
   isFundWallet: boolean
+  isLinkPayPal?: boolean
   isCurrency?: boolean
 }
 
@@ -63,6 +66,17 @@ const BASE_STEPS: Step[] = [
   },
 ]
 
+const LINK_PAYPAL_STEP: Step = {
+  icon: Wallet,
+  title: 'Link PayPal to get paid',
+  desc: 'Add the PayPal account you want payouts sent to. Clients can only fund your jobs once it is set.',
+  isFundWallet: false,
+  isLinkPayPal: true,
+}
+
+const PAYPAL_PAYMENTS_DESC =
+  'Clients pay into PayPal-backed escrow before work starts and it is only released to you when the job is done. No scams, no awkward chasing — disputes go to a real admin court.'
+
 const FUND_WALLET_STEP: Step = {
   icon: Wallet,
   title: 'Fund your wallet to get started',
@@ -104,13 +118,15 @@ export default function OnboardingOverlay() {
   const [currencyPick, setCurrencyPick] = useState<CurrencyCode>(() => useCurrencyStore.getState().code)
   const [currencySaving, setCurrencySaving] = useState(false)
 
+  const { isSolana, isPayPal } = useRail()
+
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
     queryFn: async () => {
       const { data } = await api.get('/users/me/wallet')
       return data
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && isSolana,
   })
 
   const { data: walletBalance } = useQuery<{ sol: number; usdc: string }>({
@@ -119,15 +135,20 @@ export default function OnboardingOverlay() {
       const { data } = await api.get('/users/me/balance')
       return data
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && isSolana,
   })
 
-  const needsFunding = walletBalance !== undefined && parseFloat(walletBalance.usdc ?? '0') === 0
+  const needsFunding = isSolana && walletBalance !== undefined && parseFloat(walletBalance.usdc ?? '0') === 0
+  const needsPayPal = isPayPal && !!user && !user.paypal_email
 
-  const STEPS = useMemo(
-    () => (needsFunding ? [...BASE_STEPS, FUND_WALLET_STEP] : BASE_STEPS),
-    [needsFunding],
-  )
+  const STEPS = useMemo(() => {
+    const base = isPayPal
+      ? BASE_STEPS.map((st) => (st.title === 'Payments are guaranteed' ? { ...st, desc: PAYPAL_PAYMENTS_DESC } : st))
+      : BASE_STEPS
+    if (needsFunding) return [...base, FUND_WALLET_STEP]
+    if (needsPayPal) return [...base, LINK_PAYPAL_STEP]
+    return base
+  }, [needsFunding, needsPayPal, isPayPal])
 
   // Show unless the user has permanently opted out; if they skipped without
   // opting out, wait 7 days before asking again. The server's record wins.
@@ -313,6 +334,12 @@ export default function OnboardingOverlay() {
                   />
                 ))}
               </div>
+
+              {current.isLinkPayPal && (
+                <div className="mb-4 text-left">
+                  <PayoutAccountCard />
+                </div>
+              )}
 
               {current.isFundWallet && walletInfo?.wallet_public_key && (
                 <div className="mb-4">

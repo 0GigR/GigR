@@ -90,7 +90,7 @@ api.interceptors.response.use(
       }
     }
 
-    // Handle generic 400 errors (Solana/USDC etc.) with a toast
+    // Handle generic 400 errors (payment, validation, etc.) with a toast
     if (error.response?.status === 400 && error.response?.data?.detail) {
       toast.error(error.response.data.detail)
     }

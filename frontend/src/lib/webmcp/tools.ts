@@ -35,6 +35,12 @@ export interface ToolDeps {
    * amounts are always Naira). Used by the `set_display_currency` tool.
    */
   setDisplayCurrency?: (code: string) => void | Promise<unknown>
+  /**
+   * Optional: open a URL for the human (e.g. the PayPal approval page) in a new
+   * tab. Best-effort — browsers may block popups outside a user gesture, so the
+   * tool always returns the URL too.
+   */
+  openUrl?: (url: string) => void
 }
 
 export interface WebMCPTool {
@@ -61,6 +67,7 @@ export const AUTHED_TOOL_NAMES: readonly string[] = [
   'get_job_status',
   'list_my_jobs',
   'fund_escrow',
+  'get_payment_status',
   'release_escrow',
   'accept_job',
   'send_message',
@@ -137,7 +144,7 @@ function jobLifecycle(job: any): Record<string, unknown> {
     open: 'Waiting for a provider. A client can assign a provider (status becomes assigned), or a provider applies and the client assigns.',
     requested: 'A client requested a provider\'s service listing. The provider can accept this job (status becomes assigned).',
     assigned: 'Provider hired. The client can now fund the escrow (status becomes funded).',
-    funded: 'Escrow is funded on Solana. The provider can submit work; the client can still release early.',
+    funded: 'Escrow is funded and held safely. The provider can submit work; the client can still release early.',
     in_progress: 'Provider submitted work. The client reviews — release the escrow or the job auto-releases when the review window ends.',
     completed: 'Payment released to the provider. The client can leave a rating/vouch.',
     cancelled: 'This job was cancelled.',
@@ -199,6 +206,20 @@ function getBrowserPosition(timeoutMs = 4000): Promise<{ latitude: number; longi
 export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
   const { api } = deps
   const me = () => deps.currentUser()
+
+  // Which payment rail the server runs (PayPal, or the legacy Solana escrow).
+  // Read once and remembered; if the config can't be read we assume the legacy
+  // direct-fund path, which the server answers with a clear error on PayPal.
+  let railPromise: Promise<'paypal' | 'solana'> | null = null
+  const getRail = (): Promise<'paypal' | 'solana'> => {
+    if (!railPromise) {
+      railPromise = api
+        .get<{ payment_rail?: string }>('/config/public')
+        .then((cfg) => (cfg?.payment_rail === 'paypal' ? ('paypal' as const) : ('solana' as const)))
+        .catch(() => 'solana' as const)
+    }
+    return railPromise
+  }
 
   return [
     {
@@ -363,7 +384,7 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     {
       name: 'get_provider_reputation',
       description:
-        'Look up a provider\'s verifiable trust record before hiring: star-rating average/count plus the number of on-chain verified vouches (cNFTs minted after completed jobs) and the most recent ones with their NFT/transaction ids. A strong on-chain vouch count is more trustworthy than a star rating alone.',
+        'Look up a provider\'s verifiable trust record before hiring: star-rating average/count plus the number of verified vouches (each tied to a completed, paid-out job — a PayPal payout, or a cNFT on the Solana rail) and the most recent ones with their proof ids. A strong verified-vouch count is more trustworthy than a star rating alone.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -400,7 +421,7 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
           recent_verified_vouches: recent,
           summary:
             `${profile.display_name} — ${profile.avg_rating != null ? profile.avg_rating + '/5 from ' + (profile.rating_count ?? 0) + ' rating(s)' : 'no star ratings yet'}, ` +
-            `${profile.vouches_received_count ?? 0} verified on-chain vouch(es).`,
+            `${profile.vouches_received_count ?? 0} verified vouch(es).`,
         })
       },
     },
@@ -585,7 +606,7 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     {
       name: 'fund_escrow',
       description:
-        'Fund a job\'s on-chain escrow on Solana (client side). This moves real USDC into the escrow smart contract for the job — a job must have a hired provider (status "assigned") before it can be funded. Only the job\'s client can call this. Funding is idempotent and safe to repeat.',
+        'Fund a job\'s escrow (client side). A job must have a hired provider (status "assigned") first. On the PayPal rail this PREPARES the payment: it creates the PayPal checkout and returns an approval_url that the HUMAN must open to approve the charge — you can never move money without them. Show the user the amount and the link, then call get_payment_status / get_job_status after they approve. Idempotent: calling again reuses the same open checkout.',
       inputSchema: {
         type: 'object',
         properties: { job_id: { type: 'string', description: 'Job UUID to fund. The user must be the client and the job must be assigned.' } },
@@ -603,6 +624,29 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
           if (job.status !== 'assigned' && job.status !== 'funded') {
             return fail(`Job "${job.title}" is currently "${job.status}". Escrow can only be funded once a provider is hired (status "assigned").`)
           }
+
+          if ((await getRail()) === 'paypal') {
+            if (job.status === 'funded') {
+              return ok({ job: summarizeJob(job), note: 'Escrow is already funded — the provider can work.' })
+            }
+            const checkout: any = await api.post(`/jobs/${input.job_id}/paypal/checkout`)
+            deps.openUrl?.(checkout.approval_url)
+            return {
+              ...ok({
+                job: summarizeJob(job),
+                requires_human_approval: true,
+                approval_url: checkout.approval_url,
+                amount: checkout.amount,
+                currency: checkout.currency,
+                order_id: checkout.order_id,
+              }),
+              note:
+                `PayPal checkout ready for ${checkout.amount} ${checkout.currency}. Nothing has been charged yet — ` +
+                'the user must open approval_url and approve the payment in PayPal. Once they do, the money is held in escrow ' +
+                'and the job becomes "funded". Check with get_payment_status.',
+            }
+          }
+
           const funded = await api.post(`/jobs/${input.job_id}/fund`)
           return {
             ...ok({ job: summarizeJob(funded as any) }),
@@ -615,9 +659,47 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     },
 
     {
+      name: 'get_payment_status',
+      description:
+        'Where the money for a job is right now (PayPal rail): unfunded, awaiting_approval (checkout created, human has not approved yet), escrowed (held), released (paid out to the provider) or refunded — with the PayPal transaction ids and a step-by-step ledger. Use after fund_escrow to confirm the human approved, and before release_escrow.',
+      inputSchema: {
+        type: 'object',
+        properties: { job_id: { type: 'string', description: 'Job UUID. The user must be its client or provider.' } },
+        required: ['job_id'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input: any) => {
+        const gate = requireUser(me())
+        if (!gate.ok) return gate
+        if (!input?.job_id) return fail('job_id is required.')
+        try {
+          const p: any = await api.get(`/jobs/${input.job_id}/payment`)
+          const guide: Record<string, string> = {
+            unfunded: 'Nothing is in escrow. If the job is assigned, call fund_escrow.',
+            awaiting_approval: 'A PayPal checkout exists but the client has not approved it yet. Ask them to open the approval link.',
+            escrowed: 'Funds are held safely in escrow. The client can release them when the work is done.',
+            released: 'The escrow was paid out to the provider.',
+            refunded: 'The escrow was refunded to the client.',
+          }
+          return ok({
+            state: p.state,
+            amount: p.amount,
+            currency: p.currency,
+            payout_status: p.payout_status,
+            paypal: { order_id: p.order_id, capture_id: p.capture_id, payout_batch_id: p.payout_batch_id },
+            ledger: p.events,
+            next_actions: guide[p.state] ?? '',
+          })
+        } catch (err) {
+          return fail(detailOf(err))
+        }
+      },
+    },
+
+    {
       name: 'release_escrow',
       description:
-        'Release a funded job\'s escrow so the provider gets paid (client side). The job must be funded or have work submitted (status funded/in_progress); if it is already completed the payment was already released. Only the job\'s client can call this. This is the final step of the trust loop — funds leave the escrow to the provider.',
+        'Release a funded job\'s escrow so the provider gets paid (client side). The job must be funded or have work submitted (status funded/in_progress); if it is already completed the payment was already released. Only the job\'s client can call this. This is the final step of the trust loop — funds leave the escrow and are paid to the provider (a PayPal payout on the PayPal rail). Irreversible: only call when the user has explicitly said the work is done and to pay.',
       inputSchema: {
         type: 'object',
         properties: { job_id: { type: 'string', description: 'Job UUID to release. The user must be the client.' } },
@@ -639,6 +721,7 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
           return {
             ...ok({ job: summarizeJob(released as any) }),
             note: 'Escrow released — the provider has been paid. Job marked completed.',
+            payout_status: (released as any).paypal_payout_status ?? null,
           }
         } catch (err) {
           return fail(detailOf(err))

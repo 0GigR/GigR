@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
+import { useRail } from '@/lib/config'
+import { startPayPalCheckout, redirectToPayPal } from '@/lib/paypal'
+import { PaymentTimeline } from '@/components/PaymentTimeline'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -447,11 +450,25 @@ export default function ActivityPage() {
   })
 
   // Mutations
+  // Which rail funds escrow: PayPal approval redirect, or the on-chain Solana call.
+  const { isPayPal } = useRail()
+
   const fundMutation = useMutation({
     mutationFn: async (jobId: string) => {
+      if (isPayPal) {
+        // Create a PayPal order; the client approves it on PayPal, then returns
+        // to /dashboard/paypal/return where it's captured into escrow.
+        return { checkout: await startPayPalCheckout(jobId) }
+      }
       await api.post(`/jobs/${jobId}/fund`)
+      return { checkout: null }
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res?.checkout) {
+        toast.success('Opening PayPal to approve your payment…')
+        redirectToPayPal(res.checkout)
+        return
+      }
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       toast.success('Escrow funded on Solana!')
     },
@@ -487,8 +504,8 @@ export default function ActivityPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['myActivity'] })
       queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
-      toast.success('Vouch recorded – cNFT minting...')
-      setTimeout(() => {
+      toast.success(isPayPal ? 'Vouch recorded — verified by the PayPal payout.' : 'Vouch recorded – cNFT minting...')
+      if (!isPayPal) setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ['myActivity'] })
         queryClient.invalidateQueries({ queryKey: ['myVouchJobIds'] })
         toast.success('cNFT minted on Solana!', { id: 'cnft-minted' })
@@ -865,11 +882,12 @@ export default function ActivityPage() {
                   contractRoomJob.price as string
                 ).toLocaleString()}
               </p>
-              {contractRoomJob.escrow_address && (
+              {contractRoomJob.escrow_address && !contractRoomJob.escrow_address.startsWith('paypal:') && (
                 <p className="text-xs text-green-600">
                   Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...
                 </p>
               )}
+              <PaymentTimeline jobId={contractRoomJob.id} />
               {contractRoomJob.image_url && (
                 <img
                   src={contractRoomJob.image_url}
@@ -1084,9 +1102,13 @@ export default function ActivityPage() {
         }
         description={
           confirmAction?.type === 'fund'
-            ? `Are you sure you want to fund "${confirmAction?.title}"? USDC will be locked in a smart contract.`
+            ? (isPayPal
+              ? `Fund "${confirmAction?.title}" through PayPal? You'll approve the payment on PayPal and it is held in escrow until you release it.`
+              : `Are you sure you want to fund "${confirmAction?.title}"? USDC will be locked in a smart contract.`)
             : confirmAction?.type === 'release'
-            ? `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`
+            ? (isPayPal
+              ? `Release payment for "${confirmAction?.title}"? The held funds will be sent to the provider's PayPal account.`
+              : `Are you sure you want to release payment for "${confirmAction?.title}"? This will transfer USDC to the provider.`)
             : confirmAction?.type === 'submit'
             ? `Submit work for "${confirmAction?.title}"? The client will be notified and auto-release will start.`
             : confirmAction?.type === 'dispute'

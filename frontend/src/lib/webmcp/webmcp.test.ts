@@ -314,6 +314,81 @@ describe('fund_escrow / release_escrow', () => {
   })
 })
 
+describe('PayPal rail: agentic checkout', () => {
+  const PAYPAL_CONFIG = { payment_rail: 'paypal' }
+  const CHECKOUT = { order_id: 'ORD1', approval_url: 'https://www.sandbox.paypal.com/checkoutnow?token=ORD1', amount: 9.38, currency: 'USD', status: 'PAYER_ACTION_REQUIRED' }
+
+  function paypalApi(job: unknown = ASSIGNED_JOB, extra: Record<string, unknown> = {}) {
+    return makeApi({
+      onGet: (url) => {
+        if (url === '/config/public') return PAYPAL_CONFIG
+        if (url in extra) return extra[url]
+        return job
+      },
+      onPost: (url) => (url.endsWith('/paypal/checkout') ? CHECKOUT : {}),
+    })
+  }
+
+  it('fund_escrow prepares a checkout and hands the human an approval link — it never charges', async () => {
+    const opened: string[] = []
+    const { api, calls } = paypalApi()
+    const tools = createGigrWebMCPTools({
+      api, currentUser: loggedInState(USER).currentUser, openUrl: (u) => opened.push(u),
+    })
+
+    const res = await run(tools, 'fund_escrow', { job_id: 'job-1' })
+    expect(res.ok).toBe(true)
+    expect(res.requires_human_approval).toBe(true)
+    expect(res.approval_url).toBe(CHECKOUT.approval_url)
+    expect(res.amount).toBe(9.38)
+    expect(res.note).toMatch(/nothing has been charged/i)
+    expect(opened).toEqual([CHECKOUT.approval_url])
+    // Only the checkout was created: no direct fund, no capture.
+    expect(calls.post.map((c) => c.url)).toEqual(['/jobs/job-1/paypal/checkout'])
+  })
+
+  it('fund_escrow is a no-op once the escrow is already funded', async () => {
+    const { api, calls } = paypalApi(jobWith({ status: 'funded' }))
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'fund_escrow', { job_id: 'job-1' })
+    expect(res.ok).toBe(true)
+    expect(res.requires_human_approval).toBeUndefined()
+    expect(calls.post).toHaveLength(0)
+  })
+
+  it('still refuses to fund an unhired job on the PayPal rail', async () => {
+    const { api, calls } = paypalApi(jobWith({ status: 'open', provider_id: null }))
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'fund_escrow', { job_id: 'job-1' })
+    expect(res.ok).toBe(false)
+    expect(calls.post).toHaveLength(0)
+  })
+
+  it('get_payment_status reports where the money is and what to do next', async () => {
+    const { api } = paypalApi(ASSIGNED_JOB, {
+      '/jobs/job-1/payment': {
+        state: 'escrowed', amount: 9.38, currency: 'USD', payout_status: null,
+        order_id: 'ORD1', capture_id: 'CAP1', payout_batch_id: null,
+        events: [{ kind: 'captured', paypal_id: 'CAP1', amount: 9.38 }],
+      },
+    })
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    const res = await run(tools, 'get_payment_status', { job_id: 'job-1' })
+    expect(res.ok).toBe(true)
+    expect(res.state).toBe('escrowed')
+    expect(res.paypal.capture_id).toBe('CAP1')
+    expect(res.next_actions).toMatch(/release/i)
+  })
+
+  it('get_payment_status requires a signed-in user and a job id', async () => {
+    const { api } = paypalApi()
+    const signedOut = createGigrWebMCPTools({ api, currentUser: () => null })
+    expect((await run(signedOut, 'get_payment_status', { job_id: 'job-1' })).ok).toBe(false)
+    const signedIn = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+    expect((await run(signedIn, 'get_payment_status', {})).error).toMatch(/job_id/)
+  })
+})
+
 describe('accept_job', () => {
   it('accepts a requested service request', async () => {
     const { api, calls } = makeApi({

@@ -12,6 +12,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/store/authStore'
 import { Clock, Coins, RefreshCw, Trash2 } from 'lucide-react'
 import { FundWalletButton } from '@/components/FundWalletButton'
+import { PayoutAccountCard } from '@/components/PayoutAccountCard'
+import { useRail } from '@/lib/config'
+import { vouchProof, VOUCH_TONE_CLASS } from '@/lib/vouch'
 import { Turnstile } from '@marsidev/react-turnstile'
 import { CurrencySelect } from '@/components/CurrencySelect'
 import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
@@ -101,12 +104,16 @@ export default function ProfilePage() {
     },
   })
 
+  // Which payment rail is live: wallet/USDC UI only exists on the Solana rail.
+  const { isSolana } = useRail()
+
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
     queryFn: async () => {
       const { data } = await api.get('/users/me/wallet')
       return data
     },
+    enabled: isSolana,
   })
 
   // Live USDC balance — polled every 10 seconds
@@ -118,6 +125,7 @@ export default function ProfilePage() {
     },
     refetchInterval: 10000,
     staleTime: 8000,
+    enabled: isSolana,
   })
 
   // NGN/USD exchange rate for balance display
@@ -327,12 +335,13 @@ export default function ProfilePage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Key className="w-5 h-5" /> Solana Wallet
+            <Key className="w-5 h-5" /> {isSolana ? 'Solana Wallet' : 'Payments'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-gray-500">Your invisible on‑chain identity — powered by Solana</p>
-          {walletInfo?.wallet_public_key ? (
+          {!isSolana && <PayoutAccountCard />}
+          {isSolana && <p className="text-sm text-gray-500">Your invisible on‑chain identity — powered by Solana</p>}
+          {isSolana && (walletInfo?.wallet_public_key ? (
             <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
               <code className="text-xs break-all">
                 {showWalletAddress
@@ -356,7 +365,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <Skeleton className="h-10 w-full" />
-          )}
+          ))}
 
           {/* Display currency — how prices across Gigr are shown */}
           <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
@@ -368,6 +377,7 @@ export default function ProfilePage() {
           </div>
 
           {/* Live balance — rendered in the display currency (Naira until rates load) */}
+          {isSolana && (<>
           <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
@@ -407,6 +417,7 @@ export default function ProfilePage() {
             )}
           </div>
           <p className="text-xs text-gray-400">Balance refreshes every 10 seconds • Devnet</p>
+          </>)}
         </CardContent>
       </Card>
 
@@ -538,8 +549,8 @@ export default function ProfilePage() {
                   <div>
                     <p className="text-sm text-gray-700">Vouched for completed work</p>
                     {v.cnf_nft_id && (
-                      <span className="text-xs bg-purple-50 text-purple-600 px-1.5 py-0.5 rounded-full border border-purple-200">
-                        cNFT on-chain
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border ${VOUCH_TONE_CLASS[vouchProof(v.cnf_nft_id).tone]}`}>
+                        {vouchProof(v.cnf_nft_id).label}
                       </span>
                     )}
                   </div>
@@ -628,11 +639,11 @@ function ActivityHistory({ userId }: { userId?: string }) {
     }))
     data.vouches_given?.forEach((v: any) => allItems.push({
       id: v.id, kind: 'vouches', title: `Vouch given for ${v.job_title || 'Job'}`, date: v.created_at,
-      detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
+      detail: vouchProof(v.cnf_nft_id).tone === 'pending' ? 'Pending' : vouchProof(v.cnf_nft_id).label
     }))
     data.vouches_received?.forEach((v: any) => allItems.push({
       id: v.id, kind: 'vouches', title: `Vouch received for ${v.job_title || 'Job'}`, date: v.created_at,
-      detail: v.cnf_nft_id ? 'cNFT minted' : 'Pending'
+      detail: vouchProof(v.cnf_nft_id).tone === 'pending' ? 'Pending' : vouchProof(v.cnf_nft_id).label
     }))
     data.disputes?.forEach((d: any) => allItems.push({
       id: d.id, kind: 'disputes', title: `Dispute on ${d.job_title || 'Job'}`, status: d.status,
