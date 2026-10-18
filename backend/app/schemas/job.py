@@ -1,13 +1,14 @@
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, model_validator
+from typing import Optional, List, Any
 from uuid import UUID
 from datetime import datetime
 from decimal import Decimal
+from .milestone import MilestoneOut
 
 class JobCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: str
-    price: Decimal
+    price: Optional[Decimal] = None
     min_price: Optional[Decimal] = None      # new
     max_price: Optional[Decimal] = None 
     latitude: Optional[float] = None
@@ -24,12 +25,13 @@ class JobOut(BaseModel):
     title: str
     description: str
     status: str
-    price: Decimal
+    price: Optional[Decimal] = None
     min_price: Optional[Decimal] = None      # new
     max_price: Optional[Decimal] = None      # new
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     escrow_address: Optional[str] = None
+    milestones: List[MilestoneOut] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
     image_url: Optional[str] = None
@@ -50,9 +52,26 @@ class JobOut(BaseModel):
     class Config:
         from_attributes = True
 
+    @model_validator(mode="before")
+    @classmethod
+    def _ensure_milestones_present(cls, data: Any) -> Any:
+        # Prevent MissingGreenlet error if ORM instance has unloaded/expired milestones relationship
+        if hasattr(data, "_sa_instance_state"):
+            from sqlalchemy.orm import attributes
+            try:
+                state = attributes.instance_state(data)
+                if "milestones" not in state.dict:
+                    state.dict["milestones"] = []
+                    state.expired_attributes.discard("milestones")
+            except Exception:
+                pass
+        return data
+
+
 class PayPalCapture(BaseModel):
     """Body of POST /jobs/{id}/paypal/capture — the order PayPal sent the payer back with."""
     order_id: str = Field(..., min_length=5, max_length=64)
+
 
 class JobStatusUpdate(BaseModel):
     status: str  # validated in endpoint

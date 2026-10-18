@@ -18,7 +18,7 @@ const OSM_FALLBACK_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 
-const RADIUS_CHOICES = [1, 5, 10, 25, 50]
+const RADIUS_CHOICES = [0.2, 0.5, 1, 5, 10, 25, 0]
 const CLUSTER_CELL_PX = 70
 
 const JOB_COLOR = '#2563eb'
@@ -60,6 +60,7 @@ function makeAvatarIcon(
   highlighted = false,
   /** Jobs are square, services are round — shape reads faster than colour. */
   shape: 'square' | 'round' = 'round',
+  bloomDelayMs = 0,
 ): L.DivIcon {
   const headRadius = shape === 'square' ? '10px' : '9999px'
   const innerRadius = shape === 'square' ? '7px' : '9999px'
@@ -74,7 +75,7 @@ function makeAvatarIcon(
     : ''
 
   const html = `
-    <div class="gigr-pin" style="position:relative;width:40px;height:52px;">
+    <div class="gigr-pin animate-pin-bloom" style="position:relative;width:40px;height:52px;animation-delay:${bloomDelayMs}ms;">
       ${halo}
       <div style="position:absolute;top:0;left:0;width:40px;height:40px;border-radius:${headRadius};background:${ring};box-shadow:0 3px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;${highlighted ? `outline:3px solid #fff;outline-offset:1px;` : ''}">
         <div style="width:32px;height:32px;border-radius:${innerRadius};overflow:hidden;background:#fff;">${inner}</div>
@@ -237,7 +238,7 @@ function ClusterLayer({
   if (mode === 'pins') {
     return (
       <>
-        {points.map((point) => {
+        {points.map((point, index) => {
           const owner = point.ownerId ? owners.get(point.ownerId) : undefined
           const highlighted = selectedId === point.id
           return (
@@ -250,6 +251,7 @@ function ClusterLayer({
                 point.kind === 'job' ? JOB_COLOR : SERVICE_COLOR,
                 highlighted,
                 point.kind === 'job' ? 'square' : 'round',
+                Math.min(index * 60, 600),
               )}
               zIndexOffset={highlighted ? 1000 : 0}
               eventHandlers={{ click: () => onSelect?.(point.kind, point.id) }}
@@ -552,18 +554,20 @@ export function NeighborhoodMap({
 
         {/* Search radius, drawn to scale so "nearby" is visible, not implied —
             and gently animated so the covered area reads as live. */}
-        <Circle
-          center={[latitude, longitude]}
-          radius={radius * 1000}
-          pathOptions={{
-            color: JOB_COLOR,
-            weight: 1.5,
-            opacity: 0.7,
-            fillColor: JOB_COLOR,
-            fillOpacity: 0.06,
-            className: 'gigr-radius-circle',
-          }}
-        />
+        {radius > 0 && (
+          <Circle
+            center={[latitude, longitude]}
+            radius={radius * 1000}
+            pathOptions={{
+              color: JOB_COLOR,
+              weight: 1.5,
+              opacity: 0.7,
+              fillColor: JOB_COLOR,
+              fillOpacity: 0.06,
+              className: 'gigr-radius-circle',
+            }}
+          />
+        )}
 
         <Marker position={[latitude, longitude]} icon={userLocationIcon} zIndexOffset={2000}>
           <Popup>You are here</Popup>
@@ -619,7 +623,7 @@ export function NeighborhoodMap({
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
-                  {km} km
+                  {km === 0 ? 'All' : km < 1 ? `${Math.round(km * 1000)}m` : `${km}km`}
                 </button>
               )
             })}

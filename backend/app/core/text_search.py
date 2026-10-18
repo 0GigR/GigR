@@ -19,14 +19,43 @@ SEARCH_STOPWORDS = {
 }
 
 
+SYNONYM_EXPANSIONS = {
+    "physiotherapy": ["massage", "therapy"],
+    "physiotherapist": ["massage", "masseuse"],
+    "masseuse": ["massage"],
+    "masseur": ["massage"],
+    "sore": ["massage"],
+    "hurts": ["massage"],
+    "insects": ["fumigation", "pest"],
+    "infestation": ["fumigation", "pest"],
+    "cockroach": ["fumigation"],
+    "bedbug": ["fumigation"],
+    "pest": ["fumigation"],
+    "leaking": ["plumber", "plumbing"],
+    "pipe": ["plumber", "plumbing"],
+    "tap": ["plumber", "plumbing"],
+    "drain": ["plumber", "plumbing"],
+    "generator": ["electrician", "mechanic"],
+    "wiring": ["electrician"],
+    "spark": ["electrician"],
+}
+
+
 def tokenize_query(query: str) -> list[str]:
-    """Split a free-text query into significant lowercase tokens.
+    """Split a free-text query into significant lowercase tokens with synonym expansion.
 
     Drops stopwords and tokens shorter than 3 chars. Returns [] if nothing
     meaningful remains (caller should fall back to raw-phrase matching).
     """
     words = re.split(r"\W+", (query or "").lower())
-    return [w for w in words if len(w) >= 3 and w not in SEARCH_STOPWORDS]
+    base_tokens = [w for w in words if len(w) >= 3 and w not in SEARCH_STOPWORDS]
+    expanded_tokens = list(base_tokens)
+    for word_token in base_tokens:
+        if word_token in SYNONYM_EXPANSIONS:
+            for syn in SYNONYM_EXPANSIONS[word_token]:
+                if syn not in expanded_tokens:
+                    expanded_tokens.append(syn)
+    return expanded_tokens
 
 
 def compact(text: str) -> str:

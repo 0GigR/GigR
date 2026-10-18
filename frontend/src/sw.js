@@ -1,24 +1,17 @@
-// sw.js — Gigr Service Worker v4 (force-update + cache clear + rich push)
+// ── Precache & clean outdated caches (workbox) ─────────
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching'
+precacheAndRoute(self.__WB_MANIFEST || [])
+cleanupOutdatedCaches()
 
 // ── Immediate activation on install ──────────────────────
 self.addEventListener('install', () => {
   self.skipWaiting()
 })
 
-// ── Take control of all tabs + wipe old caches on activate ──
+// ── Take control of all tabs on activate ────────────────
 self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    self.clients.claim().then(() => {
-      return self.caches.keys().then((keys) => {
-        return Promise.all(keys.map((key) => self.caches.delete(key)))
-      })
-    })
-  )
+  event.waitUntil(self.clients.claim())
 })
-
-// ── Precache (auto‑injected by vite‑plugin‑pwa) ─────────
-import { precacheAndRoute } from 'workbox-precaching'
-precacheAndRoute(self.__WB_MANIFEST || [])
 
 // ── Listen for skip‑waiting from client ──────────────────
 self.addEventListener('message', (event) => {

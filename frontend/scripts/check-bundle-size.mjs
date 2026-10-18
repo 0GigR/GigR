@@ -76,15 +76,20 @@ const sizes = files
   })
   .sort((a, b) => b.bytes - a.bytes)
 
+const html = readFileSync(new URL('index.html', DIST), 'utf8')
+const entryMatch = html.match(/<script type="module"[^>]*src="\/([^"]+\.js)"/)
+const entryChunk = entryMatch ? entryMatch[1].split('/').pop() : null
+
 function findChunk(name) {
   return sizes.find((s) => s.name === name)
 }
 
 function findLargestWithMarker(marker) {
-  // The library chunk is the largest chunk containing the marker. Page chunks
-  // may mention the library name in code but are far smaller.
+  // The library chunk is the largest chunk containing the marker, excluding
+  // the entry chunk itself (which lists all preload assets in its manifest).
   let best = null
   for (const s of sizes) {
+    if (s.name === entryChunk) continue
     if (s.content.includes(marker)) {
       if (!best || s.bytes > best.bytes) best = s
     }

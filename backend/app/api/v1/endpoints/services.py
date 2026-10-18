@@ -117,3 +117,26 @@ async def delete_service_route(
     await delete_service(db, service)       # CRUD function does flush
     await db.commit()
     return None
+
+
+from pydantic import BaseModel, Field
+
+class SyncRadiusIn(BaseModel):
+    radius_km: float = Field(..., ge=0, le=500, description="New coverage radius in km")
+
+@router.post("/my-services/sync-radius")
+async def sync_my_services_radius(
+    payload: SyncRadiusIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch-update the service radius on all active services of the current user."""
+    from sqlalchemy import update as _update
+    from ....models.service import ServiceListing
+    res = await db.execute(
+        _update(ServiceListing)
+        .where(ServiceListing.provider_id == current_user.id, ServiceListing.is_active == True)
+        .values(radius_km=payload.radius_km)
+    )
+    await db.commit()
+    return {"updated_count": res.rowcount or 0, "radius_km": payload.radius_km}

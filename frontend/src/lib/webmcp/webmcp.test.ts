@@ -270,6 +270,49 @@ describe('set_display_currency', () => {
   })
 })
 
+describe('navigate_to', () => {
+  it('calls the injected navigate callback with the validated path', async () => {
+    const { api } = makeApi()
+    const routes: string[] = []
+    const tools = createGigrWebMCPTools({
+      api,
+      currentUser: loggedInState(USER).currentUser,
+      navigate: (target) => { routes.push(target) },
+    })
+
+    const res = await run(tools, 'navigate_to', { path: '/dashboard/explore' })
+    expect(res.ok).toBe(true)
+    expect(res.navigated).toBe(true)
+    expect(routes).toEqual(['/dashboard/explore'])
+  })
+
+  it('rejects missing or non-slash paths', async () => {
+    const { api } = makeApi()
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+
+    const emptyRes = await run(tools, 'navigate_to', { path: '' })
+    expect(emptyRes.ok).toBe(false)
+
+    const invalidRes = await run(tools, 'navigate_to', { path: 'relative/path' })
+    expect(invalidRes.ok).toBe(false)
+    expect(invalidRes.error).toMatch(/start with "\/"/i)
+  })
+})
+
+describe('scroll_into_view', () => {
+  it('rejects empty selectors and gracefully handles unmatched elements', async () => {
+    const { api } = makeApi()
+    const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })
+
+    const emptyRes = await run(tools, 'scroll_into_view', { selector: '' })
+    expect(emptyRes.ok).toBe(false)
+
+    const unmatchedRes = await run(tools, 'scroll_into_view', { selector: '#non-existent-element-xyz' })
+    expect(unmatchedRes.ok).toBe(true)
+    expect(unmatchedRes.scrolled).toBe(false)
+  })
+})
+
 describe('fund_escrow / release_escrow', () => {
   it('funds only an assigned (hired) job', async () => {
     const { api, calls } = makeApi({

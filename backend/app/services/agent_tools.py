@@ -86,10 +86,27 @@ def _trim(text: Optional[str], limit: int = _DESC_CHARS) -> str:
 
 
 def _service_card(service: ServiceListing) -> Dict[str, Any]:
+    p = float(service.price) if getattr(service, "price", None) is not None else None
+    min_p = float(service.min_price) if getattr(service, "min_price", None) is not None else None
+    max_p = float(service.max_price) if getattr(service, "max_price", None) is not None else None
+    if p is not None and p > 0:
+        price_display = f"₦{p:,.0f}"
+    elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+        price_display = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+    elif min_p is not None and min_p > 0:
+        price_display = f"From ₦{min_p:,.0f}"
+    elif max_p is not None and max_p > 0:
+        price_display = f"Up to ₦{max_p:,.0f}"
+    else:
+        price_display = "Negotiable"
+
     return {
         "id": str(service.id),
         "title": service.title,
-        "price": float(service.price),
+        "price": p or min_p or 0.0,
+        "min_price": min_p,
+        "max_price": max_p,
+        "price_display": price_display,
         "description": _trim(service.description),
         "distance_km": getattr(service, "distance_km", None),
         "provider_id": str(service.provider_id),
@@ -97,15 +114,47 @@ def _service_card(service: ServiceListing) -> Dict[str, Any]:
 
 
 def _job_card(job: Job) -> Dict[str, Any]:
+    p = float(job.price) if getattr(job, "price", None) is not None else None
+    min_p = float(job.min_price) if getattr(job, "min_price", None) is not None else None
+    max_p = float(job.max_price) if getattr(job, "max_price", None) is not None else None
+    if p is not None and p > 0:
+        price_display = f"₦{p:,.0f}"
+    elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+        price_display = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+    elif min_p is not None and min_p > 0:
+        price_display = f"From ₦{min_p:,.0f}"
+    elif max_p is not None and max_p > 0:
+        price_display = f"Up to ₦{max_p:,.0f}"
+    else:
+        price_display = "Negotiable"
+
     return {
         "id": str(job.id),
         "title": job.title,
-        "price": float(job.price),
+        "price": p or min_p or 0.0,
+        "min_price": min_p,
+        "max_price": max_p,
+        "price_display": price_display,
         "status": job.status,
         "description": _trim(job.description),
         "distance_km": getattr(job, "distance_km", None),
         "is_mine": None,  # filled by the caller when relevant
     }
+
+
+import math
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    earth_radius_km = 6371.0
+    delta_lat = math.radians(lat2 - lat1)
+    delta_lng = math.radians(lng2 - lng1)
+    arc = (
+        math.sin(delta_lat / 2) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(delta_lng / 2) ** 2
+    )
+    chord = 2 * math.atan2(math.sqrt(arc), math.sqrt(1 - arc))
+    return earth_radius_km * chord
 
 
 def _user_location(user: User) -> Optional[Dict[str, float]]:
@@ -124,34 +173,107 @@ def _error(message: str) -> Dict[str, Any]:
 async def _tool_search_services(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
     from ..crud.service import get_services_nearby, search_services_by_text
 
-    query = str(args.get("query") or "").strip()
-    max_price = args.get("max_price")
-    radius_km = float(args.get("radius_km") or 10)
-    location = _user_location(user)
+    search_query = str(args.get("query") or "").strip()
+    price_ceiling = args.get("max_price")
+    search_radius_raw = args.get("radius_km")
+    is_unlimited = search_radius_raw is not None and float(search_radius_raw) == 0
+    search_radius_km = 0.0 if is_unlimited else (float(search_radius_raw) if search_radius_raw is not None else 10.0)
+    user_coords = _user_location(user)
 
-    if location:
-        services = await get_services_nearby(
-            db, location["lat"], location["lng"], radius_km=radius_km, limit=15
+    candidate_services = []
+    if search_query:
+        candidates = await search_services_by_text(db, search_query, limit=30)
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
+        if not candidate_services:
+            query_lower = search_query.lower()
+            from ..api.v1.endpoints.ai import RELATED_SERVICE_CATEGORIES
+            for cat_key, alt_terms in RELATED_SERVICE_CATEGORIES.items():
+                if cat_key in query_lower or any(t in query_lower for t in alt_terms):
+                    for alt in alt_terms:
+                        if alt.lower() != query_lower:
+                            more_candidates = await search_services_by_text(db, alt, limit=20)
+                            candidate_services.extend([s for s in more_candidates if str(s.provider_id) != str(user.id)])
+                            if candidate_services:
+                                break
+                    if candidate_services:
+                        break
+    elif user_coords:
+        candidates = await get_services_nearby(
+            db, user_coords["lat"], user_coords["lng"], radius_km=search_radius_km, limit=15
         )
-        if not services and query:
-            services = await search_services_by_text(db, query, limit=15)
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
     else:
-        services = await search_services_by_text(db, query or "service", limit=15)
+        candidates = await search_services_by_text(db, "service", limit=15)
+        candidate_services = [s for s in candidates if str(s.provider_id) != str(user.id)]
 
-    services = [s for s in services if str(s.provider_id) != str(user.id)]
-    if max_price is not None:
+    if user_coords:
+        for candidate in candidate_services:
+            if candidate.latitude is not None and candidate.longitude is not None:
+                candidate.distance_km = round(
+                    _haversine_km(
+                        user_coords["lat"],
+                        user_coords["lng"],
+                        float(candidate.latitude),
+                        float(candidate.longitude),
+                    ),
+                    1,
+                )
+            else:
+                candidate.distance_km = None
+
+        def _tool_svc_rank(s):
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                pricing_tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                pricing_tier = 1
+            else:
+                pricing_tier = 2  # Penalize missing pricing to the bottom
+            return (pricing_tier, s.distance_km if s.distance_km is not None else 99999.0)
+
+        candidate_services.sort(key=_tool_svc_rank)
+
+    nearby_matches = [
+        s for s in candidate_services
+        if is_unlimited or (s.distance_km is not None and s.distance_km <= search_radius_km)
+    ] if user_coords else candidate_services
+
+    active_matches = nearby_matches if nearby_matches else candidate_services
+
+    if price_ceiling is not None:
         try:
-            services = [s for s in services if float(s.price) <= float(max_price)]
+            budget_matches = [
+                s for s in active_matches
+                if (getattr(s, "price", None) is not None and float(s.price) <= float(price_ceiling))
+                or (getattr(s, "min_price", None) is not None and float(s.min_price) <= float(price_ceiling))
+                or (getattr(s, "price", None) is None and getattr(s, "min_price", None) is None)
+            ]
+            if budget_matches:
+                active_matches = budget_matches
         except (TypeError, ValueError):
             pass
 
-    cards = [_service_card(s) for s in services[:_MAX_RESULTS]]
+    cards = [_service_card(s) for s in active_matches[:_MAX_RESULTS]]
+    outside_note = None
+    if user_coords and not is_unlimited and not nearby_matches and candidate_services:
+        nearest_distance = candidate_services[0].distance_km
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_note = (
+            f"None found within {search_radius_km:g} km, but recommended {len(candidate_services)} provider(s) "
+            f"further away{distance_label}."
+        )
+
     return {
         "ok": True,
         "count": len(cards),
+        "total_found": len(candidate_services),
         "services": cards,
-        "note": "Use request_service with a service id to open a request."
-        if cards else "No matching providers found.",
+        "note": outside_note or (
+            "Use request_service with a service id to open a request."
+            if cards else "No matching providers found."
+        ),
     }
 
 
@@ -160,23 +282,44 @@ async def _tool_search_jobs(db: AsyncSession, user: User, args: Dict[str, Any]) 
 
     query = str(args.get("query") or "").strip()
     min_price = args.get("min_price")
-    radius_km = float(args.get("radius_km") or 15)
+    raw_radius = args.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 15.0)
     location = _user_location(user)
 
     if location:
         jobs = await get_open_jobs_nearby(
             db, location["lat"], location["lng"], radius_km=radius_km,
-            exclude_user_id=user.id, limit=15,
+            exclude_user_id=user.id, limit=25,
         )
         if not jobs and query:
-            jobs = await search_jobs_by_text(db, query, limit=15)
+            jobs = await search_jobs_by_text(db, query, limit=25)
     else:
-        jobs = await search_jobs_by_text(db, query or "job", limit=15)
+        jobs = await search_jobs_by_text(db, query or "job", limit=25)
 
     jobs = [j for j in jobs if j.status == "open" and str(j.client_id) != str(user.id)]
+
+    def _tool_job_rank(j):
+        p = float(j.price) if getattr(j, "price", None) is not None else None
+        min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+        max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+        if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+            tier = 0
+        elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+            tier = 1
+        else:
+            tier = 2
+        return (tier, getattr(j, "distance_km", 99999.0) or 99999.0)
+
+    jobs.sort(key=_tool_job_rank)
+
     if min_price is not None:
         try:
-            jobs = [j for j in jobs if float(j.price) >= float(min_price)]
+            jobs = [
+                j for j in jobs
+                if (getattr(j, "price", None) is not None and float(j.price) >= float(min_price))
+                or (getattr(j, "max_price", None) is not None and float(j.max_price) >= float(min_price))
+            ]
         except (TypeError, ValueError):
             pass
 
@@ -247,12 +390,35 @@ async def _tool_get_wallet(db: AsyncSession, user: User, args: Dict[str, Any]) -
             "note": "Payments run through PayPal escrow. A provider needs a linked PayPal account "
                     "to be paid; clients approve each escrow payment in PayPal themselves.",
         }
-    return {
-        "ok": True,
-        "rail": "solana",
-        "wallet_public_key": user.wallet_public_key,
-        "note": "Funding and releasing escrow are manual actions the user performs in the app.",
-    }
+    if not user.wallet_public_key:
+        return {
+            "ok": True,
+            "connected": False,
+            "note": "No Solana wallet connected yet. You can connect or fund your wallet from the dashboard.",
+        }
+
+    from ..api.v1.endpoints.users import get_my_balance
+    try:
+        balance_res = await get_my_balance(current_user=user)
+        sol_amount = balance_res.get("sol", 0.0)
+        usdc_amount = balance_res.get("usdc", "0.00")
+        wallet_key = user.wallet_public_key
+        return {
+            "ok": True,
+            "connected": True,
+            "wallet_public_key": wallet_key,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+            "note": f"Wallet {wallet_key[:4]}...{wallet_key[-4:]} has {sol_amount} SOL and {usdc_amount} USDC. Funding and releasing escrow are manual actions in the app.",
+        }
+    except Exception as balance_exc:
+        wallet_key = user.wallet_public_key
+        return {
+            "ok": True,
+            "connected": True,
+            "wallet_public_key": wallet_key,
+            "note": f"Connected wallet: {wallet_key[:4]}...{wallet_key[-4:]} (balance check warning: {balance_exc})",
+        }
 
 
 async def _owned_job(db: AsyncSession, user: User, args: Dict[str, Any], *, as_client: bool):
@@ -405,11 +571,29 @@ async def _tool_request_service(db: AsyncSession, user: User, args: Dict[str, An
     if str(service.provider_id) == str(user.id):
         return _error("the user owns this service")
 
+    # Idempotency check: don't create duplicate requests for the same service
+    existing_res = await db.execute(
+        select(Job).where(
+            Job.client_id == user.id,
+            Job.service_listing_id == service.id,
+            Job.status.in_(["requested", "assigned", "in_progress"])
+        )
+    )
+    existing_job = existing_res.scalars().first()
+    if existing_job:
+        return {
+            "ok": True,
+            "already_requested": True,
+            "job_id": str(existing_job.id),
+            "service": service.title,
+            "price": float(service.price),
+            "note": f"You already have an active request for '{service.title}' (Job ID: {str(existing_job.id)[:8]}).",
+        }
+
     location = None
     if service.latitude is not None and service.longitude is not None:
-        location = f"SRID=4326;POINT({service.longitude} {service.latitude})"
-    if location is None:
-        location = None  # jobs may legitimately be location-less
+        from ..core.geo import to_wkt_point
+        location = to_wkt_point(service.latitude, service.longitude)
 
     job = await create_job(
         db,
@@ -501,9 +685,94 @@ async def _tool_navigate(db: AsyncSession, user: User, args: Dict[str, Any]) -> 
     return {"ok": True, "route": route, "page": page}
 
 
+async def _tool_cancel_jobs(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
+    from ..crud.job import cancel_job_offchain
+    from ..crud.notification import create_notification
+
+    job_id_raw = args.get("job_id")
+    all_pending = bool(args.get("all_pending"))
+    query = str(args.get("query") or "").strip().lower()
+
+    # Find jobs eligible for cancellation (client is current user, pre-funded: requested, open, assigned)
+    stmt = select(Job).where(
+        Job.client_id == user.id,
+        Job.status.in_(["requested", "open", "assigned"])
+    )
+    result = await db.execute(stmt)
+    eligible_jobs = list(result.scalars().all())
+
+    if not eligible_jobs:
+        return {
+            "ok": True,
+            "cancelled_count": 0,
+            "cancelled": [],
+            "note": "You have no pending requests or open jobs to cancel."
+        }
+
+    targets = []
+    if job_id_raw:
+        try:
+            target_uuid = UUID(str(job_id_raw))
+            targets = [j for j in eligible_jobs if j.id == target_uuid]
+        except (ValueError, TypeError):
+            pass
+    elif query and not all_pending:
+        targets = [j for j in eligible_jobs if query in (j.title or "").lower() or query in (j.description or "").lower()]
+        if not targets:
+            targets = eligible_jobs
+    else:
+        targets = eligible_jobs
+
+    if not targets:
+        return {
+            "ok": True,
+            "cancelled_count": 0,
+            "cancelled": [],
+            "note": f"No active requests found matching '{job_id_raw or query}'."
+        }
+
+    cancelled_titles = []
+    for job in targets:
+        await cancel_job_offchain(db, job)
+        cancelled_titles.append(job.title)
+        if job.provider_id:
+            try:
+                await create_notification(
+                    db,
+                    user_id=job.provider_id,
+                    title="Request Cancelled",
+                    message=f"Request for '{job.title}' was cancelled by {user.display_name or 'the client'}.",
+                    link="/dashboard/activity",
+                    type="cancelled",
+                )
+            except Exception:
+                pass
+
+    await db.flush()
+    return {
+        "ok": True,
+        "cancelled_count": len(targets),
+        "cancelled": cancelled_titles,
+        "note": f"Cancelled {len(targets)} request(s): {', '.join(cancelled_titles)}."
+    }
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 _TOOL_TABLE: Dict[str, Dict[str, Any]] = {
+    "cancel_requests_or_jobs": {
+        "description": "Cancel pending service requests or open jobs posted by the user. Use when user asks to cancel their requests, cancel all of them, or cancel a specific request.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "Specific job or request id to cancel, if known."},
+                "all_pending": {"type": "boolean", "description": "Set to true if user wants to cancel all pending requests or all open jobs."},
+                "query": {"type": "string", "description": "Filter by job title or service name, e.g. 'massage', 'fumigation'."},
+            },
+            "required": [],
+        },
+        "handler": _tool_cancel_jobs,
+    },
     "search_services": {
         "description": (
             "Find service providers the user could hire. Prefers providers near "
@@ -700,12 +969,21 @@ async def build_user_context(db: AsyncSession, user: User) -> Dict[str, Any]:
     }
 
 
-SYSTEM_PROMPT = """You are Gigr's in-app assistant for a hyperlocal services marketplace in Nigeria.
+SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable marketplace assistant on Gigr in Nigeria.
 
-You can call tools to look things up and to act on the user's behalf. Rules:
+Tone and style:
+- Warm, helpful, straightforward, and respectful.
+- Speak clearly in natural, relatable English suitable for local Nigerian users. No stiff corporate jargon, no robotic disclaimers.
+- Keep final replies brief (1-3 sentences) and say concretely what you found or did.
+
+Rules:
 - Prefer calling a tool over guessing. Never invent jobs, providers, prices or ids.
 - Prices are in Naira. Use the user's saved location for anything location-specific;
   call get_my_location first if you are unsure whether one exists.
+- NEVER invent a budget or max_price. If the user did not specify a price or budget, do not pass max_price.
+- When the user mentions physical symptoms or pain (e.g. "my back hurts", "sore body"), call search_services with a relevant query like "massage" or "physiotherapy" WITHOUT any max_price.
+- When the user asks about their wallet, balance, funds, SOL, or USDC, call get_wallet.
+- When the user asks to cancel their requests, cancel jobs, or cancel all of them, call cancel_requests_or_jobs to cancel them immediately.
 - Only apply to jobs, request services, or post jobs when the user actually asked for it.
 - You can NEVER move money yourself. For a job the user has hired someone for you MAY call
   prepare_escrow_payment, which only creates a PayPal checkout and returns an approval link the
@@ -719,6 +997,8 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     """A short human-readable line for the activity log."""
     if not result.get("ok", True):
         return f"{name} failed: {result.get('error')}"
+    if name == "cancel_requests_or_jobs":
+        return f"cancelled {result.get('cancelled_count', 0)} request(s)"
     if name in ("search_services", "search_jobs"):
         return f"{name}: {result.get('count', 0)} result(s)"
     if name == "my_jobs":
@@ -737,7 +1017,7 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     if name == "get_my_location":
         return "checked location" if result.get("location") else "no saved location"
     if name == "get_wallet":
-        return "checked payment setup"
+        return "checked payment setup" if result.get("rail") == "paypal" else "checked wallet balance"
     if name == "prepare_escrow_payment":
         if result.get("already_funded"):
             return "escrow already funded"

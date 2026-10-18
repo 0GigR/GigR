@@ -12,6 +12,7 @@
 import { Zap } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
+import AgentStatusBar from './AgentStatusBar'
 
 /** After this long, a queued/running task is treated as stale, not active. */
 const RUNNING_STALE_MS = 15 * 60 * 1000
@@ -61,28 +62,31 @@ export default function AgentBell() {
     : 'bg-violet-600 shadow-violet-500/40 animate-bounce'
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      onClick={togglePanel}
-      className="relative"
-      title="AI Agent"
-      id="agent-bell-btn"
-    >
-      <Zap
-        className={`h-5 w-5 transition-all duration-200 ${
-          isPanelOpen ? 'text-violet-500' : isRunning ? 'text-blue-500' : ''
-        }`}
-      />
-      {showBadge && (
-        <span
-          className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full
-                     text-white text-[10px] font-bold flex items-center justify-center
-                     shadow-lg px-1 ${badgeClass}`}
-        >
-          {hasPendingDialog ? '!' : isRunning ? '…' : (unreadCount > 99 ? '99+' : unreadCount)}
-        </span>
-      )}
-    </Button>
+    <div className="flex items-center gap-1.5">
+      <AgentStatusBar />
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={togglePanel}
+        className="relative"
+        title="AI Agent"
+        id="agent-bell-btn"
+      >
+        <Zap
+          className={`h-5 w-5 transition-all duration-200 ${
+            isPanelOpen ? 'text-violet-500' : isRunning ? 'text-blue-500' : ''
+          }`}
+        />
+        {showBadge && (
+          <span
+            className={`absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full
+                       text-white text-[10px] font-bold flex items-center justify-center
+                       shadow-lg px-1 ${badgeClass}`}
+          >
+            {hasPendingDialog ? '!' : isRunning ? '…' : (unreadCount > 99 ? '99+' : unreadCount)}
+          </span>
+        )}
+      </Button>
+    </div>
   )
 }

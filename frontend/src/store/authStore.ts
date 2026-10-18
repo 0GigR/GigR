@@ -5,6 +5,7 @@ interface User {
   id: string
   email: string
   display_name: string
+  username?: string | null
   phone_number?: string | null
   profile_image_url?: string | null
   google_id?: string | null
@@ -12,6 +13,7 @@ interface User {
   created_at: string
   role?: string | null
   ai_enabled?: boolean
+  subscription_tier?: string | null
   location_public?: boolean
   permissions?: string[] | null
   /** PayPal account released escrow is paid to (PayPal rail). */

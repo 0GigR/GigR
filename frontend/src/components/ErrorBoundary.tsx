@@ -32,6 +32,22 @@ export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null, info: null, showDetails: false }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
+    const isChunkError =
+      error?.message?.includes('dynamically imported module') ||
+      error?.message?.includes('Failed to fetch') ||
+      error?.message?.includes('Loading chunk') ||
+      error?.name === 'ChunkLoadError'
+
+    if (isChunkError && typeof window !== 'undefined') {
+      const reloadKey = 'gigr_boundary_reload'
+      const lastReload = sessionStorage.getItem(reloadKey)
+      const now = Date.now()
+      if (!lastReload || now - parseInt(lastReload, 10) > 15000) {
+        sessionStorage.setItem(reloadKey, String(now))
+        window.location.reload()
+        return { error: null }
+      }
+    }
     return { error }
   }
 

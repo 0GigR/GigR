@@ -20,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuthStore } from '@/store/authStore'
+import { useRadiusStore } from '@/store/radiusStore'
 import UserChip from '@/components/UserChip'
 import { MapExplorer } from '@/components/map/MapExplorer'
 import { useGeolocation } from '@/hooks/useGeolocation'
@@ -117,9 +118,22 @@ export default function JobsPage() {
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
   const displayCode = useCurrencyStore((s) => s.code)
-  const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>('open')
-  // Radius (km) for the map + the "Near you" stat, so both describe the same area.
-  const [mapRadius, setMapRadius] = useState(10)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>(
+    tabParam === 'map' ? 'map' : tabParam === 'mine' ? 'mine' : 'open'
+  )
+  const [myJobGroupFilter, setMyJobGroupFilter] = useState<string>('all')
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab')
+    if (requestedTab === 'map' || requestedTab === 'mine' || requestedTab === 'open') {
+      setActiveTab(requestedTab)
+    }
+  }, [searchParams])
+
+  // Radius (km) connected to global radiusStore.
+  const { radiusKm: mapRadius, setRadiusKm: setMapRadius } = useRadiusStore()
   const geo = useGeolocation()
 
   // Create Job dialog state
@@ -180,7 +194,6 @@ export default function JobsPage() {
 
   // Deep link: /dashboard/jobs?jobId=X (e.g. from a notification) opens that
   // job's detail modal directly, then cleans the query param.
-  const [searchParams, setSearchParams] = useSearchParams()
   useEffect(() => {
     const jobId = searchParams.get('jobId')
     if (!jobId) return
@@ -233,13 +246,25 @@ export default function JobsPage() {
     hasNextPage: hasMoreOpenJobs,
     isFetchingNextPage: loadingMoreOpenJobs,
   } = useInfiniteQuery<Job[]>({
-    queryKey: ['jobs', 'open', debouncedSearch, categoryFilter],
+    queryKey: ['jobs', 'open', debouncedSearch, categoryFilter, mapRadius, geo.latitude, geo.longitude],
     queryFn: async ({ pageParam = 0 }) => {
       // Public browse shows only genuinely open jobs — service requests
       // (status 'requested') are private client<->provider conversations and
       // must never appear here. The backend hides the caller's own jobs, so
       // no client-side filtering is needed.
-      const res = await api.get('/jobs/', { params: { status: 'open', limit: PAGE_SIZE, offset: pageParam, q: debouncedSearch || undefined, category_id: categoryFilter || undefined } })
+      const queryParams: Record<string, any> = {
+        status: 'open',
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q: debouncedSearch || undefined,
+        category_id: categoryFilter || undefined,
+      }
+      if (geo.latitude && geo.longitude && mapRadius > 0) {
+        queryParams.lat = geo.latitude
+        queryParams.lon = geo.longitude
+        queryParams.radius = mapRadius
+      }
+      const res = await api.get('/jobs/', { params: queryParams })
       const all = Array.isArray(res.data) ? res.data : []
       return all
     },
@@ -257,7 +282,9 @@ export default function JobsPage() {
   const openJobs = openJobsPages?.pages.flat() ?? []
   // Boundaries and summary figures used by the folded header/stats above.
   const activeFilterCount =
-    (categoryFilter ? 1 : 0) + (sortOrder && sortOrder !== 'newest' ? 1 : 0)
+    (categoryFilter ? 1 : 0) +
+    (sortOrder && sortOrder !== 'newest' ? 1 : 0) +
+    (mapRadius && mapRadius !== 10 ? 1 : 0)
   const nearbyCount =
     geo.latitude && geo.longitude
       ? openJobs.filter((j) => {
@@ -555,9 +582,77 @@ export default function JobsPage() {
     onError: (err: any) => toast.error(extractError(err, 'Delete failed')),
   })
 
+  // ── Milestone Escrows State & Mutations ──
+  const [showAddMilestone, setShowAddMilestone] = useState(false)
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState('')
+  const [newMilestoneAmount, setNewMilestoneAmount] = useState('')
+  const [newMilestoneDesc, setNewMilestoneDesc] = useState('')
+
+  const { data: jobMilestones, refetch: refetchMilestones } = useQuery<any[]>({
+    queryKey: ['jobMilestones', contractRoomJobId],
+    queryFn: async () => {
+      if (!contractRoomJobId) return []
+      const { data } = await api.get(`/jobs/${contractRoomJobId}/milestones`)
+      return Array.isArray(data) ? data : []
+    },
+    enabled: !!contractRoomJobId && contractRoomOpen,
+  })
+
+  const createMilestoneMutation = useMutation({
+    mutationFn: async ({ title, amount, description }: { title: string; amount: number; description?: string }) => {
+      const { data } = await api.post(`/jobs/${contractRoomJobId}/milestones`, {
+        title,
+        amount,
+        description,
+      })
+      return data
+    },
+    onSuccess: () => {
+      toast.success('Milestone added!')
+      setShowAddMilestone(false)
+      setNewMilestoneTitle('')
+      setNewMilestoneAmount('')
+      setNewMilestoneDesc('')
+      refetchMilestones()
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to add milestone')),
+  })
+
+  const fundMilestoneMutation = useMutation({
+    mutationFn: async (milestoneId: string) => {
+      const { data } = await api.post(`/jobs/${contractRoomJobId}/milestones/${milestoneId}/fund`)
+      return data
+    },
+    onSuccess: () => {
+      toast.success('Milestone escrow funded!')
+      refetchMilestones()
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to fund milestone')),
+  })
+
+  const releaseMilestoneMutation = useMutation({
+    mutationFn: async (milestoneId: string) => {
+      const { data } = await api.post(`/jobs/${contractRoomJobId}/milestones/${milestoneId}/release`)
+      return data
+    },
+    onSuccess: () => {
+      toast.success('Milestone payment released to the provider!')
+      refetchMilestones()
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to release milestone')),
+  })
+
   // Handlers
   const handlePostJob = async () => {
-    if (!formData.title || !formData.price) return toast.error('Title and price required')
+    if (!formData.title) return toast.error('Job title is required')
+    if (!formData.price && !formData.min_price && !formData.max_price) {
+      return toast.error('Please specify a fixed price or price range')
+    }
     let imageUrl = null
     if (imageFile) {
       try { imageUrl = await uploadFile(imageFile) } catch { return }
@@ -565,7 +660,7 @@ export default function JobsPage() {
     createMutation.mutate({
       title: formData.title,
       description: formData.description,
-      price: formData.price,
+      price: formData.price ? formData.price : (formData.min_price || '0'),
       min_price: formData.min_price || undefined,
       max_price: formData.max_price || undefined,
       image_url: imageUrl,
@@ -748,6 +843,19 @@ export default function JobsPage() {
               <SelectItem value="price_low">Price: Low to High</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={String(mapRadius)} onValueChange={(val) => setMapRadius(Number(val))}>
+            <SelectTrigger className="w-[160px] bg-background border-border">
+              <SelectValue placeholder="Distance" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="2">Within 2 km</SelectItem>
+              <SelectItem value="5">Within 5 km</SelectItem>
+              <SelectItem value="10">Within 10 km</SelectItem>
+              <SelectItem value="25">Within 25 km</SelectItem>
+              <SelectItem value="50">Within 50 km</SelectItem>
+              <SelectItem value="0">All / Nationwide</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
@@ -867,6 +975,42 @@ export default function JobsPage() {
         </TabsContent>
 
         <TabsContent value="mine" className="mt-6">
+          {/* Quick status filter pills for fast grouping */}
+          {processedMyJobs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-6">
+              <button
+                type="button"
+                onClick={() => setMyJobGroupFilter('all')}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  myJobGroupFilter === 'all'
+                    ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                All ({processedMyJobs.length})
+              </button>
+              {MY_JOB_GROUPS.map((group) => {
+                const count = processedMyJobs.filter((j) => group.statuses.includes(j.status)).length
+                if (count === 0) return null
+                const isSelected = myJobGroupFilter === group.key
+                return (
+                  <button
+                    key={group.key}
+                    type="button"
+                    onClick={() => setMyJobGroupFilter(isSelected ? 'all' : group.key)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {group.label} ({count})
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
           {myLoading ? (
             <div className="grid gap-4 md:grid-cols-2">
               {[1, 2].map(i => <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader></Card>)}
@@ -874,6 +1018,7 @@ export default function JobsPage() {
           ) : processedMyJobs.length ? (
             <div className="space-y-8">
               {MY_JOB_GROUPS.map(group => {
+                if (myJobGroupFilter !== 'all' && group.key !== myJobGroupFilter) return null
                 const jobs = processedMyJobs.filter(j => group.statuses.includes(j.status))
                 if (!jobs.length) return null
                 return (
@@ -1076,6 +1221,128 @@ export default function JobsPage() {
               {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc(contractRoomJob.image_url!)} />}
             </div>
           )}
+
+          {/* Milestone Escrows Section — on-chain staged escrows; not offered on the PayPal rail */}
+          {!isPayPal && (<div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 p-3 space-y-2 mt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-gray-800 dark:text-gray-200" />
+                <span className="font-semibold text-xs tracking-wide">Milestone Escrows (Staged Payments)</span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2 border-gray-200 dark:border-gray-700"
+                onClick={() => setShowAddMilestone(!showAddMilestone)}
+              >
+                {showAddMilestone ? 'Cancel' : '+ Add Milestone'}
+              </Button>
+            </div>
+
+            {/* Add Milestone Form */}
+            {showAddMilestone && (
+              <div className="p-2.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 space-y-2">
+                <Input
+                  placeholder="Milestone title (e.g. Deposit & Materials, Phase 1)"
+                  value={newMilestoneTitle}
+                  onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                  className="h-8 text-xs bg-white dark:bg-gray-800"
+                />
+                <PriceInput
+                  placeholder="Milestone Amount"
+                  value={newMilestoneAmount}
+                  onChange={setNewMilestoneAmount}
+                />
+                <Input
+                  placeholder="Description / deliverables (optional)"
+                  value={newMilestoneDesc}
+                  onChange={(e) => setNewMilestoneDesc(e.target.value)}
+                  className="h-8 text-xs bg-white dark:bg-gray-800"
+                />
+                <Button
+                  size="sm"
+                  className="w-full h-7 text-xs bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+                  disabled={!newMilestoneTitle || !newMilestoneAmount || createMilestoneMutation.isPending}
+                  onClick={() =>
+                    createMilestoneMutation.mutate({
+                      title: newMilestoneTitle,
+                      amount: parseFloat(newMilestoneAmount),
+                      description: newMilestoneDesc || undefined,
+                    })
+                  }
+                >
+                  {createMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+                  Create Milestone
+                </Button>
+              </div>
+            )}
+
+            {/* Milestones List */}
+            {jobMilestones && jobMilestones.length > 0 ? (
+              <div className="space-y-1.5 pt-1">
+                {jobMilestones.map((m: any) => {
+                  const isClient = contractRoomJob?.client_id === user?.id
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-xs"
+                    >
+                      <div className="space-y-0.5 max-w-[55%]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{m.title}</span>
+                          <span
+                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                              m.status === 'released'
+                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : m.status === 'funded'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                            }`}
+                          >
+                            [{m.status.toUpperCase()}]
+                          </span>
+                        </div>
+                        <p className="font-semibold text-gray-900 dark:text-gray-100">
+                          {fmtPrice(parseFloat(m.amount))}
+                        </p>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1">
+                        {isClient && m.status === 'pending' && (
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
+                            onClick={() => fundMilestoneMutation.mutate(m.id)}
+                            disabled={fundMilestoneMutation.isPending}
+                          >
+                            {fundMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                            Fund Escrow
+                          </Button>
+                        )}
+                        {isClient && m.status === 'funded' && (
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                            onClick={() => releaseMilestoneMutation.mutate(m.id)}
+                            disabled={releaseMilestoneMutation.isPending}
+                          >
+                            {releaseMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                            Release
+                          </Button>
+                        )}
+                        {m.status === 'released' && (
+                          <span className="text-[11px] text-emerald-600 font-medium">Released</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-400">No milestone escrows created yet. Use + Add Milestone for staged job payments.</p>
+            )}
+          </div>)}
           {/* Pending Amendments */}
           {contractAmendments?.filter(a => a.is_accepted === null).map((amend) => (
             <div key={amend.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm space-y-2 mt-2">
@@ -1361,9 +1628,20 @@ function JobCard({
         )}
         <div className="flex justify-between items-center">
           <div className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-lg font-bold text-gray-900 dark:text-white">{fmtPrice(parseFloat(job.price as string))}</span>
-            {job.min_price && job.max_price && (
-              <span className="text-xs text-gray-400">{fmtPrice(Number(job.min_price))}–{fmtPrice(Number(job.max_price))}</span>
+            <span className="text-lg font-bold text-gray-900 dark:text-white">
+              {(() => {
+                const p = job.price ? parseFloat(job.price as string) : 0
+                const minP = job.min_price ? Number(job.min_price) : null
+                const maxP = job.max_price ? Number(job.max_price) : null
+                if (p > 0) return fmtPrice(p)
+                if (minP && maxP && minP > 0 && maxP > 0) return `${fmtPrice(minP)} – ${fmtPrice(maxP)}`
+                if (minP && minP > 0) return `From ${fmtPrice(minP)}`
+                if (maxP && maxP > 0) return `Up to ${fmtPrice(maxP)}`
+                return 'Negotiable'
+              })()}
+            </span>
+            {parseFloat(job.price as string) > 0 && job.min_price && job.max_price && (
+              <span className="text-xs text-gray-400">({fmtPrice(Number(job.min_price))}–{fmtPrice(Number(job.max_price))})</span>
             )}
           </div>
           {job.escrow_address && <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Escrowed</span>}

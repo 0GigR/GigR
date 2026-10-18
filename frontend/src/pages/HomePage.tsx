@@ -20,7 +20,9 @@ import {
   Plus,
   Search,
   ChevronDown,
+  Navigation,
 } from 'lucide-react'
+import { useRadiusStore, formatRadiusLabel, formatRadiusDescription, RADIUS_PRESETS } from '@/store/radiusStore'
 import type { components } from '@/types/api'
 
 type Job = components['schemas']['JobOut']
@@ -30,6 +32,7 @@ type Vouch = components['schemas']['VouchOut']
 export default function HomePage() {
   // Progressive disclosure: the first screen shows only what a newcomer needs.
   const [showAllStats, setShowAllStats] = useState(false)
+  const [showRadiusPresets, setShowRadiusPresets] = useState(false)
   const { user } = useAuthStore()
 
   // ────────── Data ──────────
@@ -64,12 +67,13 @@ export default function HomePage() {
 
   // Shared device location (locationStore owns the request + server sync).
   const { latitude, longitude } = useGeolocation()
+  const { radiusKm, setRadiusKm } = useRadiusStore()
 
   const { data: nearbyServices } = useQuery<Service[]>({
-    queryKey: ['nearbyServicesHome', latitude, longitude],
+    queryKey: ['nearbyServicesHome', latitude, longitude, radiusKm],
     queryFn: async () => {
       const { data } = await api.get('/services/search/nearby', {
-        params: { lat: latitude, lon: longitude, radius: 20 },
+        params: { lat: latitude, lon: longitude, radius: radiusKm },
       })
       return Array.isArray(data) ? data : []
     },
@@ -100,6 +104,98 @@ export default function HomePage() {
           Welcome back, {user?.display_name?.split(' ')[0]}
         </h1>
         <p className="text-gray-500 mt-1">Your neighborhood trusted marketplace</p>
+      </div>
+
+      {/* Global Proximity & Search Radius HUD (Collapsible & Minimalist) */}
+      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm transition-all duration-200">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-700 dark:text-gray-300 shrink-0">
+              <Navigation className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-semibold text-sm">Search Radius</h3>
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-black text-white dark:bg-white dark:text-black font-semibold">
+                  {formatRadiusLabel(radiusKm)}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                {formatRadiusDescription(radiusKm)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            {radiusKm > 0 && (
+              <button
+                type="button"
+                onClick={() => setRadiusKm(0)}
+                className="hidden sm:inline-block text-xs text-gray-500 hover:text-black dark:hover:text-white underline"
+              >
+                Worldwide
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowRadiusPresets((prev) => !prev)}
+              aria-expanded={showRadiusPresets}
+              className="text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+            >
+              {showRadiusPresets ? 'Less' : 'Adjust radius'}
+              <ChevronDown
+                className={`w-3.5 h-3.5 transition-transform ${showRadiusPresets ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Collapsible Presets and Range Slider */}
+        {showRadiusPresets && (
+          <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 space-y-3 animate-in fade-in duration-200">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {RADIUS_PRESETS.map((preset) => {
+                const isActive = radiusKm === preset.value
+                return (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setRadiusKm(preset.value)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
+                      isActive
+                        ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white shadow-sm'
+                        : 'bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    {preset.label}{' '}
+                    <span className={`text-[10px] ml-0.5 ${isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`}>
+                      ({preset.detail})
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="pt-1">
+              <div className="flex justify-between text-[11px] text-gray-400 mb-1">
+                <span>Street (100 m)</span>
+                <span className="font-mono text-gray-700 dark:text-gray-300 font-medium">
+                  {radiusKm === 0 ? 'Worldwide (No Limit)' : `${radiusKm} km`}
+                </span>
+                <span>500 km</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="500"
+                step="1"
+                value={radiusKm}
+                onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
+                className="w-full accent-black dark:accent-white cursor-pointer"
+                aria-label="Adjust global search radius"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Your numbers. Two figures a newcomer actually acts on are always

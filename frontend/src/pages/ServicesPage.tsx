@@ -15,10 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import { useAuthStore } from '@/store/authStore'
+import { useRadiusStore } from '@/store/radiusStore'
 import UserChip from '@/components/UserChip'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench
+  MapPin, Search, Plus, Edit, Trash2, RefreshCw, X, Send, ImagePlus, Loader2, BadgeCheck, Wrench, ChevronDown
 } from 'lucide-react'
 import { MapExplorer } from '@/components/map/MapExplorer'
 import { ImageViewer } from '@/components/ImageViewer'
@@ -127,7 +128,18 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           )}
         </div>
         <div className="flex justify-between items-center mt-2">
-          <span className="font-semibold text-black">{fmtPrice(parseFloat(service.price as string))}</span>
+          <span className="font-semibold text-black dark:text-white">
+            {(() => {
+              const p = service.price != null ? parseFloat(service.price as string) : null
+              const minP = service.min_price != null ? parseFloat(service.min_price as string) : null
+              const maxP = service.max_price != null ? parseFloat(service.max_price as string) : null
+              if (p && p > 0) return fmtPrice(p)
+              if (minP && maxP && minP > 0 && maxP > 0) return `${fmtPrice(minP)} – ${fmtPrice(maxP)}`
+              if (minP && minP > 0) return `From ${fmtPrice(minP)}`
+              if (maxP && maxP > 0) return `Up to ${fmtPrice(maxP)}`
+              return 'Negotiable'
+            })()}
+          </span>
           <span className="text-gray-400 text-xs">{service.radius_km} km radius</span>
         </div>
       </CardContent>
@@ -189,13 +201,21 @@ export default function ServicesPage() {
   const [address, setAddress] = useState<string | null>(null)
   const [catSearch, setCatSearch] = useState('')
   const [catSearchResults, setCatSearchResults] = useState<Category[]>([])
-  const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>('browse')
+  const [searchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'browse' | 'mine' | 'map'>(
+    tabParam === 'map' ? 'map' : tabParam === 'mine' ? 'mine' : 'browse'
+  )
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab')
+    if (requestedTab === 'map' || requestedTab === 'mine' || requestedTab === 'browse') {
+      setActiveTab(requestedTab)
+    }
+  }, [searchParams])
   const [sortOrder, setSortOrder] = useState('nearest') // nearest, newest, price_high, price_low
-  // Search radius in KILOMETRES. This used to be a hardcoded 100000, and since
-  // the API takes km that disabled radius filtering entirely — "nearby" meant
-  // the whole planet. Shared with the map's radius selector so the list and the
-  // map always describe the same area.
-  const [radius, setRadius] = useState(10)
+  // Search radius connected to global radiusStore.
+  const { radiusKm: radius, setRadiusKm: setRadius } = useRadiusStore()
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
@@ -207,6 +227,7 @@ export default function ServicesPage() {
   
   const [formData, setFormData] = useState({
     category_id: '', title: '', description: '', price: '',
+    min_price: '', max_price: '',
     latitude: 0, longitude: 0, radius_km: '5.0',
   })
 
@@ -382,7 +403,8 @@ export default function ServicesPage() {
   })
 
   const resetForm = () => {
-    setFormData({ category_id: '', title: '', description: '', price: '', latitude: 0, longitude: 0, radius_km: '5.0' })
+    const initialRadius = radius > 0 ? String(radius) : '10.0'
+    setFormData({ category_id: '', title: '', description: '', price: '', min_price: '', max_price: '', latitude: 0, longitude: 0, radius_km: initialRadius })
     setEditService(null)
     setImageFile(null)
     setImagePreview(null)
@@ -392,7 +414,7 @@ export default function ServicesPage() {
 
   const handleCreateOrUpdate = async () => {
     if (isCreating) return
-    if (!formData.category_id || !formData.title || !formData.price) return toast.error('Fill required fields')
+    if (!formData.category_id || !formData.title) return toast.error('Category and title are required')
     const finalLat = useCustomLocation && customLocation ? customLocation.lat : (formData.latitude || latitude)
     const finalLng = useCustomLocation && customLocation ? customLocation.lng : (formData.longitude || longitude)
     if (!finalLat || !finalLng) return toast.error('Location is required')
@@ -413,11 +435,13 @@ export default function ServicesPage() {
         try { imageUrl = await uploadFile(imageFile) } catch { return }
       }
 
-      const payload = {
+      const payload: any = {
         category_id: formData.category_id,
         title: formData.title,
         description: formData.description || undefined,
-        price: formData.price,
+        price: formData.price ? parseFloat(formData.price) : undefined,
+        min_price: formData.min_price ? parseFloat(formData.min_price) : undefined,
+        max_price: formData.max_price ? parseFloat(formData.max_price) : undefined,
         latitude: finalLat,
         longitude: finalLng,
         radius_km: formData.radius_km,
@@ -440,7 +464,9 @@ export default function ServicesPage() {
       category_id: service.category_id,
       title: service.title,
       description: service.description || '',
-      price: String(service.price),
+      price: service.price ? String(service.price) : '',
+      min_price: service.min_price ? String(service.min_price) : '',
+      max_price: service.max_price ? String(service.max_price) : '',
       latitude: service.latitude,
       longitude: service.longitude,
       radius_km: String(service.radius_km),
@@ -503,7 +529,7 @@ export default function ServicesPage() {
             aria-pressed={activeTab === value}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               activeTab === value
-                ? 'bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-sm'
+                ? 'bg-black text-white dark:bg-white dark:text-black shadow-sm'
                 : 'text-gray-500 hover:text-black dark:hover:text-white'
             }`}
           >
@@ -540,27 +566,16 @@ export default function ServicesPage() {
             <DialogTrigger asChild>
               <Button className="gigr-cta border-0"><Plus className="w-4 h-4 mr-2" /> New</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-md bg-background text-foreground max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{editService ? 'Edit Service' : 'Create Service'}</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-4">
+              <div className="space-y-3 py-2">
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <Textarea placeholder="Description" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                <div className="grid grid-cols-2 gap-4">
-                  <PriceInput placeholder="Price *" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
-                  <div>
-                    <div className="relative">
-                      <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
-                    </div>
-                    <p className="text-xs text-gray-400 mt-1">Service radius</p>
-                  </div>
-                </div>
 
                 {/* Category search & create */}
                 <div>
-                  <label className="text-sm font-medium text-gray-700">Category *</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Category *</label>
                   {!formData.category_id ? (
-                    <div className="relative">
+                    <div className="relative mt-1">
                       <Input placeholder="Search or type a new category..." value={catSearch}
                         onChange={(e) => {
                           const val = e.target.value
@@ -575,7 +590,7 @@ export default function ServicesPage() {
                       {catSearch && catSearchResults.length > 0 && (
                         <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
                           {catSearchResults.map(cat => (
-                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-sm" onClick={() => {
+                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-sm" onClick={() => {
                               setFormData({...formData, category_id: cat.id})
                               setCatSearch(cat.name)
                               setCatSearchResults([])
@@ -595,8 +610,8 @@ export default function ServicesPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm bg-gray-100 px-3 py-1 rounded-full">{catSearch}</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-sm bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{catSearch}</span>
                       <Button size="sm" variant="ghost" onClick={() => { setFormData({...formData, category_id: ''}); setCatSearch('') }}>
                         <X className="w-4 h-4" />
                       </Button>
@@ -604,66 +619,108 @@ export default function ServicesPage() {
                   )}
                 </div>
 
-                {/* Image upload */}
-                <div>
-                  <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
-                    onChange={async e => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        const processed = await processImageFile(file)
-                        setImageFile(processed)
-                        setImagePreview(URL.createObjectURL(processed))
-                      }
-                    }}
-                  />
-                  {imagePreview ? (
-                    <div className="relative w-32 h-32">
-                      <img src={imagePreview} className="rounded-lg object-cover w-full h-full" />
-                      <X className="absolute top-1 right-1 h-4 w-4 bg-white rounded-full cursor-pointer" onClick={() => { setImageFile(null); setImagePreview(null) }} />
+                <div className="grid grid-cols-2 gap-3">
+                  <PriceInput placeholder="Fixed Rate (Optional)" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
+                  <div>
+                    <div className="relative">
+                      <Input type="number" min="0" step="0.5" placeholder="Radius" className="pr-10" value={formData.radius_km} onChange={e => setFormData({...formData, radius_km: e.target.value})} />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">km</span>
                     </div>
-                  ) : (
-                    <Button variant="outline" onClick={() => fileRef.current?.click()} className="w-full">
-                      <ImagePlus className="w-4 h-4 mr-2" /> Add Photo (optional)
-                    </Button>
-                  )}
-                </div>
-
-                {/* Location */}
-                <div className="text-sm text-gray-500">
-                  {locLoading ? 'Getting location...' : locError ? (
-                    <span className="text-red-500 flex items-center gap-1"><X className="w-3 h-3 inline" />{locError} <Button size="sm" variant="ghost" onClick={refreshLoc}><RefreshCw className="w-3 h-3" /></Button></span>
-                  ) : address ? (
-                    <span className="flex items-center gap-1"><MapPin className="w-4 h-4 inline text-gray-500" /> {address}</span>
-                  ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
-                </div>
-
-                <div className="flex items-center gap-2 mt-2">
-                  <input 
-                    type="checkbox" 
-                    id="custom-location-service" 
-                    checked={useCustomLocation} 
-                    onChange={(e) => {
-                      setUseCustomLocation(e.target.checked)
-                      if (e.target.checked && !customLocation && (formData.latitude || latitude) && (formData.longitude || longitude)) {
-                        setCustomLocation({ lat: formData.latitude || latitude!, lng: formData.longitude || longitude! })
-                      }
-                    }} 
-                  />
-                  <label htmlFor="custom-location-service" className="text-sm font-medium">Use custom location (instead of current GPS)</label>
-                </div>
-                {useCustomLocation && customLocation && (
-                  <div className="mt-2">
-                    <LocationPicker 
-                      latitude={customLocation.lat} 
-                      longitude={customLocation.lng} 
-                      onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
-                    />
+                    <p className="text-[11px] text-gray-400 mt-0.5">Service radius</p>
                   </div>
-                )}
+                </div>
 
-                <div className="flex justify-end gap-2 pt-4">
-                  <Button variant="outline" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
-                  <Button onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
+                <Textarea rows={2} placeholder="Description (optional)" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+
+                {/* Collapsible: Advanced Pricing (Range) */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(formData.min_price || formData.max_price)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span>Price Range / Negotiation (Optional)</span>
+                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5 space-y-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <PriceInput placeholder="Min Price" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} />
+                      <PriceInput placeholder="Max Price" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} />
+                    </div>
+                    <p className="text-[11px] text-gray-400">Transparent prices are prioritized in search and by the AI agent.</p>
+                  </div>
+                </details>
+
+                {/* Collapsible: Photo Upload */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(imagePreview)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span>Service Photo (Optional)</span>
+                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5">
+                    <input type="file" accept="image/*, .heic, .heif, .webp" ref={fileRef} className="hidden"
+                      onChange={async e => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const processed = await processImageFile(file)
+                          setImageFile(processed)
+                          setImagePreview(URL.createObjectURL(processed))
+                        }
+                      }}
+                    />
+                    {imagePreview ? (
+                      <div className="relative w-28 h-28 mx-auto">
+                        <img src={imagePreview} className="rounded-lg object-cover w-full h-full border border-gray-200 dark:border-gray-700" />
+                        <X className="absolute -top-2 -right-2 h-5 w-5 bg-red-600 text-white rounded-full p-0.5 cursor-pointer shadow" onClick={() => { setImageFile(null); setImagePreview(null) }} />
+                      </div>
+                    ) : (
+                      <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()} className="w-full">
+                        <ImagePlus className="w-4 h-4 mr-2" /> Select Photo
+                      </Button>
+                    )}
+                  </div>
+                </details>
+
+                {/* Collapsible: Location & Map Pin */}
+                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(useCustomLocation)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                    <span className="truncate pr-2">Location: {address || (latitude ? `${latitude.toFixed(3)}, ${longitude?.toFixed(3)}` : 'Current GPS')}</span>
+                    <ChevronDown className="w-4 h-4 shrink-0 transition-transform group-open:rotate-180 text-gray-400" />
+                  </summary>
+                  <div className="pt-2.5 space-y-2">
+                    <div className="text-gray-500">
+                      {locLoading ? 'Getting location...' : locError ? (
+                        <span className="text-red-500 flex items-center gap-1"><X className="w-3 h-3 inline" />{locError} <Button size="sm" variant="ghost" onClick={refreshLoc}><RefreshCw className="w-3 h-3" /></Button></span>
+                      ) : address ? (
+                        <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 inline text-gray-500" /> {address}</span>
+                      ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <input 
+                        type="checkbox" 
+                        id="custom-location-service" 
+                        checked={useCustomLocation} 
+                        onChange={(e) => {
+                          setUseCustomLocation(e.target.checked)
+                          if (e.target.checked && !customLocation && (formData.latitude || latitude) && (formData.longitude || longitude)) {
+                            setCustomLocation({ lat: formData.latitude || latitude!, lng: formData.longitude || longitude! })
+                          }
+                        }} 
+                      />
+                      <label htmlFor="custom-location-service" className="font-medium cursor-pointer">Set custom map location</label>
+                    </div>
+                    {useCustomLocation && customLocation && (
+                      <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                        <LocationPicker 
+                          latitude={customLocation.lat} 
+                          longitude={customLocation.lng} 
+                          onChange={(lat, lng) => setCustomLocation({ lat, lng })} 
+                        />
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
+                  <Button size="sm" onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
                     {isCreating || createMutation.isPending || updateMutation.isPending
                       ? (editService ? 'Saving...' : 'Creating...')
                       : (editService ? 'Save Changes' : 'Create')}
@@ -745,7 +802,29 @@ export default function ServicesPage() {
           </div>
         ) : (
           <div key="mine" className="animate-in fade-in duration-200">
-            <h2 className="text-lg font-semibold mb-4">My Services</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+              <h2 className="text-lg font-semibold">My Services</h2>
+              {processedMine.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const currentRadius = radius > 0 ? radius : 25
+                    try {
+                      await api.post('/services/my-services/sync-radius', { radius_km: currentRadius })
+                      queryClient.invalidateQueries({ queryKey: ['myServices'] })
+                      toast.success(`Updated all active services to ${currentRadius} km coverage radius`)
+                    } catch (err: any) {
+                      toast.error(extractError(err, 'Failed to sync service radius'))
+                    }
+                  }}
+                  className="text-xs h-8 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                  Sync all services to current radius ({radius > 0 ? `${radius} km` : '25 km'})
+                </Button>
+              )}
+            </div>
             {myLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {[1,2].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}

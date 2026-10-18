@@ -51,6 +51,11 @@ const adapter: ToolApi = {
 }
 
 let started = false
+let activeNavigator: ((targetRoute: string) => void) | null = null
+
+export function setWebMCPNavigate(navigationFunction: (targetRoute: string) => void): void {
+  activeNavigator = navigationFunction
+}
 
 export function initWebMCP(): void {
   if (started || typeof window === 'undefined') return
@@ -78,6 +83,9 @@ export function initWebMCP(): void {
       } catch {
         /* popup blocked — the tool result still carries the link */
       }
+    },
+    navigate: (targetRoute) => {
+      if (activeNavigator) activeNavigator(targetRoute)
     },
   })
 

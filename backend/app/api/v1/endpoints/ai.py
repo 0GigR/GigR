@@ -45,6 +45,16 @@ from ....models.agent_log import AgentLog
 from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, AgentTaskListOut
 from ....services.ws_manager import manager as _ws_manager
 from ....services.groq_client import extract_json as _extract_json
+from ....services.agent_guardrails import (
+    sanitize_user_input,
+    validate_intent,
+    build_enriched_system_prompt,
+    prune_session_history,
+)
+from ....services.agent_session import (
+    get_session_history,
+    record_session_turn,
+)
 
 router = APIRouter()
 
@@ -54,11 +64,11 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # System prompt for Groq Llama-3 NLP
-_GROQ_SYSTEM_PROMPT = """You are a command parser for Gigr, a freelance services marketplace.
+_GROQ_SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable assistant for Gigr, a Nigerian freelance and services marketplace.
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
-  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "generic",
+  "task_type": "find_service" | "find_job" | "post_service" | "post_job" | "negotiate" | "navigate" | "pay" | "reply_message" | "plan" | "check_wallet" | "cancel_jobs" | "generic",
   "params": {
     "query": "search query string",
     "max_price": 5000,          // number in naira, null if not specified
@@ -66,16 +76,27 @@ Extract the user's intent from their message and return ONLY a JSON object with 
     "title": "title",           // for post_job or post_service
     "price": 5000,              // number in naira
     "radius_km": 10,            // distance in km, only if the user says one
-    "job_id": "optional id",    // for pay
-    "page": "jobs|services|messages|activity|disputes|profile|home"  // for navigate
+    "job_id": "optional id",    // for pay or cancel_jobs
+    "all_pending": false,       // for cancel_jobs: true if canceling all requests
+    "page": "jobs|services|messages|activity|disputes|profile|home",  // for navigate
+    "steps": [                  // for "plan" only: array of child subtasks
+      {"task_type": "find_service", "params": {"query": "cleaner"}},
+      {"task_type": "post_job", "params": {"title": "AC repair", "price": 10000}}
+    ]
   },
-  "response": "brief confirmation message to show user"
+  "response": "friendly, natural 1-2 sentence reply in relatable everyday English"
 }
 
 Rules:
+- Persona: You are Gigidy AI on Gigr. Tone must be warm, natural, and relatable for everyday Nigerian users (e.g. "Got you! Checking for good massage therapists near you now.", "On it, checking your wallet balance right away.", "Looking for open gigs around you.").
+- NEVER use stiff corporate chatbot speech (e.g. NEVER say "How can I assist you with Gigr services today?" or generic robotic filler).
+- "cancel_jobs" = user wants to cancel their requests, cancel jobs, or cancel all of them (e.g. "cancel all requests", "cancel my job", "cancel all of them yo"). Set all_pending to true if user said all/them/these.
+- "check_wallet" = user asks about their wallet balance, funds, SOL, USDC, or wallet address.
+- "find_service" = user wants to find someone to hire, OR user describes physical symptoms/needs ("my back hurts", "sore body" → query: "massage", "burst pipe" → query: "plumber", "insects in room" / "infested" → query: "fumigation").
+- max_price: null if not specified. NEVER invent or guess a budget or max_price unless the user explicitly stated a number. If user did not give a budget, max_price must be null.
+- "plan" = compound request containing two or more distinct goals (e.g. "clean my room and fix the tap", "find a photographer and post a job for a DJ"). Populate params.steps with the subtask objects.
 - "post_job" = user wants to HIRE SOMEONE / create a task
 - "post_service" = user wants to WORK / offer their skills
-- "find_service" = user wants to look for someone to hire
 - "find_job" = user is a freelancer looking for open jobs to apply to
 - "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
 - "within 20km" / "in 10 km" → params.radius_km = 20 / 10. Only set it when the
@@ -96,11 +117,25 @@ async def _call_groq_with_fallback(client: httpx.AsyncClient, url: str, **kwargs
     from ....services.groq_client import call_with_key_rotation
     return await call_with_key_rotation(client, url, **kwargs)
 
-async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
+async def _parse_command_groq(
+    text: str,
+    memory: Optional[Dict[str, Any]] = None,
+    session_history: Optional[List[Dict[str, str]]] = None,
+) -> Optional[Dict[str, Any]]:
     """Call Groq Llama-3 to parse the command into structured intent.
     Returns None if Groq is not configured or the call fails."""
     if not settings.groq_keys_list:
         return None
+
+    clean_text = sanitize_user_input(text)
+    pruned_history = prune_session_history(session_history or [])
+    turn_number = (len(pruned_history) // 2) + 1
+    system_prompt = build_enriched_system_prompt(_GROQ_SYSTEM_PROMPT, memory=memory, session_turn=turn_number)
+
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+    for msg in pruned_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": clean_text})
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -110,10 +145,7 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                 headers={"Content-Type": "application/json"},
                 json={
                     "model": settings.GROQ_MODEL,
-                    "messages": [
-                        {"role": "system", "content": _GROQ_SYSTEM_PROMPT},
-                        {"role": "user", "content": text},
-                    ],
+                    "messages": messages,
                     "temperature": 0.1,
                     # Generous headroom: gpt-oss spends a big chunk of the budget
                     # on hidden reasoning, and 300 tokens truncated the JSON
@@ -123,7 +155,13 @@ async def _parse_command_groq(text: str) -> Optional[Dict[str, Any]]:
                 },
             )
             content = response.json()["choices"][0]["message"]["content"] or ""
-            return _extract_json(content)
+            raw_json = _extract_json(content)
+            if raw_json:
+                validated = validate_intent(raw_json)
+                if validated:
+                    return validated.model_dump()
+                logger.warning("[agent] Groq output failed guardrails validation; falling back to rule-based")
+            return None
     except Exception as exc:
         logger.warning("[agent] Groq NLP failed (%s), falling back to rule-based", exc)
         return None
@@ -195,17 +233,20 @@ def _extract_radius_km(text: str) -> Optional[float]:
 
 def _extract_search_query(text: str) -> Optional[str]:
     """Extract the core search intent from a command string."""
+    cleaned_input = re.sub(r"^(?:i\s+meant\s+|i\s+mean\s+|please\s+)", "", text or "", flags=re.IGNORECASE).strip()
     patterns = [
-        r"(?:find|get|hire)\s+(?:someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
-        r"(?:search|look\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
-        r"(?:i\s+need|i\s+want|i\s+am\s+looking\s+for)\s+(?:a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
-        r"(?:someone|a\s+person)\s+(?:who\s+can\s+|who\s+will\s+|to\s+)?(.+?)(?:\s+for\s+|\s*$)",
-        r"(?:looking\s+for)\s+(?:a\s+|an\s+|someone\s+(?:to\s+|who\s+can\s+))?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:find|get|hire)\s+(?:me\s+someone\s+(?:that|who)\s+(?:does|can|is)\s+|someone\s+(?:that|who)\s+(?:does|can|is)\s+|me\s+someone\s+to\s+|someone\s+to\s+|me\s+a\s+|a\s+|an\s+|me\s+)?(.+?)(?:\s+for\s+no\s+more|\s+no\s+less|\s+for\s+under|\s+under|\s+for\s+max|\s+budget|\s+for\s+₦|\s+for\s+\d|$)",
+        r"(?:search|look\s+for)\s+(?:someone\s+(?:that|who)\s+(?:does|can)\s+|a\s+|an\s+)?(.+?)(?:\s+for\s+|\s+under\s+|\s+no\s+less|\s+no\s+more|\s*$)",
+        r"(?:i\s+need|i\s+want|i\s+am\s+looking\s+for)\s+(?:someone\s+(?:that|who)\s+(?:does|can)\s+|a\s+|an\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:someone|a\s+person)\s+(?:that\s+does\s+|who\s+does\s+|who\s+can\s+|who\s+will\s+|to\s+)?(.+?)(?:\s+for\s+|\s*$)",
+        r"(?:looking\s+for)\s+(?:a\s+|an\s+|someone\s+(?:to\s+|who\s+can\s+|that\s+does\s+))?(.+?)(?:\s+for\s+|\s*$)",
     ]
     for pat in patterns:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, cleaned_input, re.IGNORECASE)
         if m:
             q = m.group(1).strip()
+            # Strip relative clauses like "someone that does ..." or "someone who ..."
+            q = re.sub(r"^(?:someone\s+(?:that|who)\s+(?:does|can|offers?)\s+)", "", q, flags=re.IGNORECASE).strip()
             # Remove trailing price qualifiers more aggressively
             q = re.sub(r"\s+(for\s+)?(no\s+more|no\s+less|under|less\s+than|max|budget).*$", "", q, flags=re.IGNORECASE).strip()
             if q:
@@ -237,9 +278,48 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
             page = nav_map[m.group(1)]
             return {"task_type": "navigate", "params": {"page": page}, "response": f"Navigating to {page}"}
 
+    # ─── Cancel requests / jobs ──────────────────────────────────────
+    if re.search(r"\b(?:cancel|abort|withdraw|drop)\b", text_lower):
+        all_pending = bool(re.search(r"\b(?:all|them|these|everything)\b", text_lower))
+        return {
+            "task_type": "cancel_jobs",
+            "params": {"all_pending": all_pending, "query": text},
+            "response": "Cancelling your requests...",
+        }
+
+    # ─── Wallet balance / funds check ────────────────────────────────
+    if re.search(r"\b(?:wallet|balance|sol\b|usdc\b|funds?|how much money|my crypto)\b", text_lower):
+        return {
+            "task_type": "check_wallet",
+            "params": {},
+            "response": "Checking your wallet balance...",
+        }
+
+    # ─── Physical symptoms / needs mapping ───────────────────────────
+    if re.search(r"\b(?:back\s+hurts?|sore\s+(?:body|muscles?|back)|body\s+(?:is\s+)?sore|sore\s+muscles?|better\s+my\s+sore|massage|masseuse|masseur|stiff\s+neck|body\s+pain|ache|aching)\b", text_lower):
+        return {
+            "task_type": "find_service",
+            "params": {"query": "massage", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
+            "response": "Searching for massage services...",
+        }
+
+    if re.search(r"\b(?:burst\s+pipe|pipe\s+burst|leaking\s+pipe|leaking\s+sink|clogged\s+drain)\b", text_lower):
+        return {
+            "task_type": "find_service",
+            "params": {"query": "plumber", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
+            "response": "Searching for plumbing services...",
+        }
+
+    if re.search(r"\b(?:what\s+can\s+you\s+do|how\s+(?:can|do)\s+you\s+work|capabilities)\b", text_lower):
+        return {
+            "task_type": "generic",
+            "params": {"query": text},
+            "response": "I am Gigidy AI, your assistant on Gigr! I can help you find verified workers and services nearby, check open gigs, check your wallet balance, help negotiate good prices, and post jobs. Just tell me what you need!",
+        }
+
     # ─── Generic / greeting guard (before intent checks) ─────────────
     # Catch short greetings, rhetorical questions, and ambiguous inputs
-    _action_words = r"find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
+    _action_words = r"cancel|find|job|service|hire|work|post|create|offer|pay|fund|release|negotiate|search|look|need|want|fix|build|clean|repair|help|plumb|electric|cook|drive|design"
     is_question = text_lower.endswith("?") or re.match(r"^(are|is|do|does|can|could|would|will|what|where|why|how|who)\b", text_lower)
     has_action = bool(re.search(_action_words, text_lower))
     
@@ -340,29 +420,21 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
 # (Removed extract_search_query from here since it was moved up)
 
 
-async def parse_command(text: str, memory: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+async def parse_command(
+    text: str,
+    memory: Optional[Dict[str, Any]] = None,
+    session_history: Optional[List[Dict[str, str]]] = None,
+) -> Dict[str, Any]:
     """Parse a natural language command into structured intent.
 
-    Tries Groq Llama-3 first (better understanding). Falls back to
-    rule-based regex parser if Groq key is missing or the call fails.
+    Tries Groq Llama-3 first with context guardrails, memory enrichment, and multi-turn session context.
+    Falls back to rule-based regex parser if Groq key is missing or validation fails.
     """
-    # Enrich text with memory context so Groq can fill in omitted details
-    enriched = text
-    if memory:
-        hints = []
-        if memory.get("last_search"):
-            hints.append(f"user previously searched for: {memory['last_search']}")
-        if memory.get("usual_price_job"):
-            hints.append(f"user's typical job budget: ₦{memory['usual_price_job']:,.0f}")
-        if memory.get("usual_price_service"):
-            hints.append(f"user's typical service rate: ₦{memory['usual_price_service']:,.0f}")
-        if hints:
-            enriched = f"{text} [context: {'; '.join(hints)}]"
-
-    groq_result = await _parse_command_groq(enriched)
+    clean_text = sanitize_user_input(text)
+    groq_result = await _parse_command_groq(clean_text, memory=memory, session_history=session_history)
     if groq_result and groq_result.get("task_type"):
         return groq_result
-    return _parse_command_rules(text)
+    return _parse_command_rules(clean_text)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -370,10 +442,20 @@ async def parse_command(text: str, memory: Optional[Dict[str, Any]] = None) -> D
 # ═══════════════════════════════════════════════════════════════════════════════
 
 async def _log(db: AsyncSession, task_id: uuid.UUID, level: str, message: str, data: Any = None):
-    """Write a single log entry for a task."""
+    """Write a single log entry for a task and immediately commit so UI sees real-time progress."""
     entry = AgentLog(task_id=task_id, level=level, message=message, data=data)
     db.add(entry)
-    await db.flush()
+    try:
+        from sqlalchemy import update as sa_update
+        await db.execute(
+            sa_update(AgentTask)
+            .where(AgentTask.id == task_id)
+            .values(updated_at=datetime.now(timezone.utc))
+        )
+        await db.commit()
+    except Exception as commit_exc:
+        logger.warning("[agent] _log commit failed: %s", commit_exc)
+        await db.flush()
 
 
 async def _load_memory(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, Any]:
@@ -407,6 +489,18 @@ async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceLi
     from ....crud.message import create_message
 
     try:
+        # Idempotency check: don't create duplicate requests for the same service
+        existing_res = await db.execute(
+            select(Job).where(
+                Job.client_id == task.user_id,
+                Job.service_listing_id == service.id,
+                Job.status.in_(["requested", "assigned", "in_progress"])
+            )
+        )
+        existing_job = existing_res.scalars().first()
+        if existing_job:
+            return f"You already have an active request for '{service.title}' (Job ID: {str(existing_job.id)[:8]})."
+
         price = task.params.get("max_price") or float(service.price)
         job_in = JobCreate(
             title=f"Request for: {service.title}",
@@ -472,8 +566,21 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
+RELATED_SERVICE_CATEGORIES: Dict[str, List[str]] = {
+    "massage": ["massage", "masseuse", "physiotherapy", "wellness", "body therapy", "spa"],
+    "physiotherapy": ["physiotherapy", "massage", "wellness", "therapy"],
+    "plumber": ["plumber", "plumbing", "pipe repair", "water leak", "drain repair"],
+    "cleaning": ["cleaning", "cleaner", "housekeeping", "fumigation", "deep clean"],
+    "fumigation": ["fumigation", "pest control", "insects", "exterminator", "cleaning"],
+    "mechanic": ["mechanic", "auto repair", "car repair", "engine maintenance"],
+    "electrician": ["electrician", "electrical", "generator repair", "wiring"],
+    "carpenter": ["carpenter", "woodwork", "furniture", "upholstery"],
+    "ac repair": ["ac repair", "air conditioning", "cooling", "refrigeration"],
+}
+
+
 async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
-    """Search for services matching the task query (Client looking to hire)."""
+    """Search for services matching the task query with multi-search expansion (Client looking to hire)."""
     params = task.params or {}
     query: str = params.get("query", "")
     max_price: Optional[float] = params.get("max_price")
@@ -491,51 +598,171 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
 
     services = await search_services_by_text(db, query, limit=50)
     services = [s for s in services if s.provider_id != task.user_id]
+    seen_service_ids = {str(s.id) for s in services}
 
-    # Respect the distance the user asked for. This used to silently fall back to
-    # every match in the country whenever fewer than three were nearby, which made
-    # "near you" mean nothing and hid why a result appeared.
-    radius_km = params.get("radius_km") or 10.0
+    # If initial query yielded 0 or very few results, execute multi-search across related categories
+    if len(services) < 2:
+        query_key = query.lower()
+        alternate_queries: List[str] = []
+        for cat_key, cat_terms in RELATED_SERVICE_CATEGORIES.items():
+            if cat_key in query_key or any(term in query_key for term in cat_terms):
+                for term in cat_terms:
+                    if term.lower() != query_key and term not in alternate_queries:
+                        alternate_queries.append(term)
+
+        if alternate_queries:
+            await _log(
+                db, task.id, "think",
+                f"Initial query '{query}' yielded {len(services)} match(es). Expanding search to related specialties: {', '.join(alternate_queries[:3])}..."
+            )
+            for alt_term in alternate_queries:
+                extra_services = await search_services_by_text(db, alt_term, limit=30)
+                extra_services = [s for s in extra_services if s.provider_id != task.user_id]
+                new_services = [s for s in extra_services if str(s.id) not in seen_service_ids]
+                if new_services:
+                    await _log(
+                        db, task.id, "action",
+                        f"Found {len(new_services)} matching provider(s) under '{alt_term}'."
+                    )
+                    for s in new_services:
+                        seen_service_ids.add(str(s.id))
+                        services.append(s)
+                if len(services) >= 5:
+                    break
+
+    # Respect the distance the user asked for. If none nearby, gracefully widen to nationwide.
+    raw_radius = params.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 10.0)
+    radius_label = "Worldwide (no distance limit)" if is_unlimited else f"within {radius_km:g} km"
+
     distances: Dict[str, float] = {}
+    within = []
     if user_lat and user_lng:
-        within = []
         for service in services:
             if service.latitude is None or service.longitude is None:
                 continue
             km = _haversine_km(user_lat, user_lng, float(service.latitude), float(service.longitude))
-            if km <= radius_km:
+            distances[str(service.id)] = round(km, 1)
+            if is_unlimited or km <= radius_km:
                 within.append(service)
-                distances[str(service.id)] = round(km, 1)
-        services = within
 
-    if max_price:
-        filtered = [s for s in services if float(s.price) <= max_price]
-    else:
-        filtered = services
+        def _svc_rank_tuple(s):
+            # Prioritize listings with transparent pricing; penalize missing/unspecified rates to the end
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                pricing_tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                pricing_tier = 1
+            else:
+                pricing_tier = 2  # No prices listed -> ranked last
+            return (pricing_tier, distances.get(str(s.id), 99999.0))
+
+        services.sort(key=_svc_rank_tuple)
+        within.sort(key=_svc_rank_tuple)
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Evaluating {len(services)} candidate provider(s) ({radius_label}), prioritizing transparent pricing..."
+        )
+
+    target_pool = within if (user_lat and user_lng and within) else services
+    outside_radius_note = None
+    if user_lat and user_lng and not is_unlimited and not within and services:
+        nearest_distance = distances.get(str(services[0].id))
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_radius_note = f"None within your {radius_km:g} km radius. Found {len(services)} provider(s) outside your radius{distance_label}"
+        await _log(
+            db, task.id, "think",
+            f"No providers found within your {radius_km:g} km radius. Widened search: recommending {len(services)} provider(s) outside your radius{distance_label}."
+        )
+
+    def _matches_budget(s):
+        if not max_price:
+            return True
+        p = float(s.price) if getattr(s, "price", None) is not None else None
+        min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+        effective_p = p if (p is not None and p > 0) else min_p
+        return effective_p is None or effective_p <= max_price
+
+    filtered = [s for s in target_pool if _matches_budget(s)]
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Evaluated {len(target_pool)} candidate(s); {len(filtered)} within target budget."
+        )
 
     if filtered:
-        service_cards = [
-            {
+        # Load provider profiles for the top results to display on map and cards
+        provider_ids = list({s.provider_id for s in filtered[:5] if s.provider_id})
+        providers_map = {}
+        if provider_ids:
+            p_res = await db.execute(select(User).where(User.id.in_(provider_ids)))
+            for p in p_res.scalars().all():
+                providers_map[p.id] = p
+
+        service_cards = []
+        for s in filtered[:5]:
+            p = float(s.price) if getattr(s, "price", None) is not None else None
+            min_p = float(s.min_price) if getattr(s, "min_price", None) is not None else None
+            max_p = float(s.max_price) if getattr(s, "max_price", None) is not None else None
+
+            if p is not None and p > 0:
+                price_str = f"₦{p:,.0f}"
+            elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+                price_str = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+            elif min_p is not None and min_p > 0:
+                price_str = f"From ₦{min_p:,.0f}"
+            elif max_p is not None and max_p > 0:
+                price_str = f"Up to ₦{max_p:,.0f}"
+            else:
+                price_str = "Negotiable (Unlisted rate)"
+
+            dist_val = distances.get(str(s.id))
+            is_outside = bool(user_lat and user_lng and not is_unlimited and dist_val is not None and dist_val > radius_km)
+
+            service_cards.append({
                 "id": str(s.id),
                 "title": s.title,
-                "price": float(s.price),
+                "price": p or min_p or 0.0,
+                "min_price": min_p,
+                "max_price": max_p,
+                "price_display": price_str,
                 "description": s.description or "",
-                "distance_km": distances.get(str(s.id)),
-            }
-            for s in filtered[:5]
-        ]
+                "distance_km": dist_val,
+                "outside_radius": is_outside,
+                "latitude": float(s.latitude) if s.latitude is not None else None,
+                "longitude": float(s.longitude) if s.longitude is not None else None,
+                "provider_id": str(s.provider_id) if s.provider_id else None,
+                "provider_name": providers_map.get(s.provider_id).display_name if providers_map.get(s.provider_id) else None,
+                "provider_avatar": providers_map.get(s.provider_id).profile_image_url if providers_map.get(s.provider_id) else None,
+            })
+
         dialog_options = [
-            {"label": f"{s['title']} — ₦{s['price']:,.0f}", "action": f"select_service:{s['id']}"}
+            {
+                "label": f"{s['title']} — {s['price_display']}" + (f" ({s['distance_km']:g} km away, outside radius)" if s['outside_radius'] else ""),
+                "action": f"select_service:{s['id']}"
+            }
             for s in service_cards
         ]
         dialog_options.append({"label": "Post a job instead", "action": "post_job"})
         dialog_options.append({"label": "Cancel", "action": "cancel"})
 
+        found_msg = f"Found {len(filtered)} matching service(s)"
+        if outside_radius_note:
+            found_msg += f" ({outside_radius_note})"
+        found_msg += ". Which would you like me to request?"
+
         await _log(db, task.id, "success",
-                   f"Found {len(filtered)} matching service(s). Which would you like me to request?",
-                   data={
+                   found_msg,
+                   {
                        "render_type": "service_cards",
                        "services": service_cards,
+                       "outside_radius_note": outside_radius_note,
                        "action_payload": {
                            "type": "select_service",
                            "query": query,
@@ -545,9 +772,9 @@ async def _handle_find_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                    })
         return {"found": True, "count": len(filtered), "services": service_cards}
     else:
-        closest = sorted(services, key=lambda s: float(s.price))[:3]
-        if closest:
-            names = [f"{s.title} — ₦{float(s.price):,.0f}" for s in closest]
+        closest = sorted(target_pool, key=lambda s: float(s.price or 0))[:3]
+        if closest and max_price:
+            names = [f"{s.title} — ₦{float(s.price or 0):,.0f}" for s in closest]
             await _log(db, task.id, "warning",
                        f"No services under ₦{max_price:,.0f}. Closest options:\n" + "\n".join(names))
 
@@ -584,34 +811,122 @@ async def _handle_find_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
     jobs = await search_jobs_by_text(db, query, limit=50)
     jobs = [j for j in jobs if j.client_id != task.user_id and j.status == "open"]
 
-    # Real proximity filter: compute Haversine distance from the searcher to each
-    # job that has a location. Keep those within 25 km (fall back to all if <3).
-    job_radius_km = params.get("radius_km") or 15.0
+    # Respect the distance the user asked for.
+    raw_radius = params.get("radius_km")
+    is_unlimited = raw_radius is not None and float(raw_radius) == 0
+    job_radius_km = 0.0 if is_unlimited else (float(raw_radius) if raw_radius is not None else 15.0)
+    radius_label = "Worldwide (all regions)" if is_unlimited else f"within {job_radius_km:g} km"
+
+    distances: Dict[str, float] = {}
+    within = []
     if user_lat and user_lng:
-        with_distance = []
         for j in jobs:
             jlat, jlng = j.latitude, j.longitude
             if jlat is not None and jlng is not None:
                 d = _haversine_km(user_lat, user_lng, float(jlat), float(jlng))
-                if d <= job_radius_km:
-                    with_distance.append((d, j))
-        jobs = [j for _, j in sorted(with_distance, key=lambda x: x[0])]
-        # else: keep the full text-matched list (location_note already reflects intent)
+                distances[str(j.id)] = round(d, 1)
+                if is_unlimited or d <= job_radius_km:
+                    within.append(j)
+
+        def _job_rank_tuple(j):
+            p = float(j.price) if getattr(j, "price", None) is not None else None
+            min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+            max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+            if (p is not None and p > 0) or (min_p is not None and min_p > 0 and max_p is not None and max_p > 0):
+                tier = 0
+            elif (min_p is not None and min_p > 0) or (max_p is not None and max_p > 0):
+                tier = 1
+            else:
+                tier = 2
+            return (tier, distances.get(str(j.id), 99999.0))
+
+        jobs.sort(key=_job_rank_tuple)
+        within.sort(key=_job_rank_tuple)
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Scanning open gig postings matching '{query}' ({radius_label}), prioritizing transparent rates..."
+        )
+
+    target_pool = within if (user_lat and user_lng and within) else jobs
+    outside_radius_note = None
+    if user_lat and user_lng and not is_unlimited and not within and jobs:
+        nearest_distance = distances.get(str(jobs[0].id))
+        distance_label = f" ({nearest_distance:g} km away)" if nearest_distance is not None else ""
+        outside_radius_note = f"None within your {job_radius_km:g} km radius. Found {len(jobs)} job(s) outside your radius{distance_label}"
+        await _log(
+            db, task.id, "think",
+            f"No jobs found within your {job_radius_km:g} km radius. Widened search: recommending {len(jobs)} job(s) outside your radius{distance_label}."
+        )
 
     if min_price:
-        filtered = [j for j in jobs if float(j.price) >= min_price]
+        filtered = [j for j in target_pool if (float(j.price or 0) >= min_price or float(j.max_price or 0) >= min_price)]
     else:
-        filtered = jobs
+        filtered = target_pool
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            f"Identified {len(target_pool)} candidate job(s); {len(filtered)} meeting rate criteria."
+        )
 
     if filtered:
-        job_cards = [
-            {"id": str(j.id), "title": j.title, "price": float(j.price), "description": getattr(j, 'description', '') or ""}
-            for j in filtered[:5]
-        ]
-        await _log(db, task.id, "success", f"Found {len(filtered)} open job(s) matching '{query}':",
+        # Load client profiles for the top job postings
+        client_ids = list({j.client_id for j in filtered[:5] if j.client_id})
+        clients_map = {}
+        if client_ids:
+            c_res = await db.execute(select(User).where(User.id.in_(client_ids)))
+            for c in c_res.scalars().all():
+                clients_map[c.id] = c
+
+        job_cards = []
+        for j in filtered[:5]:
+            p = float(j.price) if getattr(j, "price", None) is not None else None
+            min_p = float(j.min_price) if getattr(j, "min_price", None) is not None else None
+            max_p = float(j.max_price) if getattr(j, "max_price", None) is not None else None
+
+            if p is not None and p > 0:
+                price_str = f"₦{p:,.0f}"
+            elif min_p is not None and max_p is not None and min_p > 0 and max_p > 0:
+                price_str = f"₦{min_p:,.0f} - ₦{max_p:,.0f}"
+            elif min_p is not None and min_p > 0:
+                price_str = f"From ₦{min_p:,.0f}"
+            elif max_p is not None and max_p > 0:
+                price_str = f"Up to ₦{max_p:,.0f}"
+            else:
+                price_str = "Negotiable (Unlisted budget)"
+
+            dist_val = distances.get(str(j.id))
+            is_outside = bool(user_lat and user_lng and not is_unlimited and dist_val is not None and dist_val > job_radius_km)
+
+            job_cards.append({
+                "id": str(j.id),
+                "title": j.title,
+                "price": p or min_p or 0.0,
+                "min_price": min_p,
+                "max_price": max_p,
+                "price_display": price_str,
+                "description": getattr(j, "description", "") or "",
+                "distance_km": dist_val,
+                "outside_radius": is_outside,
+                "latitude": float(j.latitude) if j.latitude is not None else None,
+                "longitude": float(j.longitude) if j.longitude is not None else None,
+                "client_id": str(j.client_id) if j.client_id else None,
+                "client_name": clients_map.get(j.client_id).display_name if clients_map.get(j.client_id) else None,
+                "client_avatar": clients_map.get(j.client_id).profile_image_url if clients_map.get(j.client_id) else None,
+            })
+
+        found_msg = f"Found {len(filtered)} open job(s) matching '{query}'"
+        if outside_radius_note:
+            found_msg += f" ({outside_radius_note})"
+        found_msg += ":"
+
+        await _log(db, task.id, "success", found_msg,
                    data={
                        "render_type": "job_cards",
                        "jobs": job_cards,
+                       "outside_radius_note": outside_radius_note,
                    })
         return {"found": True, "count": len(filtered), "jobs": job_cards}
     else:
@@ -755,6 +1070,24 @@ async def _handle_negotiate(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
                        f"Opening offer sent to provider for **'{service.title}'** (₦{float(service.price):,.0f}). "
                        f"I'll monitor their reply and negotiate on your behalf. "
                        f"[View chat](/dashboard/messages)")
+            # Emit structured log so the frontend can render the price-comparison bar chart.
+            original_price = float(service.price)
+            target_price = max_price or original_price
+            round_num = 1
+            await _log(
+                db,
+                task.id,
+                "success",
+                f"Negotiation round {round_num}: opening offer submitted.",
+                data={
+                    "render_type": "negotiation_progress",
+                    "original_price": original_price,
+                    "target_price": target_price,
+                    "counter_price": None,
+                    "round": round_num,
+                    "savings": max(0.0, original_price - target_price),
+                },
+            )
             negotiated_with.append({
                 "service_id": str(service.id), "title": service.title, "job_id": str(job.id)
             })
@@ -973,50 +1306,8 @@ async def _suggest_price(raw_title: str, kind: str) -> float:
 
 
 async def _auto_price_fallback(task_id: str, kind: str, raw_title: str) -> None:
-    """After WAIT_FOR_REPLY_TIME, if the user hasn't given a price, pick one and post."""
-    await asyncio.sleep(WAIT_FOR_REPLY_TIME)
-    async with async_session() as db:
-        # Is the price dialog still open (i.e. the user hasn't answered)?
-        logs_res = await db.execute(
-            select(AgentLog).where(AgentLog.task_id == uuid.UUID(task_id))
-            .order_by(AgentLog.created_at.desc()).limit(20)
-        )
-        dialog_log = None
-        for lg in logs_res.scalars().all():
-            if lg.data and (lg.data.get("action_payload") or {}).get("type") == "provide_price":
-                dialog_log = lg
-                break
-        if not dialog_log:
-            return  # user already responded (payload cleared) — nothing to do
-
-        task_res = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
-        task = task_res.scalar_one_or_none()
-        if not task:
-            return
-
-        # Close the dialog so the user can't also submit a price now.
-        new_data = dict(dialog_log.data)
-        new_data.pop("action_payload", None)
-        dialog_log.data = new_data
-
-        price = await _suggest_price(raw_title, kind)
-        logger.info("[agent] Task %s: no price in %ds — AI chose ₦%.0f", task_id, WAIT_FOR_REPLY_TIME, price)
-
-        child = AgentTask(
-            user_id=task.user_id,
-            command_text=task.command_text,
-            task_type="post_job" if kind == "job" else "post_service",
-            params={"title": raw_title, "price": price},
-            status="queued",
-        )
-        db.add(child)
-        await _log(db, task.id, "info",
-                   f"No budget given in {WAIT_FOR_REPLY_TIME}s — I'll go with ₦{price:,.0f} and post it for you.")
-        await db.commit()
-        try:
-            await _ws_manager.notify_user(str(task.user_id), {"type": "agent_task_update", "task_id": task_id})
-        except Exception:
-            pass
+    """Disabled: Do not auto-post listings with guessed prices."""
+    return
 
 
 # Category matching now lives in services/agent_tools.py so the tool registry
@@ -1049,9 +1340,7 @@ async def _handle_post_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
-        # If the user doesn't answer within WAIT_FOR_REPLY_TIME, the AI picks a
-        # price itself and proceeds (see _auto_price_fallback).
-        asyncio.create_task(_auto_price_fallback(str(task.id), "job", raw_title))
+        # Wait cleanly for user input without auto-guessing prices
         return {"created": False, "waiting_for_price": True}
 
     await _log(db, task.id, "action", "Writing a professional job listing...")
@@ -1133,7 +1422,7 @@ async def _handle_post_service(task: AgentTask, db: AsyncSession) -> Dict[str, A
                            {"label": "₦20,000", "action": "price:20000"},
                        ],
                    }})
-        asyncio.create_task(_auto_price_fallback(str(task.id), "service", raw_title))
+        # Wait cleanly for user input without auto-guessing prices
         return {"created": False, "waiting_for_price": True}
 
     # Category: honour an explicit choice (params carry it when the user picked
@@ -1348,6 +1637,82 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         "payment_moved": False,
         "job_id": str(job.id),
     }
+
+
+async def _handle_check_wallet(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Retrieve and display the user's money setup: PayPal payout account, or the Solana wallet."""
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    current_user = user_res.scalar_one_or_none()
+
+    from ....core.config import settings as _settings
+    if _settings.PAYMENT_RAIL == "paypal":
+        linked = bool(current_user and current_user.paypal_email)
+        await _log(
+            db,
+            task.id,
+            "success" if linked else "warning",
+            "Your PayPal payout account is linked — you'll be paid there when a client releases escrow."
+            if linked else
+            "No PayPal payout account linked yet. Add your PayPal email under "
+            "[Profile](/dashboard/profile) so you can be paid. Clients approve each "
+            "escrow payment in PayPal themselves.",
+        )
+        return {"rail": "paypal", "paypal_account_linked": linked}
+
+    if not current_user or not current_user.wallet_public_key:
+        await _log(
+            db,
+            task.id,
+            "warning",
+            "No Solana wallet connected yet. You can connect or fund your wallet in your dashboard profile.",
+            {"render_type": "wallet_card", "connected": False},
+        )
+        return {"connected": False, "sol_balance": 0.0, "usdc_balance": "0.00"}
+
+    wallet_pubkey = current_user.wallet_public_key
+    from .users import get_my_balance
+    try:
+        balance_res = await get_my_balance(current_user=current_user)
+        sol_amount = float(balance_res.get("sol", 0.0))
+        usdc_amount = str(balance_res.get("usdc", "0.00"))
+        wallet_payload = {
+            "render_type": "wallet_card",
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+        }
+        await _log(
+            db,
+            task.id,
+            "success",
+            f"Wallet {wallet_pubkey[:4]}...{wallet_pubkey[-4:]}: {sol_amount:.4f} SOL | ${usdc_amount} USDC",
+            wallet_payload,
+        )
+        return {
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": sol_amount,
+            "usdc_balance": usdc_amount,
+        }
+    except Exception as balance_exc:
+        logger.warning("[agent] wallet balance lookup failed: %s", balance_exc)
+        wallet_payload = {
+            "render_type": "wallet_card",
+            "connected": True,
+            "wallet_public_key": wallet_pubkey,
+            "sol_balance": 0.0,
+            "usdc_balance": "0.00",
+            "warning": str(balance_exc),
+        }
+        await _log(
+            db,
+            task.id,
+            "warning",
+            f"Connected wallet {wallet_pubkey[:4]}...{wallet_pubkey[-4:]} (balance lookup currently unavailable)",
+            wallet_payload,
+        )
+        return {"connected": True, "wallet_public_key": wallet_pubkey, "error": str(balance_exc)}
 
 
 async def _resolve_conversation(db: AsyncSession, task: AgentTask):
@@ -1577,6 +1942,116 @@ async def _handle_apply_job(task: AgentTask, db: AsyncSession) -> Dict[str, Any]
     return {"applied": True, "job_id": str(job.id), "title": job.title}
 
 
+async def _handle_plan(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Execute a multi-step task plan by generating and enqueuing child tasks."""
+    params = task.params or {}
+    steps = params.get("steps") or []
+
+    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+        await _log(
+            db, task.id, "think",
+            "Deconstructing compound command into actionable execution steps..."
+        )
+
+    if not steps:
+        raw_text = task.command_text
+        parts = [
+            p.strip()
+            for p in re.split(r"\b(?:and\s+then|then|and)\b|;", raw_text, flags=re.IGNORECASE)
+            if p.strip()
+        ]
+        if len(parts) > 1:
+            for part in parts:
+                steps.append({
+                    "task_type": "generic",
+                    "command_text": part,
+                    "params": {"query": part},
+                })
+        else:
+            steps.append({
+                "task_type": "generic",
+                "command_text": raw_text,
+                "params": {"query": raw_text},
+            })
+
+    child_tasks: List[Dict[str, Any]] = []
+    child_task_ids: List[str] = []
+
+    await _log(
+        db, task.id, "action",
+        f"Planning {len(steps)} subtask(s) for execution..."
+    )
+
+    for idx, step in enumerate(steps):
+        step_type = step.get("task_type", "generic")
+        step_params = step.get("params") or {}
+        step_cmd = (
+            step.get("command_text")
+            or step_params.get("query")
+            or step_params.get("title")
+            or f"Subtask {idx + 1}"
+        )
+        child = AgentTask(
+            user_id=task.user_id,
+            command_text=step_cmd,
+            task_type=step_type if step_type != "plan" else "generic",
+            params={
+                **step_params,
+                "parent_task_id": str(task.id),
+                "step_index": idx + 1,
+                "total_steps": len(steps),
+            },
+            status="queued",
+        )
+        db.add(child)
+        await db.flush()
+        child_task_ids.append(str(child.id))
+        child_tasks.append({
+            "task_id": str(child.id),
+            "step_index": idx + 1,
+            "task_type": child.task_type,
+            "title": step_cmd,
+        })
+
+    await _log(
+        db, task.id, "success",
+        f"[PLAN] Created {len(child_task_ids)} subtask(s). Running autonomously.",
+        data={
+            "render_type": "plan_summary",
+            "child_tasks": child_tasks,
+            "child_task_ids": child_task_ids,
+        },
+    )
+
+    return {
+        "planned": True,
+        "count": len(child_task_ids),
+        "child_task_ids": child_task_ids,
+        "child_tasks": child_tasks,
+    }
+
+
+async def _handle_cancel_jobs(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
+    """Cancel pending requests or open jobs posted by the user."""
+    from ....services.agent_tools import _tool_cancel_jobs
+    user_res = await db.execute(select(User).where(User.id == task.user_id))
+    user = user_res.scalar_one_or_none()
+    if not user:
+        await _log(db, task.id, "error", "User account not found.")
+        return {"cancelled": False, "count": 0}
+
+    params = task.params or {}
+    res = await _tool_cancel_jobs(db, user, params)
+    count = res.get("cancelled_count", 0)
+    note = res.get("note", "")
+    if count > 0:
+        await _log(db, task.id, "success", note)
+        await db.commit()
+    else:
+        await _log(db, task.id, "info", note)
+    return res
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # SECTION 3: Agent loop — background asyncio coroutine
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1712,32 +2187,41 @@ async def _execute_task(task_id: str):
             logger.info("[agent] ▶ Executing task %s (type=%s): %r",
                         task_id, task.task_type, task.command_text)
 
-            # Load user's memory context and inject into params
-            memory = await _load_memory(db, task.user_id)
-            if memory and task.params is not None:
-                task.params = {**task.params, "_memory": memory}
-            elif memory:
-                task.params = {"_memory": memory}
-
-            await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
-
-            # --- NLP Parsing moved to background loop to avoid blocking the UI ---
-            if task.task_type == "pending":
-                await _log(db, task.id, "info", "Parsing command intent...")
-                parsed = await parse_command(task.command_text, memory=memory)
-                task.task_type = parsed.get("task_type", "generic")
-
-                # Merge original params (like ai_negotiate_enabled) with parsed params
-                orig_params = task.params or {}
-                new_params = parsed.get("params", {})
-                task.params = {**orig_params, **new_params}
-
-                logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
-                await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
-                await db.flush()
-
-            # Dispatch to the right handler
+            # Wrap entire task execution in try-except so an unhandled exception
+            # never leaves a task indefinitely stuck in 'running'.
             try:
+                # Load user's memory context and inject into params
+                memory = await _load_memory(db, task.user_id)
+                if memory and task.params is not None:
+                    task.params = {**task.params, "_memory": memory}
+                elif memory:
+                    task.params = {"_memory": memory}
+
+                await _log(db, task.id, "info", f"Agent started working on: \"{task.command_text}\"")
+
+                session_id = (task.params or {}).get("session_id")
+                session_history = get_session_history(session_id) if session_id else None
+
+                # --- NLP Parsing moved to background loop to avoid blocking the UI ---
+                if task.task_type == "pending":
+                    if settings.FEATURE_AGENT_REASONING_VISIBLE:
+                        context_hint = f" ({len(session_history)} turns of history)" if session_history else ""
+                        await _log(db, task.id, "think", f"Analyzing command and session context{context_hint}...")
+                    await _log(db, task.id, "info", "Parsing command intent...")
+                    parsed = await parse_command(task.command_text, memory=memory, session_history=session_history)
+                    task.task_type = parsed.get("task_type", "generic")
+
+                    # Merge original params (like ai_negotiate_enabled, session_id, radius_km) with parsed params
+                    orig_params = task.params or {}
+                    new_params = parsed.get("params", {}) or {}
+                    non_null_new = {k: v for k, v in new_params.items() if v is not None}
+                    task.params = {**orig_params, **non_null_new}
+
+                    logger.info("[agent] Task %s parsed as type=%s", task_id, task.task_type)
+                    await _log(db, task.id, "info", f"Interpreted as: {parsed.get('response', task.task_type)}")
+                    await db.flush()
+
+                # Dispatch to the right handler
                 if task.task_type == "find_service":
                     task.result = await _handle_find_service(task, db)
                 elif task.task_type == "find_job":
@@ -1758,6 +2242,10 @@ async def _execute_task(task_id: str):
                     task.result = await _handle_apply_job(task, db)
                 elif task.task_type == "proactive_hunt":
                     task.result = await _handle_proactive_hunt(task, db)
+                elif task.task_type == "plan":
+                    task.result = await _handle_plan(task, db)
+                elif task.task_type == "check_wallet":
+                    task.result = await _handle_check_wallet(task, db)
                 elif task.task_type == "navigate":
                     page = (task.params or {}).get("page", "")
                     page_routes = {
@@ -1770,6 +2258,8 @@ async def _execute_task(task_id: str):
                     await _log(db, task.id, "success", f"Navigating to {page}...",
                                data={"navigate_to": route})
                     task.result = {"page": page, "navigate_to": route}
+                elif task.task_type == "cancel_jobs":
+                    task.result = await _handle_cancel_jobs(task, db)
                 else:  # generic — free-form command: run the tool-calling agent
                     from ....services import agent_tools
 
@@ -1827,6 +2317,15 @@ async def _execute_task(task_id: str):
 
             task.updated_at = datetime.now(timezone.utc)
 
+            # Record multi-turn session turn
+            if session_id:
+                reply_text = ""
+                if task.result and isinstance(task.result, dict):
+                    reply_text = str(task.result.get("message") or task.result.get("response") or "")
+                if not reply_text and task.logs:
+                    reply_text = task.logs[-1].message
+                record_session_turn(session_id, task.command_text, reply_text or f"Completed {task.task_type}")
+
             # Update memory from task results
             if task.status == "completed" and task.result:
                 mem_updates: Dict[str, Any] = {}
@@ -1841,6 +2340,10 @@ async def _execute_task(task_id: str):
                     mem_updates["usual_price_job"] = r["price"]
                 if task.task_type == "post_service" and r.get("price"):
                     mem_updates["usual_price_service"] = r["price"]
+                if r.get("job_id"):
+                    mem_updates["last_active_job_id"] = str(r["job_id"])
+                if r.get("service_id"):
+                    mem_updates["last_active_service_id"] = str(r["service_id"])
                 if mem_updates:
                     await _save_memory(db, task.user_id, mem_updates)
 
@@ -2331,6 +2834,10 @@ async def submit_command(
     # Parse intent later in the background loop to avoid blocking the UI
     task_type = "pending"
     params = {}
+    if request.session_id:
+        params["session_id"] = request.session_id
+    if request.radius_km is not None:
+        params["radius_km"] = request.radius_km
 
     # For negotiate tasks, inject the user's negotiate preference
     if "ai_negotiate_enabled" in request.dict(exclude_unset=True):
@@ -2356,6 +2863,9 @@ async def submit_command(
     db.add(initial_log)
     await db.commit()
     await db.refresh(task)
+
+    # Immediately trigger execution in background so user doesn't wait on polling loop
+    asyncio.create_task(_execute_task(str(task.id)))
 
     # Return with logs
     result = await db.execute(
@@ -2399,6 +2909,77 @@ async def get_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.get("/ai/tasks/{task_id}/stream")
+async def stream_task_logs(
+    task_id: uuid.UUID,
+    current_user: User = Depends(require_ai_enabled),
+    db: AsyncSession = Depends(get_db),
+):
+    """Server-Sent Events endpoint streaming live task logs to the client."""
+    import json
+    from fastapi.responses import StreamingResponse
+
+    # Verify task ownership
+    result = await db.execute(
+        select(AgentTask).where(
+            and_(AgentTask.id == task_id, AgentTask.user_id == current_user.id)
+        )
+    )
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    async def event_generator():
+        sent_log_ids: set[str] = set()
+        iterations = 0
+        max_iterations = 120
+
+        while iterations < max_iterations:
+            iterations += 1
+            async with async_session() as session:
+                log_result = await session.execute(
+                    select(AgentLog)
+                    .where(AgentLog.task_id == task_id)
+                    .order_by(AgentLog.created_at.asc())
+                )
+                logs = log_result.scalars().all()
+                for log_entry in logs:
+                    if str(log_entry.id) not in sent_log_ids:
+                        sent_log_ids.add(str(log_entry.id))
+                        payload = {
+                            "id": str(log_entry.id),
+                            "task_id": str(log_entry.task_id),
+                            "level": log_entry.level,
+                            "message": log_entry.message,
+                            "data": log_entry.data,
+                            "created_at": (
+                                log_entry.created_at.isoformat()
+                                if log_entry.created_at
+                                else None
+                            ),
+                        }
+                        yield f"data: {json.dumps(payload)}\n\n"
+
+                task_status_row = (await session.execute(
+                    select(AgentTask.status).where(AgentTask.id == task_id)
+                )).scalar_one_or_none()
+                if task_status_row in ("completed", "failed"):
+                    yield f"event: done\ndata: {{\"status\": \"{task_status_row}\"}}\n\n"
+                    break
+
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.delete("/ai/tasks", status_code=status.HTTP_204_NO_CONTENT)
@@ -2677,3 +3258,38 @@ async def get_ai_settings(
         "ai_settings": ai_settings,
         "autonomy_level": ai_settings.get("autonomyLevel", "off"),
     }
+
+
+@router.patch("/ai/memory")
+async def update_memory_endpoint(
+    memory_patch: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update agent memory keys."""
+    await _save_memory(db, current_user.id, memory_patch)
+    await db.commit()
+    updated = await _load_memory(db, current_user.id)
+    return {"status": "ok", "memory": updated}
+
+
+@router.delete("/ai/memory/{key}")
+async def forget_memory_key(
+    key: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Forget a specific agent memory key."""
+    from sqlalchemy import update as sa_update
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    settings_now = dict(user.ai_settings or {})
+    memory = dict(settings_now.get("memory", {}))
+    if key in memory:
+        del memory[key]
+    settings_now["memory"] = memory
+    await db.execute(sa_update(User).where(User.id == current_user.id).values(ai_settings=settings_now))
+    await db.commit()
+    return {"status": "ok", "forgotten": key, "memory": memory}

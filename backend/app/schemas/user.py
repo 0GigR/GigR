@@ -1,7 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, Dict, Any, List
 from uuid import UUID
 from datetime import datetime
+from ..core.phone import normalize_phone_number
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -9,9 +10,47 @@ class UserCreate(BaseModel):
     display_name: str = Field(..., min_length=1, max_length=100)
     phone_number: Optional[str] = None
 
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def _normalize_phone(cls, v: Any) -> Any:
+        if not v:
+            return None
+        return normalize_phone_number(str(v))
+
+    @field_validator("display_name", mode="before")
+    @classmethod
+    def _clean_name(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _validate_password(cls, v: Any) -> Any:
+        if v is not None and isinstance(v, str) and len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
 class UserLogin(BaseModel):
-    email: EmailStr
+    email: str  # Accepts either email or normalized phone number
     password: str
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _clean_identifier(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            cleaned = v.strip()
+            if "@" in cleaned:
+                return cleaned.lower()
+            return cleaned
+        return v
 
 class UserGoogleAuth(BaseModel):
     # One of these. `token` = Google ID token (GoogleLogin button).
@@ -23,6 +62,7 @@ class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     display_name: str
+    username: Optional[str] = None
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     google_id: Optional[str] = None
@@ -53,6 +93,8 @@ class PublicUserOut(BaseModel):
     Deliberately omits email, phone_number, google_id, and ai_settings."""
     id: UUID
     display_name: str
+    username: Optional[str] = None
+    handle: Optional[str] = None
     profile_image_url: Optional[str] = None
     is_verified: bool
     role: Optional[str] = None
@@ -75,6 +117,7 @@ class PublicUserOut(BaseModel):
 
 class UserUpdate(BaseModel):
     display_name: Optional[str] = Field(None, min_length=1, max_length=100)
+    username: Optional[str] = Field(None, max_length=50)
     phone_number: Optional[str] = None
     profile_image_url: Optional[str] = None
     ai_settings: Optional[Dict[str, Any]] = None
@@ -84,6 +127,26 @@ class UserUpdate(BaseModel):
     skills: Optional[List[str]] = None
     paypal_email: Optional[EmailStr] = None
 
+    @field_validator("username", mode="before")
+    @classmethod
+    def _clean_username(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            cleaned = v.strip().lower().replace("@", "")
+            if not cleaned:
+                return None
+            if len(cleaned) < 2:
+                raise ValueError("Username must be at least 2 characters")
+            return cleaned
+        return v
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def _normalize_phone(cls, v: Any) -> Any:
+        if not v:
+            return None
+        return normalize_phone_number(str(v))
+
 class UserLocationUpdate(BaseModel):
     latitude: float
     longitude: float
+    sync_services_mode: Optional[str] = "all"  # "all", "none"

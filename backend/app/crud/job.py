@@ -4,6 +4,7 @@ import math
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import select, update, or_, func
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from geoalchemy2 import functions as geo_func
 from ..core.text_search import tokenize_query, relevance_score
@@ -34,12 +35,17 @@ def hotness_score(job: Job, app_count: int, now: datetime | None = None) -> floa
     return HOTNESS_FRESHNESS_WEIGHT * freshness + HOTNESS_DEMAND_WEIGHT * demand
 
 async def get_job_by_id(db: AsyncSession, job_id: UUID) -> Job | None:
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    result = await db.execute(
+        select(Job)
+        .options(selectinload(Job.milestones))
+        .where(Job.id == job_id)
+    )
     return result.scalar_one_or_none()
 
 async def get_jobs_by_client(db: AsyncSession, client_id: UUID, limit: int = 20, offset: int = 0) -> List[Job]:
     result = await db.execute(
         select(Job)
+        .options(selectinload(Job.milestones))
         .where(Job.client_id == client_id)
         .order_by(Job.created_at.desc())
         .limit(limit)
@@ -50,6 +56,7 @@ async def get_jobs_by_client(db: AsyncSession, client_id: UUID, limit: int = 20,
 async def get_jobs_by_provider(db: AsyncSession, provider_id: UUID, limit: int = 20, offset: int = 0) -> List[Job]:
     result = await db.execute(
         select(Job)
+        .options(selectinload(Job.milestones))
         .where(Job.provider_id == provider_id)
         .order_by(Job.created_at.desc())
         .limit(limit)
@@ -119,20 +126,22 @@ async def get_open_jobs_nearby(
     return [_with_distance(job, dist_m) for job, dist_m in rows]
 
 async def create_job(db: AsyncSession, client_id: UUID, job_in: JobCreate) -> Job:
+    effective_price = job_in.price if job_in.price is not None else (job_in.min_price or 0.0)
     job = Job(
         client_id=client_id,
         title=job_in.title,
         description=job_in.description,
-        price=job_in.price,
+        price=effective_price,
         min_price=job_in.min_price,
         max_price=job_in.max_price,
         image_url=job_in.image_url,
         category_id=job_in.category_id,
         status="open",
-        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF)
+        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF),
     )
     if job_in.latitude is not None and job_in.longitude is not None:
-        job.location = f"SRID=4326;POINT({job_in.longitude} {job_in.latitude})"
+        from ..core.geo import to_wkt_point
+        job.location = to_wkt_point(job_in.latitude, job_in.longitude)
     db.add(job)
     await db.flush()
     # await db.refresh(job)
