@@ -19,6 +19,8 @@ export interface JobPayment {
   capture_id: string | null
   payout_batch_id: string | null
   payout_status: string | null
+  /** Staged jobs: one entry per milestone that has a PayPal order or capture. */
+  milestones?: Array<{ id: string; title: string; status: string; amount_usd: number | null; payout_status: string | null }>
   fee_percent: number
   events: Array<{
     kind: string
@@ -52,6 +54,12 @@ export interface LedgerEvent {
  */
 export async function startPayPalCheckout(jobId: string): Promise<PayPalCheckout> {
   const { data } = await api.post<PayPalCheckout>(`/jobs/${jobId}/paypal/checkout`)
+  return data
+}
+
+/** Same, for one milestone of a job that is paid in stages. */
+export async function startMilestoneCheckout(jobId: string, milestoneId: string): Promise<PayPalCheckout> {
+  const { data } = await api.post<PayPalCheckout>(`/jobs/${jobId}/milestones/${milestoneId}/paypal/checkout`)
   return data
 }
 

@@ -99,10 +99,16 @@ async def accept_amendment_route(
 
     # If job was funded, we must cancel the old escrow first
     if job.status in ("funded", "in_progress") and paypal_escrow.uses_paypal(job):
-        # PayPal rail: refund the old capture; the client re-funds at the new price.
-        await paypal_escrow.refund_for_amendment(db, job)
-        job.price = amendment.new_total_price
-        job.status = "assigned"
+        if await paypal_escrow.has_milestone_escrow(db, job):
+            # Staged job: each milestone is escrowed at its own amount, so a scope
+            # change only re-prices the job — held stages stay put and further
+            # stages are added or edited as milestones.
+            job.price = amendment.new_total_price
+        else:
+            # PayPal rail: refund the old capture; the client re-funds at the new price.
+            await paypal_escrow.refund_for_amendment(db, job)
+            job.price = amendment.new_total_price
+            job.status = "assigned"
     elif job.status in ("funded", "in_progress"):
         # Derive escrow PDA and cancel it
         client_pubkey = Pubkey.from_string(current_user.wallet_public_key)

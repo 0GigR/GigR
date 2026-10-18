@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ....core.config import settings
 from ....core.dependencies import get_current_user, get_db
 from ....models.job import Job
+from ....models.milestone import JobMilestone
 from ....models.payment_event import PaymentEvent
 from ....models.user import User
 from ....services import paypal_client as paypal
@@ -139,6 +140,11 @@ async def admin_ledger(
         select(func.coalesce(func.sum(Job.paypal_amount), 0))
         .where(Job.paypal_capture_id.isnot(None), Job.paypal_payout_batch_id.is_(None),
                Job.status.in_(("funded", "in_progress", "disputed")))
+    )).scalar() or Decimal(0)
+    held += (await db.execute(
+        select(func.coalesce(func.sum(JobMilestone.paypal_amount), 0))
+        .where(JobMilestone.paypal_capture_id.isnot(None), JobMilestone.paypal_payout_batch_id.is_(None),
+               JobMilestone.status == "funded")
     )).scalar() or Decimal(0)
 
     return {

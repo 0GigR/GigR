@@ -32,6 +32,9 @@ class MilestoneOut(BaseModel):
     status: str
     contract_milestone_id: str
     escrow_address: Optional[str] = None
+    # PayPal rail: USD held for this stage and how its payout is going.
+    paypal_amount: Optional[Decimal] = None
+    paypal_payout_status: Optional[str] = None
     created_at: datetime
     funded_at: Optional[datetime] = None
     released_at: Optional[datetime] = None

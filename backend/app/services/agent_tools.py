@@ -463,6 +463,8 @@ async def _tool_prepare_escrow_payment(db: AsyncSession, user: User, args: Dict[
         return err
     if not job.provider_id:
         return _error("this job has no hired provider yet — hire someone first")
+    if args.get("milestone_id"):
+        return await _prepare_milestone_payment(db, user, job, str(args["milestone_id"]))
     if job.status == "funded" or job.paypal_capture_id:
         return {"ok": True, "already_funded": True, "job_title": job.title,
                 "note": "Escrow is already funded."}
@@ -493,6 +495,57 @@ async def _tool_prepare_escrow_payment(db: AsyncSession, user: User, args: Dict[
         "requires_human_approval": True,
         "note": "Nothing has been charged. The user must open approval_url and approve the "
                 "payment in PayPal; it is then held in escrow until they release it.",
+    }
+
+
+async def _prepare_milestone_payment(db: AsyncSession, user: User, job: Any, milestone_id: str) -> Dict[str, Any]:
+    """Same human-approval checkout, scoped to one milestone of a staged job."""
+    import uuid as _uuid
+
+    from fastapi import HTTPException
+    from sqlalchemy import select
+
+    from ..core.config import settings
+    from ..crud.user import get_user_by_id
+    from ..models.milestone import JobMilestone
+    from . import paypal_escrow
+
+    try:
+        ms_id = _uuid.UUID(milestone_id)
+    except ValueError:
+        return _error("milestone_id is not a valid id")
+    milestone = (await db.execute(
+        select(JobMilestone).where(JobMilestone.id == ms_id, JobMilestone.job_id == job.id)
+    )).scalar_one_or_none()
+    if not milestone:
+        return _error("milestone not found on this job")
+    if milestone.status == "funded":
+        return {"ok": True, "already_funded": True, "job_title": job.title,
+                "note": f'Milestone "{milestone.title}" is already funded.'}
+    provider = await get_user_by_id(db, job.provider_id)
+    base = (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+    try:
+        checkout = await paypal_escrow.start_milestone_checkout(
+            db, job, milestone, provider,
+            client_id=user.id,
+            return_url=f"{base}/dashboard/paypal/return?job={job.id}",
+            cancel_url=f"{base}/dashboard/activity?paypal=cancelled&job={job.id}",
+        )
+        await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        return _error(str(exc.detail))
+    return {
+        "ok": True,
+        "job_id": str(job.id),
+        "job_title": job.title,
+        "milestone": milestone.title,
+        "amount": checkout["amount"],
+        "currency": checkout["currency"],
+        "approval_url": checkout["approval_url"],
+        "requires_human_approval": True,
+        "note": "Nothing has been charged. The user must open approval_url and approve this milestone's "
+                "payment in PayPal; it is then held for that stage until they release it.",
     }
 
 
@@ -827,6 +880,8 @@ _TOOL_TABLE: Dict[str, Dict[str, Any]] = {
             "type": "object",
             "properties": {
                 "job_id": {"type": "string", "description": "The assigned job's id (from my_jobs)."},
+                "milestone_id": {"type": "string", "description": "Optional. Fund only this milestone of a job "
+                                 "that is paid in stages, instead of the whole job."},
             },
             "required": ["job_id"],
         },
@@ -1021,7 +1076,8 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     if name == "prepare_escrow_payment":
         if result.get("already_funded"):
             return "escrow already funded"
-        return f"prepared PayPal checkout ({result.get('amount')} {result.get('currency')}) — awaiting your approval"
+        what = f"milestone “{result['milestone']}”" if result.get("milestone") else "checkout"
+        return f"prepared PayPal {what} ({result.get('amount')} {result.get('currency')}) — awaiting your approval"
     if name == "payment_status":
         return f"payment status: {result.get('state')}"
     return name

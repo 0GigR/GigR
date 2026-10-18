@@ -30,6 +30,8 @@ agent runs the legwork**.
 4. You release it (or it auto-releases when the review window lapses) and Gigr
    **pays the provider out via PayPal Payouts**. Cancel, or win a dispute, and the
    capture is **refunded**.
+   Bigger jobs are **paid in stages**: each milestone gets its own PayPal approval,
+   escrow and payout, and the agent can prepare any one of them.
 5. If it goes wrong, an **AI arbiter** reads the chat, scope changes and
    work-submission record and recommends *release / refund / split %*. A human
    admin applies it — and PayPal executes a partial refund plus a payout.
@@ -82,8 +84,8 @@ money.
 
 ## What's next
 
-PayPal Commerce Platform / partner onboarding for live multi-party payouts,
-milestone (partial) releases, and a dispute-evidence upload step for the arbiter.
+PayPal Commerce Platform / partner onboarding for live multi-party payouts, and a
+dispute-evidence upload step for the arbiter.
 
 ## Built with
 

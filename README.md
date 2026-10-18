@@ -27,6 +27,8 @@ person with the least leverage (the provider) loses most often.
    held. The provider can start work knowing the money is real.
 4. **Release** — the client releases it (or it auto-releases after the review window)
    and PayPal **pays the provider out**. Cancel or lose a dispute and PayPal **refunds**.
+   Bigger jobs can be **paid in stages**: every milestone is its own PayPal approval,
+   escrow and payout, so finishing stage 1 never exposes stage 2's money.
 5. **Reputation that can't be faked** — every vouch is tied to a real, paid-out PayPal
    transaction.
 
@@ -38,6 +40,7 @@ person with the least leverage (the provider) loses most often.
 | Escrow = captured payment | **Payments v2** captures | `Job.paypal_capture_id` |
 | Release to provider | **Payouts v1** | `release_to_provider` |
 | Cancel / dispute refund | **Payments v2 refunds** (full + partial) | `refund_to_client`, `split_escrow` |
+| Staged payments | One order → capture → payout **per milestone** | `start_milestone_checkout`, `release_milestone` |
 | Safety net | **Webhooks** + signature verification | `api/v1/endpoints/payments.py` |
 | Never double-charge | `PayPal-Request-Id`, unique `sender_batch_id` | `services/paypal_client.py` |
 

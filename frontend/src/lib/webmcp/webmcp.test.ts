@@ -399,6 +399,22 @@ describe('PayPal rail: agentic checkout', () => {
     expect(calls.post).toHaveLength(0)
   })
 
+  it('fund_escrow with a milestone_id prepares only that milestone — even while work is in progress', async () => {
+    const opened: string[] = []
+    const { api, calls } = paypalApi(jobWith({ status: 'in_progress' }))
+    const tools = createGigrWebMCPTools({
+      api, currentUser: loggedInState(USER).currentUser, openUrl: (u) => opened.push(u),
+    })
+
+    const res = await run(tools, 'fund_escrow', { job_id: 'job-1', milestone_id: 'ms-2' })
+    expect(res.ok).toBe(true)
+    expect(res.milestone_id).toBe('ms-2')
+    expect(res.requires_human_approval).toBe(true)
+    expect(res.note).toMatch(/nothing has been charged/i)
+    expect(opened).toEqual([CHECKOUT.approval_url])
+    expect(calls.post.map((c) => c.url)).toEqual(['/jobs/job-1/milestones/ms-2/paypal/checkout'])
+  })
+
   it('still refuses to fund an unhired job on the PayPal rail', async () => {
     const { api, calls } = paypalApi(jobWith({ status: 'open', provider_id: null }))
     const tools = createGigrWebMCPTools({ api, currentUser: loggedInState(USER).currentUser })

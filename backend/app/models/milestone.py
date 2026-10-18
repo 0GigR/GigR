@@ -22,9 +22,16 @@ class JobMilestone(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     amount = Column(Numeric(10, 2), nullable=False)
-    status = Column(String(50), nullable=False, default="pending")  # pending, funded, released, disputed
+    status = Column(String(50), nullable=False, default="pending")  # pending, funded, released, refunded, disputed
     contract_milestone_id = Column(String(50), unique=True, nullable=False)  # 64-bit hex for PDA derivation
-    escrow_address = Column(String(255), nullable=True)  # Solana escrow PDA address
+    escrow_address = Column(String(255), nullable=True)  # Solana escrow PDA address (or "paypal:<capture id>")
+    # ── PayPal rail: each milestone is its own order → capture → payout, so a
+    # staged job is paid stage by stage and a refund never touches released work.
+    paypal_order_id = Column(String(64), nullable=True, index=True)
+    paypal_capture_id = Column(String(64), nullable=True)
+    paypal_amount = Column(Numeric(12, 2), nullable=True)  # USD quoted once at checkout
+    paypal_payout_batch_id = Column(String(64), nullable=True)
+    paypal_payout_status = Column(String(32), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     funded_at = Column(DateTime(timezone=True), nullable=True)
     released_at = Column(DateTime(timezone=True), nullable=True)
