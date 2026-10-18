@@ -27,9 +27,25 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
-      # The PayPal rail needs no Solana settings. External services are stubbed
-      # by the suite; PayPal is replaced by an in-memory fake (tests/test_paypal_flow.py).
+      # Dummy values — the smoke suite stubs external services, but app.main
+      # parses some of these at import time, so they must be syntactically valid.
+      # PayPal is replaced by an in-memory fake (tests/test_paypal_flow.py).
       PAYMENT_RAIL: paypal
+      GIGR_PROGRAM_ID: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+      SOLANA_RPC_URL: https://api.devnet.solana.com
+      PLATFORM_KEYPAIR: "[]"
+      WALLET_ENCRYPTION_KEY: 9XBJjT14wT4aCBOx5zpHF_dmO3Lwryct6eKbV1QqSfM=
+      USDC_MINT_DEVNET: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+      GOOGLE_CLIENT_ID: dummy
+      GOOGLE_CLIENT_SECRET: dummy
+      BREVO_API_KEY: dummy
+      BREVO_SENDER_EMAIL: dummy@example.com
+      STADIA_MAPS_API_KEY: dummy
+      UNDERDOG_API_KEY: dummy
+      UNDERDOG_API_URL: https://devnet.underdogprotocol.com
+      CLOUDINARY_CLOUD_NAME: dummy
+      CLOUDINARY_API_KEY: dummy
+      CLOUDINARY_API_SECRET: dummy
       SECRET_KEY: ci-only-secret-key-not-used-in-production-0123456789
       ADMIN_SECRET: dummy
     steps:
