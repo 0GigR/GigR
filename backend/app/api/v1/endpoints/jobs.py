@@ -25,6 +25,7 @@ from ....services.wallet import get_user_keypair as _get_user_keypair
 from ....services.exchange_rate import get_ngn_usd_rate
 from ....services.agent_policy import resolve_policy, within_guardrails
 from ....core.config import settings
+from ....core.rail import current_rail
 from solders.pubkey import Pubkey
 from solders.keypair import Keypair
 from anchorpy import Program, Provider, Wallet, Idl
@@ -566,7 +567,7 @@ async def fund_job_route(
     if job.status == "funded":
         return job
 
-    if paypal_escrow.uses_paypal(job) or settings.PAYMENT_RAIL == "paypal":
+    if paypal_escrow.uses_paypal(job) or current_rail() == "paypal":
         # PayPal escrow is funded by approving a checkout, not by a single call.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -1158,7 +1159,7 @@ async def fund_job_milestone(
     if milestone.status != "pending":
         raise HTTPException(status_code=400, detail=f"Cannot fund milestone with status '{milestone.status}'")
 
-    if paypal_escrow.uses_paypal(job) or settings.PAYMENT_RAIL == "paypal":
+    if paypal_escrow.uses_paypal(job) or current_rail() == "paypal":
         # PayPal milestones are funded by approving a PayPal checkout, which this
         # JSON endpoint can't do — point the caller at the checkout route.
         raise HTTPException(
@@ -1318,12 +1319,12 @@ async def release_job_milestone(
         await db.refresh(milestone)
         return milestone
 
-    if settings.PAYMENT_RAIL == "paypal":
+    if current_rail() == "paypal":
         # A Solana-era milestone can't be settled without the on-chain config the
         # PayPal rail doesn't load — fail clearly instead of crashing.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This milestone was funded on Solana; switch PAYMENT_RAIL back to solana to release it.",
+            detail="This milestone was funded on Solana; switch the payment toggle to Solana to release it.",
         )
 
     client_kp = _get_user_keypair(current_user)

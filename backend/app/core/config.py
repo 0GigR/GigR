@@ -8,11 +8,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(..., env="DATABASE_URL")
 
     # ── Payment rail ──────────────────────────────────────────────────────────
-    # Which escrow rail the whole app runs on. "paypal" is the default; flip this
-    # one setting to "solana" to bring the original on-chain USDC escrow back.
-    # The frontend reads the active rail from GET /api/v1/config/public and hides
-    # everything belonging to the other rail (wallets, USDC, cNFT vouches, ...).
-    PAYMENT_RAIL: str = Field(default="paypal", env="PAYMENT_RAIL")
+    # The DEFAULT escrow rail, used when a caller hasn't picked one. Both rails run
+    # side by side: whichever has credentials configured is offered, and the
+    # frontend toggle sends the user's choice in the X-Payment-Rail header (see
+    # core/rail.py). Left empty it resolves to "solana" if the Solana settings are
+    # present (the original app), otherwise "paypal".
+    PAYMENT_RAIL: str = Field(default="", env="PAYMENT_RAIL")
 
     # ── PayPal (REST API v2 Orders + Payments + v1 Payouts + Webhooks) ────────
     # Create a sandbox REST app at https://developer.paypal.com/dashboard/applications
@@ -252,8 +253,8 @@ class Settings(BaseSettings):
     @field_validator("PAYMENT_RAIL")
     @classmethod
     def _normalise_rail(cls, v: str) -> str:
-        v = (v or "paypal").strip().lower()
-        if v not in ("paypal", "solana"):
+        v = (v or "").strip().lower()
+        if v not in ("", "paypal", "solana"):
             raise ValueError("PAYMENT_RAIL must be 'paypal' or 'solana'")
         return v
 
@@ -273,6 +274,8 @@ class Settings(BaseSettings):
         app (browse, chat, AI) still runs; ``paypal_enabled`` tells the UI whether
         checkout is actually available.
         """
+        if not self.PAYMENT_RAIL:
+            self.PAYMENT_RAIL = "solana" if self.solana_enabled else "paypal"
         if self.PAYMENT_RAIL == "solana":
             missing = [
                 name for name in (
@@ -286,6 +289,25 @@ class Settings(BaseSettings):
                     "PAYMENT_RAIL=solana requires these settings: " + ", ".join(missing)
                 )
         return self
+
+    @property
+    def solana_enabled(self) -> bool:
+        """True when every Solana setting is present."""
+        return all(
+            getattr(self, name)
+            for name in ("GIGR_PROGRAM_ID", "SOLANA_RPC_URL", "PLATFORM_KEYPAIR",
+                         "WALLET_ENCRYPTION_KEY", "USDC_MINT_DEVNET")
+        )
+
+    @property
+    def available_rails(self) -> list:
+        """Rails a caller may choose between. The default rail is always listed."""
+        rails = []
+        if self.solana_enabled or self.PAYMENT_RAIL == "solana":
+            rails.append("solana")
+        if self.paypal_enabled or self.PAYMENT_RAIL == "paypal":
+            rails.append("paypal")
+        return rails
 
     @property
     def paypal_enabled(self) -> bool:

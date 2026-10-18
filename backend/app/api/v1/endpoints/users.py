@@ -56,8 +56,8 @@ async def delete_my_account(
 @router.get("/me/wallet")
 async def my_wallet(current_user: User = Depends(get_current_user)):
     # Only meaningful on the Solana rail; on PayPal there is no wallet to show.
-    from ....core.config import settings
-    if settings.PAYMENT_RAIL != "solana":
+    from ....core.rail import current_rail
+    if current_rail() != "solana":
         return {"wallet_public_key": None}
     return {"wallet_public_key": current_user.wallet_public_key}
 
@@ -74,7 +74,8 @@ async def get_my_balance(current_user: User = Depends(get_current_user)):
     from solders.pubkey import Pubkey
     from ....core.config import settings
 
-    if settings.PAYMENT_RAIL != "solana":
+    from ....core.rail import current_rail
+    if current_rail() != "solana":
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Wallet balances only exist on the Solana rail. Payments run through PayPal.",

@@ -59,7 +59,8 @@ def rail_for_job(job: Job) -> str:
         return job.payment_rail
     if job.escrow_address and not str(job.escrow_address).startswith("paypal:"):
         return RAIL_SOLANA
-    return settings.PAYMENT_RAIL
+    from ..core.rail import current_rail
+    return current_rail()
 
 
 def uses_paypal(job: Job) -> bool:

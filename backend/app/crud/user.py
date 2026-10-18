@@ -83,12 +83,12 @@ async def get_users_paginated(
     return result.scalars().all()
 
 def _new_wallet_fields() -> dict:
-    """Solana wallet columns for a new user — only on the Solana rail.
+    """Solana wallet columns for a new user, whenever Solana is configured.
 
-    On the PayPal rail users have no on-chain wallet at all; money moves through
-    their PayPal account, so these columns stay NULL.
+    Both rails run side by side, so every user gets a wallet at signup and can
+    switch to Solana at any time. Without Solana config the columns stay NULL.
     """
-    if settings.PAYMENT_RAIL != "solana":
+    if not settings.solana_enabled:
         return {}
     keypair = Keypair()
     f = Fernet(settings.WALLET_ENCRYPTION_KEY.encode())  # Fernet key must be bytes
@@ -100,6 +100,17 @@ def _new_wallet_fields() -> dict:
         "wallet_public_key": str(keypair.pubkey()),
         "_wallet_private_key": encrypted_secret,
     }
+
+
+async def ensure_wallet(db: AsyncSession, user: User) -> None:
+    """Give a user who signed up without a wallet one, when Solana is configured."""
+    if user.wallet_public_key or not settings.solana_enabled:
+        return
+    fields = _new_wallet_fields()
+    user.wallet_public_key = fields["wallet_public_key"]
+    user._wallet_private_key = fields["_wallet_private_key"]
+    await db.commit()
+    await db.refresh(user)
 
 
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User:

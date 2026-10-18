@@ -1573,8 +1573,8 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
 
     # PayPal rail: do all the legwork — create the checkout — and hand the human
     # a one-tap approval link. The charge still needs their approval in PayPal.
-    from ....core.config import settings as _settings
-    if _settings.PAYMENT_RAIL == "paypal" and job.status == "assigned" and job.provider_id:
+    from ....core.rail import current_rail as _current_rail
+    if _current_rail() == "paypal" and job.status == "assigned" and job.provider_id:
         from fastapi import HTTPException as _HTTPException
         from ....crud.user import get_user_by_id as _get_user
         from ....services import paypal_escrow as _escrow
@@ -1644,8 +1644,8 @@ async def _handle_check_wallet(task: AgentTask, db: AsyncSession) -> Dict[str, A
     user_res = await db.execute(select(User).where(User.id == task.user_id))
     current_user = user_res.scalar_one_or_none()
 
-    from ....core.config import settings as _settings
-    if _settings.PAYMENT_RAIL == "paypal":
+    from ....core.rail import current_rail as _current_rail
+    if _current_rail() == "paypal":
         linked = bool(current_user and current_user.paypal_email)
         await _log(
             db,

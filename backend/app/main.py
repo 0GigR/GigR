@@ -136,6 +136,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def payment_rail_middleware(request, call_next):
+    """Remember the caller's chosen payment rail (X-Payment-Rail) for this request."""
+    from .core.rail import RAIL_HEADER, set_request_rail, reset_request_rail
+    token = set_request_rail(request.headers.get(RAIL_HEADER))
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_rail(token)
+
+
 # Include routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])

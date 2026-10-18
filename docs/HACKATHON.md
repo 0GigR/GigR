@@ -148,17 +148,14 @@ GROQ_API_KEYS=...             # free at console.groq.com — enables the agent +
 Everything else (Google sign-in, email, image uploads, push) is optional and the
 feature simply stays off without its keys. Tables are created/migrated on startup.
 
-### One switch: PayPal ⇄ Solana
+### Switching between PayPal and Solana
 
-`PAYMENT_RAIL` selects the money layer for the whole app. `paypal` (default) is
-described above. `solana` restores the original on-chain USDC escrow
-(`GIGR_PROGRAM_ID`, `SOLANA_RPC_URL`, `PLATFORM_KEYPAIR`, `WALLET_ENCRYPTION_KEY`,
-`USDC_MINT_DEVNET` become required and are validated at boot).
-
-The frontend reads the rail from `GET /api/v1/config/public`, so with `paypal`
-**nothing Solana-related appears anywhere** — no wallet, no USDC, no cNFT badges — and
-flipping the env var flips the UI with no rebuild. Each job remembers the rail that
-funded it, so switching never strands money already in escrow.
+Both rails run at once. The Solana / PayPal toggle in the app header sends an
+`X-Payment-Rail` header, and the backend handles each request on that rail. With
+PayPal selected no Solana UI appears (no wallet, USDC or cNFT badges); with Solana
+selected it is the original app. `PAYMENT_RAIL` in `.env` is just the default for
+visitors who haven't picked. Each job remembers the rail that funded it, so
+switching never strands money already in escrow.
 
 ### Tests
 

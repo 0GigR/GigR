@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....core.config import settings
+from ....core.rail import current_rail
 from ....core.dependencies import get_current_user, get_db
 from ....models.job import Job
 from ....models.milestone import JobMilestone
@@ -33,12 +34,16 @@ router = APIRouter()
 async def public_config() -> Dict[str, Any]:
     """Unauthenticated: tells the frontend which rail to render.
 
-    The UI hides everything belonging to the *other* rail (wallets, USDC, cNFT
-    vouches), so flipping ``PAYMENT_RAIL`` is the only switch there is.
+    ``payment_rail`` is the rail for *this* request (the caller's X-Payment-Rail
+    choice, else the server default). The UI hides everything belonging to the
+    other rail (wallets, USDC, cNFT vouches) and shows a toggle when both are on.
     """
-    rail = settings.PAYMENT_RAIL
+    rail = current_rail()
     return {
         "payment_rail": rail,
+        "default_rail": settings.PAYMENT_RAIL,
+        "available_rails": settings.available_rails,
+        "solana": {"enabled": settings.solana_enabled},
         "paypal": {
             "enabled": settings.paypal_enabled,
             "env": settings.PAYPAL_ENV,
@@ -148,7 +153,7 @@ async def admin_ledger(
     )).scalar() or Decimal(0)
 
     return {
-        "rail": settings.PAYMENT_RAIL,
+        "rail": current_rail(),
         "totals": {
             "captured": totals.get("captured", 0.0),
             "paid_out": totals.get("payout_sent", 0.0),

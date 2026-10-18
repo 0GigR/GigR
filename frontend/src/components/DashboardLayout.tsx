@@ -14,6 +14,7 @@ import LocationPromptBanner from '@/components/LocationPromptBanner'
 import { useAgentStore } from '@/store/agentStore'
 import api from '@/lib/api'
 import { useRail } from '@/lib/config'
+import { RailToggle } from '@/components/RailToggle'
 import { setWebMCPNavigate } from '@/lib/webmcp'
 
 // Heavy/framer-motion widgets are lazy-loaded so they don't ship in the initial
@@ -256,6 +257,7 @@ export default function DashboardLayout() {
             <span className="font-bold text-lg">Gigr</span>
           </div>
           <div className="flex items-center gap-2">
+            <RailToggle />
             <NotificationBell />
             {aiEnabled && <AgentBell />}
             <Button variant="ghost" size="icon" onClick={handleRefresh} disabled={isRefreshing} title="Refresh data">

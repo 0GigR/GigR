@@ -27,6 +27,7 @@ from ..models.category import Category
 from ..models.job import Job
 from ..models.service import ServiceListing
 from ..core.config import settings
+from ..core.rail import current_rail as _rail_now
 from ..models.user import User
 from . import groq_client
 
@@ -382,7 +383,8 @@ async def _tool_my_applications(db: AsyncSession, user: User, args: Dict[str, An
 async def _tool_get_wallet(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
     from ..core.config import settings
 
-    if settings.PAYMENT_RAIL == "paypal":
+    from ..core.rail import current_rail
+    if current_rail() == "paypal":
         return {
             "ok": True,
             "rail": "paypal",
@@ -455,7 +457,8 @@ async def _tool_prepare_escrow_payment(db: AsyncSession, user: User, args: Dict[
     from ..crud.user import get_user_by_id
     from . import paypal_escrow
 
-    if settings.PAYMENT_RAIL != "paypal":
+    from ..core.rail import current_rail
+    if current_rail() != "paypal":
         return _error("PayPal payments are not the active rail on this deployment")
 
     job, err = await _owned_job(db, user, args, as_client=True)
@@ -1009,7 +1012,7 @@ async def build_user_context(db: AsyncSession, user: User) -> Dict[str, Any]:
         "display_name": user.display_name,
         "has_location": location is not None,
         "location": location,
-        "payment_rail": settings.PAYMENT_RAIL,
+        "payment_rail": _rail_now(),
         "paypal_account_linked": bool(getattr(user, "paypal_email", None)),
         "wallet_connected": bool(user.wallet_public_key),
         "jobs_posted": [

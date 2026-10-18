@@ -27,6 +27,12 @@ async def get_current_user(
     user = await get_user_by_id(db, user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Someone who signed up before Solana was available (or while it was off)
+    # gets a wallet the first time they use the app on the Solana rail.
+    from .rail import current_rail
+    if not user.wallet_public_key and current_rail() == "solana":
+        from ..crud.user import ensure_wallet
+        await ensure_wallet(db, user)
     return user
 
 
