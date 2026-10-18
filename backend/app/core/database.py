@@ -113,7 +113,8 @@ async def init_db() -> None:
 
                         # Build a SQL-safe DEFAULT clause
                         default = ""
-                        if col.default and col.default.arg is not None:
+                        # A Python callable default (uuid4, a function) has no SQL form; skip it.
+                        if col.default and col.default.arg is not None and not col.default.is_callable:
                             raw = col.default.arg
                             type_str = col_type.upper()
                             if "JSONB" in type_str or "JSON" in type_str:

@@ -6,7 +6,7 @@ picks up queued tasks and executes them in the background.
 """
 
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, func, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, func, ForeignKey, event
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from ..core.database import Base
@@ -41,8 +41,10 @@ class AgentTask(Base):
 
     # The payment rail and frontend that queued this task. The agent worker runs it
     # later with no request attached, so it re-adopts these (core/rail.adopt).
-    payment_rail = Column(String(10), nullable=True, default=explicit_rail)
-    frontend_origin = Column(String(255), nullable=True, default=explicit_origin)
+    # Filled by the before_insert hook below. Not a column default: the startup
+    # migration turns column defaults into SQL, and a Python function has no SQL form.
+    payment_rail = Column(String(10), nullable=True)
+    frontend_origin = Column(String(255), nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -52,3 +54,12 @@ class AgentTask(Base):
     # Relationships
     user = relationship("User", foreign_keys=[user_id])
     logs = relationship("AgentLog", back_populates="task", cascade="all, delete-orphan", order_by="AgentLog.created_at")
+
+
+@event.listens_for(AgentTask, "before_insert")
+def _stamp_caller_context(mapper, connection, task):
+    """Remember which frontend (rail + origin) queued the task; the worker re-adopts it."""
+    if task.payment_rail is None:
+        task.payment_rail = explicit_rail()
+    if task.frontend_origin is None:
+        task.frontend_origin = explicit_origin()
