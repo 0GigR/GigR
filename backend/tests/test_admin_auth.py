@@ -182,10 +182,6 @@ async def test_announce_emails_all_recipients(client, monkeypatch):
     "all" announce emails active users too, while "inactive" emails only
     accounts that have been away past the cutoff."""
     import app.api.v1.endpoints.jobs as jobs_module
-    from app.core.config import settings
-
-    # Announcement emails are skipped without a mail key (CI has none).
-    monkeypatch.setattr(settings, "BREVO_API_KEY", "test-key")
 
     sent: list[tuple[str, str, str]] = []
     monkeypatch.setattr(
