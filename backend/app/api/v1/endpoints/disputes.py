@@ -28,28 +28,45 @@ from ....schemas.vote import VoteCreate, VoteOut
 from ....services.solana_client import get_platform_payer, release_escrow, cancel_escrow, ensure_ata_exists
 from ....services.wallet import get_user_keypair
 from ....services.brevo_client import send_email
+from ....services import paypal_escrow
 from solders.pubkey import Pubkey
 from spl.token.instructions import get_associated_token_address
 
 router = APIRouter()
 
-# Devnet USDC mint
-USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
+# Devnet USDC mint (Solana rail only — unset when PAYMENT_RAIL=paypal)
+USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 # Admin secret for admin-only endpoints
 ADMIN_SECRET = settings.ADMIN_SECRET
 
 
-async def _execute_resolution(db: AsyncSession, dispute, job, outcome: str) -> str:
-    """Run the on-chain escrow action for a resolved dispute and update job status.
+async def _execute_resolution(
+    db: AsyncSession, dispute, job, outcome: str, provider_percent: int | None = None
+) -> str:
+    """Run the escrow action for a resolved dispute and update job status.
 
-    outcome == "refund"  -> cancel_escrow (USDC back to client), job -> cancelled
-    outcome == "release" -> release_escrow (USDC to provider),  job -> completed
+    outcome == "refund"  -> escrow back to the client,   job -> cancelled
+    outcome == "release" -> escrow to the provider,      job -> completed
+    outcome == "split"   -> PayPal rail only: provider gets ``provider_percent``%,
+                            the client is refunded the rest, job -> completed
 
-    Returns the Solana transaction signature. Raises HTTPException(502) on failure.
-    Mirrors the working derivation in jobs.py (vault is the [b"vault", escrow] PDA,
-    NOT an SPL ATA).
+    Returns a transaction reference (Solana signature, or a PayPal id). Raises
+    HTTPException(502) on failure. The Solana path mirrors the working derivation
+    in jobs.py (vault is the [b"vault", escrow] PDA, NOT an SPL ATA).
     """
+    if paypal_escrow.uses_paypal(job):
+        if outcome == "refund":
+            summary = await paypal_escrow.refund_to_client(db, job, reason="dispute_resolved_for_client")
+        elif outcome == "split":
+            summary = await paypal_escrow.split_escrow(db, job, int(provider_percent or 50))
+        else:
+            summary = await paypal_escrow.release_to_provider(db, job, reason="dispute_resolved_for_provider")
+        await db.commit()
+        return str(summary.get("payout_batch_id") or summary.get("capture_id") or summary.get("state"))
+    if outcome == "split":
+        raise HTTPException(status_code=400, detail="Split resolutions need the PayPal rail.")
+
     client_user = await get_user_by_id(db, job.client_id)
     provider_user = await get_user_by_id(db, job.provider_id)
     client_kp = get_user_keypair(client_user)
@@ -135,6 +152,11 @@ async def list_all_disputes(
             "resolution": d.resolution,
             "raised_by": str(d.raised_by),
             "created_at": d.created_at.isoformat() if d.created_at else None,
+            "ai_summary": d.ai_summary,
+            "ai_recommendation": d.ai_recommendation,
+            "payment_state": job.payment_state if job else None,
+            "escrowed_usd": float(job.paypal_amount) if job and job.paypal_amount is not None else None,
+            "payment_rail": paypal_escrow.rail_for_job(job) if job else None,
         })
     return out
 
@@ -215,8 +237,10 @@ async def raise_dispute(
             if not msgs:
                 return
 
+            # get_messages_for_job returns flattened dict rows (not ORM objects);
+            # attribute access here used to raise and silently kill every summary.
             transcript = "\n".join(
-                f"{'Client' if str(m.sender_id) == str(job.client_id) else 'Provider'}: {m.content[:200]}"
+                f"{'Client' if str(m['sender_id']) == str(job.client_id) else 'Provider'}: {m['content'][:200]}"
                 for m in msgs
             )
             prompt = (
@@ -254,6 +278,23 @@ async def raise_dispute(
             logger.warning("[disputes] AI summary generation failed: %s", exc)
 
     _asyncio.create_task(_generate_summary())
+
+    # ---- AI arbiter recommendation (non-blocking; a human still decides) ----
+    async def _generate_recommendation():
+        try:
+            from ....core.database import async_session as _session
+            from ....services import dispute_arbiter
+            async with _session() as _db:
+                _d = await get_dispute_by_id(_db, dispute.id)
+                _j = await get_job_by_id(_db, job.id)
+                if not _d or not _j:
+                    return
+                _d.ai_recommendation = await dispute_arbiter.recommend(_db, _d, _j)
+                await _db.commit()
+        except Exception as exc:
+            logger.warning("[disputes] AI recommendation failed: %s", exc)
+
+    _asyncio.create_task(_generate_recommendation())
 
     # ---- Auto-select jury ----
     try:
@@ -551,9 +592,65 @@ async def resolve_dispute_route(
     if not job or job.status != "disputed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job not in disputed state")
 
-    # "refund" cancels the escrow; anything else (incl. "release") pays the provider.
-    outcome = "refund" if resolution_data.resolution == "refund" else "release"
-    await _execute_resolution(db, dispute, job, outcome)
+    # "refund" cancels the escrow; "split" divides it; anything else pays the provider.
+    if resolution_data.resolution == "refund":
+        outcome = "refund"
+    elif resolution_data.resolution == "split":
+        outcome = "split"
+    else:
+        outcome = "release"
+    await _execute_resolution(
+        db, dispute, job, outcome, provider_percent=resolution_data.provider_percent
+    )
 
     dispute = await resolve_dispute(db, dispute, resolution_data.resolution)
+    return dispute
+
+
+@router.post("/{dispute_id}/ai-recommendation")
+async def generate_ai_recommendation(
+    dispute_id: UUID,
+    _: bool = Depends(verify_dispute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """(Re)run the AI arbiter over the evidence. A recommendation only — nothing
+    is paid out or refunded until an admin applies it."""
+    from ....services import dispute_arbiter
+
+    dispute = await get_dispute_by_id(db, dispute_id)
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    job = await get_job_by_id(db, dispute.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    dispute.ai_recommendation = await dispute_arbiter.recommend(db, dispute, job)
+    await db.commit()
+    return dispute.ai_recommendation
+
+
+@router.post("/{dispute_id}/apply-recommendation", response_model=DisputeOut)
+async def apply_ai_recommendation(
+    dispute_id: UUID,
+    _: bool = Depends(verify_dispute_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin accepts the AI arbiter's recommendation: run it through PayPal
+    (payout, refund or a refund+payout split) and close the dispute."""
+    dispute = await get_dispute_by_id(db, dispute_id)
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if dispute.status != "open":
+        raise HTTPException(status_code=400, detail="Dispute already resolved")
+    rec = dispute.ai_recommendation
+    if not rec or rec.get("outcome") not in ("release", "refund", "split"):
+        raise HTTPException(status_code=400, detail="No AI recommendation to apply — generate one first.")
+
+    job = await get_job_by_id(db, dispute.job_id)
+    if not job or job.status != "disputed":
+        raise HTTPException(status_code=400, detail="Job not in disputed state")
+
+    outcome = rec["outcome"]
+    await _execute_resolution(db, dispute, job, outcome, provider_percent=rec.get("provider_percent"))
+    dispute = await resolve_dispute(db, dispute, outcome)
     return dispute

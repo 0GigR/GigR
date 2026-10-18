@@ -1282,6 +1282,53 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
                    f"you'll be paid automatically when they release escrow.")
         return {"status": "not_payer", "payment_moved": False}
 
+    # PayPal rail: do all the legwork — create the checkout — and hand the human
+    # a one-tap approval link. The charge still needs their approval in PayPal.
+    from ....core.config import settings as _settings
+    if _settings.PAYMENT_RAIL == "paypal" and job.status == "assigned" and job.provider_id:
+        from fastapi import HTTPException as _HTTPException
+        from ....crud.user import get_user_by_id as _get_user
+        from ....services import paypal_escrow as _escrow
+
+        provider = await _get_user(db, job.provider_id)
+        base = (_settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+        try:
+            checkout = await _escrow.start_checkout(
+                db, job, provider,
+                client_id=task.user_id,
+                return_url=f"{base}/dashboard/paypal/return?job={job.id}",
+                cancel_url=f"{base}/dashboard/activity?paypal=cancelled&job={job.id}",
+            )
+            await db.commit()
+        except _HTTPException as exc:
+            await db.rollback()
+            await _log(db, task.id, "warning",
+                       f"I couldn't prepare the payment for “{job.title}”: {exc.detail}")
+            return {"status": "blocked", "payment_moved": False, "reason": str(exc.detail)}
+
+        await _log(
+            db, task.id, "warning",
+            f"I've prepared the PayPal payment for “{job.title}” — "
+            f"${checkout['amount']:.2f} {checkout['currency']} (₦{float(job.price):,.0f}). "
+            f"Nothing is charged until you approve it: "
+            f"[Approve in PayPal]({checkout['approval_url']}). It's held in escrow until you release it.",
+            data={"action_payload": {
+                "type": "approve_payment",
+                "job_id": str(job.id),
+                "approval_url": checkout["approval_url"],
+                "options": [
+                    {"label": "Approve in PayPal", "action": f"open_url:{checkout['approval_url']}"},
+                    {"label": "Cancel", "action": "cancel"},
+                ],
+            }},
+        )
+        return {
+            "status": "pending_user_approval",
+            "payment_moved": False,
+            "job_id": str(job.id),
+            "approval_url": checkout["approval_url"],
+        }
+
     await _log(
         db, task.id, "warning",
         f"I can't move money for you — funding escrow is the one thing I won't "
@@ -2583,7 +2630,7 @@ async def respond_to_dialog(
         link = f"/dashboard/jobs?jobId={job_ref}" if job_ref else "/dashboard/jobs"
         await _log(db, task.id, "info",
                    f"Approved — but the transfer itself is yours to make. "
-                   f"[Open the job and tap Fund Escrow]({link}).")
+                   f"[Open the job and fund the escrow]({link}).")
         await db.commit()
         return {"status": "ok", "payment_moved": False}
 

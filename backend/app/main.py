@@ -174,6 +174,10 @@ app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
 from .api.v1.endpoints import voice
 app.include_router(voice.router, prefix="/api/v1", tags=["voice"])
 
+from .api.v1.endpoints import payments
+app.include_router(payments.config_router, prefix="/api/v1/config", tags=["config"])
+app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
+
 
 @app.get("/health")
 def health_check():

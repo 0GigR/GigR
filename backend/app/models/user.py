@@ -63,6 +63,10 @@ class User(Base):
     # itself — the onboarding overlay kept coming back.
     ui_settings = Column(JSONB, nullable=True, default={})
 
+    # PayPal payout destination: where released escrow is sent (Payouts API).
+    # In the sandbox this is the email of a sandbox personal account.
+    paypal_email = Column(String(255), nullable=True)
+
     # AI feature gate — set to False to disable the agent for this user (future pro tier)
     ai_enabled = Column(Boolean, nullable=False, default=True, server_default="true")
 

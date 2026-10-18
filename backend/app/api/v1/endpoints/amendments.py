@@ -16,13 +16,14 @@ from ....schemas.scope_amendment import (
 )
 from ....services.solana_client import cancel_escrow
 from ....services.wallet import get_user_keypair
+from ....services import paypal_escrow
 from ....core.config import settings
 from solders.pubkey import Pubkey
 from spl.token.instructions import get_associated_token_address
 import uuid
-from ....core.config import settings
 
-USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
+# Solana rail only — unset when PAYMENT_RAIL=paypal
+USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 router = APIRouter()
 
@@ -97,7 +98,12 @@ async def accept_amendment_route(
     await accept_amendment(db, amendment)
 
     # If job was funded, we must cancel the old escrow first
-    if job.status in ("funded", "in_progress"):
+    if job.status in ("funded", "in_progress") and paypal_escrow.uses_paypal(job):
+        # PayPal rail: refund the old capture; the client re-funds at the new price.
+        await paypal_escrow.refund_for_amendment(db, job)
+        job.price = amendment.new_total_price
+        job.status = "assigned"
+    elif job.status in ("funded", "in_progress"):
         # Derive escrow PDA and cancel it
         client_pubkey = Pubkey.from_string(current_user.wallet_public_key)
         job_id_int = int(job.contract_job_id, 16)

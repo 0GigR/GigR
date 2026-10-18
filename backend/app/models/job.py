@@ -51,6 +51,33 @@ class Job(Base):
     work_submitted_at = Column(DateTime(timezone=True), nullable=True)
     auto_release_at = Column(DateTime(timezone=True), nullable=True)
 
+    # ── PayPal escrow ────────────────────────────────────────────────────────
+    # Which rail actually holds this job's money ("paypal" | "solana"). Stored
+    # per job so flipping PAYMENT_RAIL never strands an already-funded escrow.
+    payment_rail = Column(String(20), nullable=True)
+    # Checkout order the client approves (Orders v2).
+    paypal_order_id = Column(String(64), nullable=True, index=True)
+    # The captured payment — this is "the money in escrow". Refunds target it.
+    paypal_capture_id = Column(String(64), nullable=True)
+    # Exact amount (in PAYPAL_CURRENCY) quoted when checkout started, so release
+    # and refund never re-convert at a different exchange rate.
+    paypal_amount = Column(Numeric(12, 2), nullable=True)
+    paypal_currency = Column(String(8), nullable=True)
+    # Payout batch that paid the provider on release, and its latest status.
+    paypal_payout_batch_id = Column(String(64), nullable=True)
+    paypal_payout_status = Column(String(32), nullable=True)
+
+    @property
+    def payment_state(self) -> str:
+        """unfunded | awaiting_approval | escrowed | released | refunded."""
+        if self.paypal_payout_batch_id:
+            return "released"
+        if self.paypal_capture_id:
+            return "refunded" if self.status == "cancelled" else "escrowed"
+        if self.paypal_order_id:
+            return "awaiting_approval"
+        return "unfunded"
+
     @property
     def latitude(self) -> float | None:
         if self.location is None:
