@@ -34,14 +34,14 @@ router = APIRouter()
 async def public_config() -> Dict[str, Any]:
     """Unauthenticated: tells the frontend which rail to render.
 
-    ``payment_rail`` is the rail for *this* request (the caller's X-Payment-Rail
-    choice, else the server default). The UI hides everything belonging to the
-    other rail (wallets, USDC, cNFT vouches) and shows a toggle when both are on.
+    ``payment_rail`` is the rail for *this* request: the X-Payment-Rail header the
+    frontend build sends (``VITE_PAYMENT_RAIL``), else the default. The UI hides
+    everything belonging to the other rail (wallets, USDC, cNFT vouches).
     """
     rail = current_rail()
     return {
         "payment_rail": rail,
-        "default_rail": settings.PAYMENT_RAIL,
+        "default_rail": settings.default_rail,
         "available_rails": settings.available_rails,
         "solana": {"enabled": settings.solana_enabled},
         "paypal": {

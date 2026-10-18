@@ -26,8 +26,6 @@ services:
         fromDatabase:
           name: gigr-db
           property: connectionString
-      - key: PAYMENT_RAIL
-        value: paypal
       - key: PAYPAL_ENV
         value: sandbox
       - key: PAYPAL_CLIENT_ID
@@ -75,6 +73,8 @@ services:
     staticPublishPath: dist
     autoDeploy: true
     envVars:
+      - key: VITE_PAYMENT_RAIL
+        value: paypal        # 'solana' for the original app
       - key: VITE_API_URL
         sync: false          # e.g. https://gigr-api.onrender.com/api/v1
       - key: VITE_WS_URL

@@ -1,9 +1,9 @@
 """Per-request payment rail.
 
-The frontend toggle sends ``X-Payment-Rail: paypal|solana``. A middleware stores
-it here for the duration of the request, so code that used to read the global
-``settings.PAYMENT_RAIL`` can ask ``current_rail()`` instead. Anything running
-outside a request (workers, cron) gets the server default.
+The frontend build (``VITE_PAYMENT_RAIL``) sends ``X-Payment-Rail: paypal|solana``
+on every request. A middleware stores it here for the duration of the request and
+code asks ``current_rail()``. There is no backend setting for the rail; anything
+running outside a request (workers, cron) gets ``settings.default_rail``.
 
 A job's money stays on the rail that funded it (``Job.payment_rail``); this only
 decides which rail a *new* action uses and which UI the caller sees.
@@ -21,7 +21,7 @@ _request_rail: ContextVar[Optional[str]] = ContextVar("request_payment_rail", de
 def set_request_rail(value: Optional[str]):
     """Record the caller's chosen rail; returns the token for ``reset_request_rail``."""
     value = (value or "").strip().lower()
-    if value not in settings.available_rails:
+    if value not in ("paypal", "solana"):
         value = None
     return _request_rail.set(value)
 
@@ -31,8 +31,9 @@ def reset_request_rail(token) -> None:
 
 
 def current_rail() -> str:
-    """The rail for this request: the caller's choice if that rail is configured, else the default."""
-    chosen = _request_rail.get()
-    if chosen in settings.available_rails:
-        return chosen
-    return settings.PAYMENT_RAIL
+    """The rail for this request: the frontend's choice, else the default.
+
+    The frontend's choice is honoured even if that rail isn't configured here; its
+    first payment call then fails with a clear "not configured" error.
+    """
+    return _request_rail.get() or settings.default_rail

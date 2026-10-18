@@ -22,7 +22,7 @@ from solders.pubkey import Pubkey
 from spl.token.instructions import get_associated_token_address
 import uuid
 
-# Solana rail only — unset when PAYMENT_RAIL=paypal
+# Solana rail only — unset when Solana is not configured
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 router = APIRouter()

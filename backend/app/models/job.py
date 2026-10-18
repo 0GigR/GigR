@@ -54,7 +54,7 @@ class Job(Base):
 
     # ── PayPal escrow ────────────────────────────────────────────────────────
     # Which rail actually holds this job's money ("paypal" | "solana"). Stored
-    # per job so flipping PAYMENT_RAIL never strands an already-funded escrow.
+    # per job so switching rails never strands an already-funded escrow.
     payment_rail = Column(String(20), nullable=True)
     # Checkout order the client approves (Orders v2).
     paypal_order_id = Column(String(64), nullable=True, index=True)

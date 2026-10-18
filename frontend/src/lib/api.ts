@@ -1,7 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '@/store/authStore'
 import { toast } from 'sonner'
-import { getRailChoice } from '@/store/railStore'
+import { PAYMENT_RAIL } from '@/lib/rail'
 
 // ── Token helpers ────────────────────────────────────────────────────────────
 // We persist the access_token in localStorage as a fallback for cross-site
@@ -42,9 +42,8 @@ api.interceptors.request.use((config) => {
   if (token && !config.headers['Authorization']) {
     config.headers['Authorization'] = `Bearer ${token}`
   }
-  // The payment-rail toggle: tells the backend which rail this browser is using.
-  const rail = getRailChoice()
-  if (rail) config.headers['X-Payment-Rail'] = rail
+  // Which payment rail this frontend build uses (VITE_PAYMENT_RAIL).
+  config.headers['X-Payment-Rail'] = PAYMENT_RAIL
   return config
 })
 

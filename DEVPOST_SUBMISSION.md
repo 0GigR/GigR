@@ -56,7 +56,7 @@ agent runs the legwork**.
   Money-moving tools only exist while the user is signed in.
 - **Stack:** FastAPI + PostgreSQL/PostGIS, React PWA, **AG Grid** payments ledger,
   deployed with a **Render** blueprint.
-- **One switch:** `PAYMENT_RAIL=paypal|solana`. The original Solana escrow still
+- **One switch:** `VITE_PAYMENT_RAIL=paypal|solana` (frontend build). The original Solana escrow still
   works behind the flag; with `paypal` the UI shows no wallets/USDC at all.
 
 ## Challenges
@@ -123,7 +123,7 @@ Payments*. (Sandbox only — no real money.)
 
 Gigr existed before Oct 1, 2026 as a Solana-escrow marketplace. During the
 submission period we added: the PayPal escrow rail (Orders/Payments/Payouts/
-Webhooks) and `payment_events` ledger; the `PAYMENT_RAIL` switch with a rail-aware
+Webhooks) and `payment_events` ledger; the `VITE_PAYMENT_RAIL` frontend setting with a rail-aware
 UI; agent tools `prepare_escrow_payment` / `payment_status` and PayPal-aware WebMCP
 tools; the AI dispute arbiter and split resolutions; PayPal-anchored vouches; the
 AG Grid ledger and Payments page; Render blueprint; and the unit + flow test suites.

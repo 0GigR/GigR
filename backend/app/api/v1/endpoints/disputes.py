@@ -34,7 +34,7 @@ from spl.token.instructions import get_associated_token_address
 
 router = APIRouter()
 
-# Devnet USDC mint (Solana rail only — unset when PAYMENT_RAIL=paypal)
+# Devnet USDC mint (Solana rail only — unset when Solana is not configured)
 USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 # Admin secret for admin-only endpoints

@@ -133,14 +133,14 @@ npm test
 
 ## 💳 Payment rails
 
-Both payment rails run side by side. A **Solana / PayPal toggle** in the app header (and on the landing page) switches the whole app between them for that browser:
+The same backend serves two payment rails. Which one a frontend uses is set in the **frontend** env, `VITE_PAYMENT_RAIL`, at build time:
 
-- **Solana**: the original on-chain USDC escrow, wallets and cNFT vouches. This is the original app.
-- **PayPal**: the client approves a PayPal payment, it is captured and held, and release pays the provider through PayPal Payouts. Cancels and disputes refund the capture. Jobs can also be paid in stages, one PayPal payment per milestone. Setup: [docs/PAYPAL_SETUP.md](docs/PAYPAL_SETUP.md).
+- `solana` (default): the original on-chain USDC escrow, wallets and cNFT vouches. This is the original app.
+- `paypal`: the client approves a PayPal payment, it is captured and held, and release pays the provider through PayPal Payouts. Cancels and disputes refund the capture. Jobs can also be paid in stages, one PayPal payment per milestone. Setup: [docs/PAYPAL_SETUP.md](docs/PAYPAL_SETUP.md).
 
-A rail is offered when its settings are present: the Solana variables (`GIGR_PROGRAM_ID`, `SOLANA_RPC_URL`, `PLATFORM_KEYPAIR`, `WALLET_ENCRYPTION_KEY`, `USDC_MINT_DEVNET`) and/or the PayPal ones (`PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optionally `PAYPAL_WEBHOOK_ID`). The toggle shows when both are set.
+The frontend sends its rail on every request as an `X-Payment-Rail` header, and the backend runs the matching code. There is no rail setting in the backend. To offer both, deploy the frontend twice from this repo (for example two Vercel projects, one with `VITE_PAYMENT_RAIL=solana` and one with `paypal`) pointing at the same backend.
 
-The frontend sends the choice as an `X-Payment-Rail` header, so the backend uses the matching code for each request. `PAYMENT_RAIL` in `backend/.env` is only the default for visitors who haven't chosen; if it is unset it is `solana` when Solana is configured, otherwise `paypal`. Each job keeps the rail it was funded on, so switching never strands money already in escrow.
+The backend just needs each rail's settings if you use it: the Solana variables (`GIGR_PROGRAM_ID`, `SOLANA_RPC_URL`, `PLATFORM_KEYPAIR`, `WALLET_ENCRYPTION_KEY`, `USDC_MINT_DEVNET`) and/or the PayPal ones (`PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optionally `PAYPAL_WEBHOOK_ID`). Each job keeps the rail it was funded on, so the two never mix up money already in escrow.
 
 See [docs/HACKATHON.md](docs/HACKATHON.md) for the PayPal and AI details.
 
