@@ -20,11 +20,16 @@ from app.services import paypal_client as pp
 from app.services import paypal_escrow
 
 
+# Shared across tests: the DB outlives each test, so ids must not repeat within a run
+# (a per-instance counter made two tests' orders collide on `paypal_order_id`).
+_IDS = itertools.count(1)
+
+
 class FakePayPal:
     """Just enough of PayPal's REST behaviour for the escrow lifecycle."""
 
     def __init__(self) -> None:
-        self._ids = itertools.count(1)
+        self._ids = _IDS
         self.orders: dict[str, dict] = {}
         self.captures: dict[str, dict] = {}
         self.refunds: list[dict] = []
