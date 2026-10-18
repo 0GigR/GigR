@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { useRail } from '@/lib/config'
-import { startPayPalCheckout, redirectToPayPal } from '@/lib/paypal'
+import { startPayPalCheckout, startMilestoneCheckout, redirectToPayPal } from '@/lib/paypal'
 import { PaymentTimeline } from '@/components/PaymentTimeline'
 import { haversineKm } from '@/lib/geo'
 import { Button } from '@/components/ui/button'
@@ -621,10 +621,21 @@ export default function JobsPage() {
 
   const fundMilestoneMutation = useMutation({
     mutationFn: async (milestoneId: string) => {
+      if (isPayPal) {
+        // Each milestone is its own PayPal approval; we leave for PayPal and
+        // come back through /dashboard/paypal/return, which captures it.
+        const checkout = await startMilestoneCheckout(contractRoomJobId as string, milestoneId)
+        redirectToPayPal(checkout)
+        return checkout
+      }
       const { data } = await api.post(`/jobs/${contractRoomJobId}/milestones/${milestoneId}/fund`)
       return data
     },
     onSuccess: () => {
+      if (isPayPal) {
+        toast.success('Redirecting to PayPal to approve this milestone…')
+        return
+      }
       toast.success('Milestone escrow funded!')
       refetchMilestones()
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
@@ -1222,12 +1233,14 @@ export default function JobsPage() {
             </div>
           )}
 
-          {/* Milestone Escrows Section — on-chain staged escrows; not offered on the PayPal rail */}
-          {!isPayPal && (<div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 p-3 space-y-2 mt-2">
+          {/* Milestone Escrows Section — staged payments; each milestone is its own escrow on either rail */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 p-3 space-y-2 mt-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-gray-800 dark:text-gray-200" />
-                <span className="font-semibold text-xs tracking-wide">Milestone Escrows (Staged Payments)</span>
+                <span className="font-semibold text-xs tracking-wide">
+                  {isPayPal ? 'Milestone Payments (Staged Escrow)' : 'Milestone Escrows (Staged Payments)'}
+                </span>
               </div>
               <Button
                 size="sm"
@@ -1296,6 +1309,8 @@ export default function JobsPage() {
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
                                 : m.status === 'funded'
                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                : m.status === 'refunded'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
                                 : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                           >
@@ -1304,6 +1319,11 @@ export default function JobsPage() {
                         </div>
                         <p className="font-semibold text-gray-900 dark:text-gray-100">
                           {fmtPrice(parseFloat(m.amount))}
+                          {isPayPal && m.paypal_amount != null && (
+                            <span className="ml-1.5 font-normal text-[10px] text-gray-500">
+                              · ${Number(m.paypal_amount).toFixed(2)} via PayPal
+                            </span>
+                          )}
                         </p>
                       </div>
 
@@ -1317,7 +1337,7 @@ export default function JobsPage() {
                             disabled={fundMilestoneMutation.isPending}
                           >
                             {fundMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                            Fund Escrow
+                            {isPayPal ? 'Fund with PayPal' : 'Fund Escrow'}
                           </Button>
                         )}
                         {isClient && m.status === 'funded' && (
@@ -1334,6 +1354,9 @@ export default function JobsPage() {
                         {m.status === 'released' && (
                           <span className="text-[11px] text-emerald-600 font-medium">Released</span>
                         )}
+                        {m.status === 'refunded' && (
+                          <span className="text-[11px] text-amber-600 font-medium">Refunded</span>
+                        )}
                       </div>
                     </div>
                   )
@@ -1342,7 +1365,7 @@ export default function JobsPage() {
             ) : (
               <p className="text-[11px] text-gray-400">No milestone escrows created yet. Use + Add Milestone for staged job payments.</p>
             )}
-          </div>)}
+          </div>
           {/* Pending Amendments */}
           {contractAmendments?.filter(a => a.is_accepted === null).map((amend) => (
             <div key={amend.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm space-y-2 mt-2">

@@ -610,10 +610,13 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
     {
       name: 'fund_escrow',
       description:
-        'Fund a job\'s escrow (client side). A job must have a hired provider (status "assigned") first. On the PayPal rail this PREPARES the payment: it creates the PayPal checkout and returns an approval_url that the HUMAN must open to approve the charge — you can never move money without them. Show the user the amount and the link, then call get_payment_status / get_job_status after they approve. Idempotent: calling again reuses the same open checkout.',
+        'Fund a job\'s escrow (client side). A job must have a hired provider (status "assigned") first. On the PayPal rail this PREPARES the payment: it creates the PayPal checkout and returns an approval_url that the HUMAN must open to approve the charge — you can never move money without them. Show the user the amount and the link, then call get_payment_status / get_job_status after they approve. Idempotent: calling again reuses the same open checkout. For a job paid in stages, pass milestone_id to prepare the checkout for just that milestone (list them with get_payment_status) — each milestone is its own approval and its own payout.',
       inputSchema: {
         type: 'object',
-        properties: { job_id: { type: 'string', description: 'Job UUID to fund. The user must be the client and the job must be assigned.' } },
+        properties: {
+          job_id: { type: 'string', description: 'Job UUID to fund. The user must be the client and the job must be assigned.' },
+          milestone_id: { type: 'string', description: 'Optional. Fund only this milestone (staged payment) instead of the whole job.' },
+        },
         required: ['job_id'],
       },
       execute: async (input: any) => {
@@ -625,11 +628,32 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
           if (!job.provider_id) {
             return fail(`Job "${job.title}" has no hired provider yet — a provider must be assigned before escrow can be funded.`)
           }
-          if (job.status !== 'assigned' && job.status !== 'funded') {
+          const milestoneId = typeof input.milestone_id === 'string' && input.milestone_id ? input.milestone_id : null
+          const fundable = milestoneId ? ['assigned', 'funded', 'in_progress'] : ['assigned', 'funded']
+          if (!fundable.includes(job.status)) {
             return fail(`Job "${job.title}" is currently "${job.status}". Escrow can only be funded once a provider is hired (status "assigned").`)
           }
 
           if ((await getRail()) === 'paypal') {
+            if (milestoneId) {
+              const checkout: any = await api.post(`/jobs/${input.job_id}/milestones/${milestoneId}/paypal/checkout`)
+              deps.openUrl?.(checkout.approval_url)
+              return {
+                ...ok({
+                  job: summarizeJob(job),
+                  milestone_id: milestoneId,
+                  requires_human_approval: true,
+                  approval_url: checkout.approval_url,
+                  amount: checkout.amount,
+                  currency: checkout.currency,
+                  order_id: checkout.order_id,
+                }),
+                note:
+                  `PayPal checkout ready for this milestone: ${checkout.amount} ${checkout.currency}. Nothing has been charged yet — ` +
+                  'the user must open approval_url and approve it in PayPal. The money is then held for this milestone only; ' +
+                  'the user releases it when that stage is done. Check with get_payment_status.',
+              }
+            }
             if (job.status === 'funded') {
               return ok({ job: summarizeJob(job), note: 'Escrow is already funded — the provider can work.' })
             }
@@ -685,14 +709,20 @@ export function createGigrWebMCPTools(deps: ToolDeps): WebMCPTool[] {
             released: 'The escrow was paid out to the provider.',
             refunded: 'The escrow was refunded to the client.',
           }
+          const staged: any[] = Array.isArray(p.milestones) ? p.milestones : []
           return ok({
             state: p.state,
+            ...(staged.length
+              ? { milestones: staged, staged_payment: true }
+              : {}),
             amount: p.amount,
             currency: p.currency,
             payout_status: p.payout_status,
             paypal: { order_id: p.order_id, capture_id: p.capture_id, payout_batch_id: p.payout_batch_id },
             ledger: p.events,
-            next_actions: guide[p.state] ?? '',
+            next_actions: staged.length
+              ? 'This job is paid in stages. Each milestone has its own status (pending → funded → released). Fund the next pending one with fund_escrow + milestone_id; the client releases each stage when it is done.'
+              : guide[p.state] ?? '',
           })
         } catch (err) {
           return fail(detailOf(err))

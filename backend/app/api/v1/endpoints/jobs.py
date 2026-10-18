@@ -733,7 +733,15 @@ async def paypal_capture_route(
     if job.client_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the client can fund")
 
-    await paypal_escrow.capture_checkout(db, job, body.order_id, actor_id=current_user.id)
+    # The same PayPal return link serves both: an order belongs either to the
+    # whole job or to one of its milestones.
+    milestone = await paypal_escrow.milestone_for_order(db, job.id, body.order_id)
+    if milestone:
+        await paypal_escrow.capture_milestone_checkout(
+            db, job, milestone, body.order_id, actor_id=current_user.id
+        )
+    else:
+        await paypal_escrow.capture_checkout(db, job, body.order_id, actor_id=current_user.id)
     await db.commit()
     await db.refresh(job)
     return job
@@ -759,9 +767,32 @@ async def job_payment_route(
         .where(PaymentEvent.job_id == job.id, PaymentEvent.kind != "webhook")
         .order_by(PaymentEvent.created_at.asc())
     )).scalars().all()
+    stages = await paypal_escrow.milestones_of(db, job)
+    summary = paypal_escrow.payment_summary(job)
+    paid_stages = [m for m in stages if m.paypal_capture_id]
+    if paid_stages:
+        # A staged job has no single capture — summarise from its milestones.
+        if any(paypal_escrow.milestone_held(m) for m in paid_stages):
+            summary["state"] = "escrowed"
+        elif any(m.status == "released" for m in paid_stages):
+            summary["state"] = "released"
+        else:
+            summary["state"] = "refunded"
+        summary["amount"] = float(sum((m.paypal_amount or 0) for m in paid_stages))
     return {
-        **paypal_escrow.payment_summary(job),
+        **summary,
         "fee_percent": settings.PLATFORM_FEE_PERCENT,
+        "milestones": [
+            {
+                "id": str(m.id),
+                "title": m.title,
+                "status": m.status,
+                "amount_usd": float(m.paypal_amount) if m.paypal_amount is not None else None,
+                "payout_status": m.paypal_payout_status,
+            }
+            for m in stages
+            if m.paypal_order_id or m.paypal_capture_id
+        ],
         "events": [
             {
                 "kind": e.kind,
@@ -1128,12 +1159,12 @@ async def fund_job_milestone(
         raise HTTPException(status_code=400, detail=f"Cannot fund milestone with status '{milestone.status}'")
 
     if paypal_escrow.uses_paypal(job) or settings.PAYMENT_RAIL == "paypal":
-        # Staged milestone escrows are an on-chain (Solana PDA) feature. On the
-        # PayPal rail the whole job is one captured escrow — fail clearly, not
-        # with a crash on missing Solana config.
+        # PayPal milestones are funded by approving a PayPal checkout, which this
+        # JSON endpoint can't do — point the caller at the checkout route.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Milestone escrows are not available on the PayPal rail yet — fund the job through PayPal checkout.",
+            detail="Fund this milestone through PayPal checkout "
+                   f"(POST /jobs/{job_id}/milestones/{milestone_id}/paypal/checkout).",
         )
 
     client_kp = _get_user_keypair(current_user)
@@ -1206,6 +1237,55 @@ async def fund_job_milestone(
     return milestone
 
 
+@router.post("/{job_id}/milestones/{milestone_id}/paypal/checkout")
+async def paypal_milestone_checkout_route(
+    job_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start the PayPal checkout that funds one milestone; the client approves it in PayPal."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the client can fund a milestone")
+    if not job.provider_id:
+        raise HTTPException(status_code=400, detail="Assign a provider before funding milestones")
+
+    milestone = (await db.execute(
+        select(JobMilestone).where(and_(JobMilestone.id == milestone_id, JobMilestone.job_id == job_id))
+    )).scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+
+    provider = await get_user_by_id(db, job.provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+    if not provider.paypal_email:
+        await create_notification(
+            db,
+            user_id=provider.id,
+            title="Add your PayPal to get paid",
+            message=f'The client is ready to fund milestone "{milestone.title}" of "{job.title}" '
+                    "but you have no PayPal account linked.",
+            link="/dashboard/profile",
+            type="payment",
+        )
+        await db.commit()
+
+    origin = _frontend_origin(request)
+    result = await paypal_escrow.start_milestone_checkout(
+        db, job, milestone, provider,
+        client_id=current_user.id,
+        return_url=f"{origin}/dashboard/paypal/return?job={job.id}",
+        cancel_url=f"{origin}/dashboard/activity?paypal=cancelled&job={job.id}",
+    )
+    await db.commit()
+    return result
+
+
 @router.post("/{job_id}/milestones/{milestone_id}/release", response_model=MilestoneOut)
 async def release_job_milestone(
     job_id: uuid.UUID,
@@ -1231,13 +1311,19 @@ async def release_job_milestone(
     if milestone.status != "funded" or not milestone.escrow_address:
         raise HTTPException(status_code=400, detail=f"Milestone is not in funded state (status={milestone.status})")
 
-    if paypal_escrow.uses_paypal(job) or settings.PAYMENT_RAIL == "paypal":
-        # Staged milestone escrows are an on-chain (Solana PDA) feature. On the
-        # PayPal rail the whole job is one captured escrow — fail clearly, not
-        # with a crash on missing Solana config.
+    if milestone.paypal_capture_id:
+        # Funded through PayPal: pay the provider out of the captured escrow.
+        await paypal_escrow.release_milestone(db, job, milestone, reason="client_release")
+        await db.commit()
+        await db.refresh(milestone)
+        return milestone
+
+    if settings.PAYMENT_RAIL == "paypal":
+        # A Solana-era milestone can't be settled without the on-chain config the
+        # PayPal rail doesn't load — fail clearly instead of crashing.
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Milestone escrows are not available on the PayPal rail yet — fund the job through PayPal checkout.",
+            detail="This milestone was funded on Solana; switch PAYMENT_RAIL back to solana to release it.",
         )
 
     client_kp = _get_user_keypair(current_user)

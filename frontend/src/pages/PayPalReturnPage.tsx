@@ -33,6 +33,7 @@ export default function PayPalReturnPage() {
         queryClient.invalidateQueries({ queryKey: ['myActivity'] })
         queryClient.invalidateQueries({ queryKey: ['jobs'] })
         queryClient.invalidateQueries({ queryKey: ['job-payment', jobId] })
+        queryClient.invalidateQueries({ queryKey: ['jobMilestones'] })
         setTimeout(() => navigate('/dashboard/activity', { replace: true }), 1800)
       })
       .catch((err) => {
@@ -55,7 +56,7 @@ export default function PayPalReturnPage() {
           <CheckCircle2 className="h-10 w-10 text-green-600" />
           <h1 className="text-xl font-semibold">Escrow funded</h1>
           <p className="text-sm text-gray-500">
-            Your payment is held safely. The provider can start work — you release it when you're happy.
+            Your payment is held safely. The provider can start work — you release it (the whole job, or each milestone) when you're happy.
           </p>
         </>
       )}
