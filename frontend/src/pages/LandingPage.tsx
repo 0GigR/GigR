@@ -9,6 +9,7 @@ import {
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { useAuthStore } from '@/store/authStore'
 import { useRail } from '@/lib/config'
+import { RailToggle } from '@/components/RailToggle'
 import { Navigate } from 'react-router-dom'
 
 // ---------- Subtle animated background blobs (silver/grey) ----------
@@ -258,12 +259,15 @@ export default function LandingPage() {
             <Logo className="w-8 h-8 text-black" />
             <span className="text-xl font-bold tracking-tight">Gigr</span>
           </div>
-          <button
-            onClick={() => setAuthOpen(true)}
-            className="inline-flex h-12 items-center justify-center rounded-full bg-black px-6 text-base font-semibold text-white shadow-lg transition-all hover:bg-gray-800 hover:shadow-xl"
-          >
-            Sign In
-          </button>
+          <div className="flex items-center gap-3">
+            <RailToggle />
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="inline-flex h-12 items-center justify-center rounded-full bg-black px-6 text-base font-semibold text-white shadow-lg transition-all hover:bg-gray-800 hover:shadow-xl"
+            >
+              Sign In
+            </button>
+          </div>
         </div>
       </nav>
 
