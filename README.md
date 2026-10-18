@@ -140,7 +140,7 @@ The same backend serves two payment rails. Which one a frontend uses is set in t
 
 The frontend sends its rail on every request as an `X-Payment-Rail` header, and the backend runs the matching code. There is no rail setting in the backend. To offer both, deploy the frontend twice from this repo (for example two Vercel projects, one with `VITE_PAYMENT_RAIL=solana` and one with `paypal`) pointing at the same backend.
 
-The backend just needs each rail's settings if you use it: the Solana variables (`GIGR_PROGRAM_ID`, `SOLANA_RPC_URL`, `PLATFORM_KEYPAIR`, `WALLET_ENCRYPTION_KEY`, `USDC_MINT_DEVNET`) and/or the PayPal ones (`PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optionally `PAYPAL_WEBHOOK_ID`). Each job keeps the rail it was funded on, so the two never mix up money already in escrow.
+The backend just needs each rail's settings if you use it: the Solana variables (`GIGR_PROGRAM_ID`, `SOLANA_RPC_URL`, `PLATFORM_KEYPAIR`, `WALLET_ENCRYPTION_KEY`, `USDC_MINT_DEVNET`) and/or the PayPal ones (`PAYPAL_ENV`, `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optionally `PAYPAL_WEBHOOK_ID`). If the second frontend is on another domain, list it in the backend's `EXTRA_FRONTEND_URLS` (comma-separated) so CORS allows it and PayPal returns the payer to the right site. Agent tasks remember the rail and frontend they were queued from. Each job keeps the rail it was funded on, so the two never mix up money already in escrow.
 
 See [docs/HACKATHON.md](docs/HACKATHON.md) for the PayPal and AI details.
 

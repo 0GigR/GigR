@@ -1580,7 +1580,8 @@ async def _handle_payment(task: AgentTask, db: AsyncSession) -> Dict[str, Any]:
         from ....services import paypal_escrow as _escrow
 
         provider = await _get_user(db, job.provider_id)
-        base = (_settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+        from ....core.rail import current_frontend_url as _frontend_url
+        base = _frontend_url()
         try:
             checkout = await _escrow.start_checkout(
                 db, job, provider,
@@ -2183,6 +2184,9 @@ async def _execute_task(task_id: str):
             task = result.scalar_one_or_none()
             if not task:
                 return
+
+            from ....core.rail import adopt as _adopt_rail
+            _adopt_rail(task.payment_rail, task.frontend_origin)  # this asyncio task has its own context
 
             logger.info("[agent] ▶ Executing task %s (type=%s): %r",
                         task_id, task.task_type, task.command_text)

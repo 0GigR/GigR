@@ -475,7 +475,8 @@ async def _tool_prepare_escrow_payment(db: AsyncSession, user: User, args: Dict[
         return _error(f"job is '{job.status}'; escrow can only be funded once a provider is hired (assigned)")
 
     provider = await get_user_by_id(db, job.provider_id)
-    base = (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+    from ..core.rail import current_frontend_url
+    base = current_frontend_url()
     try:
         checkout = await paypal_escrow.start_checkout(
             db, job, provider,
@@ -526,7 +527,8 @@ async def _prepare_milestone_payment(db: AsyncSession, user: User, job: Any, mil
         return {"ok": True, "already_funded": True, "job_title": job.title,
                 "note": f'Milestone "{milestone.title}" is already funded.'}
     provider = await get_user_by_id(db, job.provider_id)
-    base = (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+    from ..core.rail import current_frontend_url
+    base = current_frontend_url()
     try:
         checkout = await paypal_escrow.start_milestone_checkout(
             db, job, milestone, provider,
