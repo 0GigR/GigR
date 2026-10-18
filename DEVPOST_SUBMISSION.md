@@ -98,7 +98,7 @@ dispute-evidence upload step for the arbiter.
 - **Hosted demo:** <<https://… your Render URL …>>
 - **Code:** <<https://github.com/GunroarCannon/… public repo URL …>> (MIT)
 - **Video (<3 min):** <<YouTube URL>> — script in [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md)
-- **Run it yourself:** README → *Run it*; sandbox PayPal setup in
+- **Run it yourself:** docs/HACKATHON.md → *Run it*; sandbox PayPal setup in
   [`docs/PAYPAL_SETUP.md`](docs/PAYPAL_SETUP.md).
 
 ### Test credentials for judges

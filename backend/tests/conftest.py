@@ -209,6 +209,9 @@ async def cleanup_session(db_ready):
             text(f"DELETE FROM service_listings WHERE provider_id IN ({_in_clause(user_ids)})")
         )
         await conn.execute(
+            text(f"DELETE FROM announcements WHERE created_by IN ({_in_clause(user_ids)})")
+        )
+        await conn.execute(
             text(f"DELETE FROM users WHERE id IN ({_in_clause(user_ids)})")
         )
         # Categories created by this run (named with the run prefix).
