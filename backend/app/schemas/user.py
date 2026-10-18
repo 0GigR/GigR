@@ -42,6 +42,8 @@ class UserOut(BaseModel):
     bio: Optional[str] = None
     skills: Optional[List[str]] = None
     permissions: Optional[List[str]] = None
+    # Where released escrow is paid (PayPal rail). Private — never in PublicUserOut.
+    paypal_email: Optional[EmailStr] = None
 
     class Config:
         from_attributes = True
@@ -80,6 +82,7 @@ class UserUpdate(BaseModel):
     location_public: Optional[bool] = None
     bio: Optional[str] = Field(None, max_length=500)
     skills: Optional[List[str]] = None
+    paypal_email: Optional[EmailStr] = None
 
 class UserLocationUpdate(BaseModel):
     latitude: float

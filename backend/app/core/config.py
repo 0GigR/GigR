@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from typing import Optional
 
 
@@ -7,21 +7,39 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = Field(..., env="DATABASE_URL")
 
-    # Solana
-    GIGR_PROGRAM_ID: str = Field(..., env=("GIGR_PROGRAM_ID", "BAROS_PROGRAM_ID"))
-    SOLANA_RPC_URL: str = Field(..., env="SOLANA_RPC_URL")
-    PLATFORM_KEYPAIR: str = Field(..., env="PLATFORM_KEYPAIR")
-    WALLET_ENCRYPTION_KEY: str = Field(..., env="WALLET_ENCRYPTION_KEY")
+    # ── Payment rail ──────────────────────────────────────────────────────────
+    # Which escrow rail the whole app runs on. "paypal" is the default; flip this
+    # one setting to "solana" to bring the original on-chain USDC escrow back.
+    # The frontend reads the active rail from GET /api/v1/config/public and hides
+    # everything belonging to the other rail (wallets, USDC, cNFT vouches, ...).
+    PAYMENT_RAIL: str = Field(default="paypal", env="PAYMENT_RAIL")
+
+    # ── PayPal (REST API v2 Orders + Payments + v1 Payouts + Webhooks) ────────
+    # Create a sandbox REST app at https://developer.paypal.com/dashboard/applications
+    PAYPAL_CLIENT_ID: str = Field(default="", env="PAYPAL_CLIENT_ID")
+    PAYPAL_CLIENT_SECRET: str = Field(default="", env="PAYPAL_CLIENT_SECRET")
+    # "sandbox" (default, free test money) or "live".
+    PAYPAL_ENV: str = Field(default="sandbox", env="PAYPAL_ENV")
+    # Webhook id from the PayPal dashboard; webhook signatures are verified with it.
+    PAYPAL_WEBHOOK_ID: str = Field(default="", env="PAYPAL_WEBHOOK_ID")
+    # Percentage of every released escrow that Gigr keeps (0 = no fee).
+    PLATFORM_FEE_PERCENT: float = Field(default=0.0, env="PLATFORM_FEE_PERCENT")
+
+    # Solana (only required when PAYMENT_RAIL=solana — see _require_rail_config)
+    GIGR_PROGRAM_ID: str = Field(default="", env=("GIGR_PROGRAM_ID", "BAROS_PROGRAM_ID"))
+    SOLANA_RPC_URL: str = Field(default="", env="SOLANA_RPC_URL")
+    PLATFORM_KEYPAIR: str = Field(default="", env="PLATFORM_KEYPAIR")
+    WALLET_ENCRYPTION_KEY: str = Field(default="", env="WALLET_ENCRYPTION_KEY")
         # USDC Devnet Mint
-    USDC_MINT_DEVNET: str = Field(..., env="USDC_MINT_DEVNET")
+    USDC_MINT_DEVNET: str = Field(default="", env="USDC_MINT_DEVNET")
 
     # Google OAuth
-    GOOGLE_CLIENT_ID: str = Field(..., env="GOOGLE_CLIENT_ID")
-    GOOGLE_CLIENT_SECRET: str = Field(..., env="GOOGLE_CLIENT_SECRET")
+    GOOGLE_CLIENT_ID: str = Field(default="", env="GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET: str = Field(default="", env="GOOGLE_CLIENT_SECRET")
 
     # Brevo
-    BREVO_API_KEY: str = Field(..., env="BREVO_API_KEY")
-    BREVO_SENDER_EMAIL: str = Field(..., env="BREVO_SENDER_EMAIL")
+    BREVO_API_KEY: str = Field(default="", env="BREVO_API_KEY")
+    BREVO_SENDER_EMAIL: str = Field(default="", env="BREVO_SENDER_EMAIL")
 
     # ── Free OpenStreetMap geo stack — no API keys, no billing ───────────────
     # Nominatim does forward/reverse geocoding, OSRM does routing/ETA, and the
@@ -60,14 +78,14 @@ class Settings(BaseSettings):
     STADIA_MAPS_API_KEY: Optional[str] = Field(default=None, env="STADIA_MAPS_API_KEY")
     STADIA_MAPS_BASE_URL: Optional[str] = Field(default=None, env="STADIA_MAPS_BASE_URL")
 
-    # Underdog
-    UNDERDOG_API_KEY: str = Field(..., env="UNDERDOG_API_KEY")
-    UNDERDOG_API_URL: str = Field(..., env="UNDERDOG_API_URL")
+    # Underdog (compressed-NFT vouches — Solana rail only)
+    UNDERDOG_API_KEY: str = Field(default="", env="UNDERDOG_API_KEY")
+    UNDERDOG_API_URL: str = Field(default="", env="UNDERDOG_API_URL")
 
     # Cloudinary
-    CLOUDINARY_CLOUD_NAME: str = Field(..., env="CLOUDINARY_CLOUD_NAME")
-    CLOUDINARY_API_KEY: str = Field(..., env="CLOUDINARY_API_KEY")
-    CLOUDINARY_API_SECRET: str = Field(..., env="CLOUDINARY_API_SECRET")
+    CLOUDINARY_CLOUD_NAME: str = Field(default="", env="CLOUDINARY_CLOUD_NAME")
+    CLOUDINARY_API_KEY: str = Field(default="", env="CLOUDINARY_API_KEY")
+    CLOUDINARY_API_SECRET: str = Field(default="", env="CLOUDINARY_API_SECRET")
 
     CLOUDINARY_URL: str | None = Field(default=None, env="CLOUDINARY_URL")
 
@@ -230,6 +248,57 @@ class Settings(BaseSettings):
         if not v.startswith(("http://", "https://")):
             v = "https://" + v
         return v
+
+    @field_validator("PAYMENT_RAIL")
+    @classmethod
+    def _normalise_rail(cls, v: str) -> str:
+        v = (v or "paypal").strip().lower()
+        if v not in ("paypal", "solana"):
+            raise ValueError("PAYMENT_RAIL must be 'paypal' or 'solana'")
+        return v
+
+    @field_validator("PAYPAL_ENV")
+    @classmethod
+    def _normalise_paypal_env(cls, v: str) -> str:
+        v = (v or "sandbox").strip().lower()
+        if v not in ("sandbox", "live"):
+            raise ValueError("PAYPAL_ENV must be 'sandbox' or 'live'")
+        return v
+
+    @model_validator(mode="after")
+    def _require_rail_config(self) -> "Settings":
+        """Fail at boot — not at the first escrow — when the chosen rail is half-configured.
+
+        The PayPal rail is allowed to boot without credentials so the rest of the
+        app (browse, chat, AI) still runs; ``paypal_enabled`` tells the UI whether
+        checkout is actually available.
+        """
+        if self.PAYMENT_RAIL == "solana":
+            missing = [
+                name for name in (
+                    "GIGR_PROGRAM_ID", "SOLANA_RPC_URL", "PLATFORM_KEYPAIR",
+                    "WALLET_ENCRYPTION_KEY", "USDC_MINT_DEVNET",
+                )
+                if not getattr(self, name)
+            ]
+            if missing:
+                raise ValueError(
+                    "PAYMENT_RAIL=solana requires these settings: " + ", ".join(missing)
+                )
+        return self
+
+    @property
+    def paypal_enabled(self) -> bool:
+        """True when PayPal REST credentials are present."""
+        return bool(self.PAYPAL_CLIENT_ID and self.PAYPAL_CLIENT_SECRET)
+
+    @property
+    def paypal_base_url(self) -> str:
+        return (
+            "https://api-m.paypal.com"
+            if self.PAYPAL_ENV == "live"
+            else "https://api-m.sandbox.paypal.com"
+        )
 
     @property
     def twilio_enabled(self) -> bool:

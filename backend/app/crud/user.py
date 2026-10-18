@@ -35,22 +35,32 @@ async def get_users_paginated(
     result = await db.execute(query)
     return result.scalars().all()
 
-async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
-    # Generate Solana keypair
+def _new_wallet_fields() -> dict:
+    """Solana wallet columns for a new user — only on the Solana rail.
+
+    On the PayPal rail users have no on-chain wallet at all; money moves through
+    their PayPal account, so these columns stay NULL.
+    """
+    if settings.PAYMENT_RAIL != "solana":
+        return {}
     keypair = Keypair()
     f = Fernet(settings.WALLET_ENCRYPTION_KEY.encode())  # Fernet key must be bytes
-
     # Extract the 32‑byte secret key and encode it in base58
     secret_bytes = bytes(keypair.secret())               # PrivateKey to bytes
     secret_base58 = base58.b58encode(secret_bytes).decode()  # e.g. "5JT..."
     encrypted_secret = f.encrypt(secret_base58.encode()).decode()
+    return {
+        "wallet_public_key": str(keypair.pubkey()),
+        "_wallet_private_key": encrypted_secret,
+    }
 
+
+async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
     user = User(
         email=user_in.email,
         display_name=user_in.display_name,
         phone_number=user_in.phone_number,
-        wallet_public_key=str(keypair.pubkey()),
-        _wallet_private_key=encrypted_secret,
+        **_new_wallet_fields(),
     )
     if user_in.password:
         from ..core.security import get_password_hash
@@ -61,21 +71,13 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
     return user
 
 async def create_user_from_google(db: AsyncSession, email: str, google_id: str, display_name: str, profile_image_url: str | None = None) -> User:
-    keypair = Keypair()
-    f = Fernet(settings.WALLET_ENCRYPTION_KEY.encode())
-
-    secret_bytes = bytes(keypair.secret())
-    secret_base58 = base58.b58encode(secret_bytes).decode()
-    encrypted_secret = f.encrypt(secret_base58.encode()).decode()
-
     user = User(
         email=email,
         google_id=google_id,
         display_name=display_name,
         profile_image_url=profile_image_url,
         is_verified=True,
-        wallet_public_key=str(keypair.pubkey()),
-        _wallet_private_key=encrypted_secret,
+        **_new_wallet_fields(),
     )
     db.add(user)
     await db.commit()

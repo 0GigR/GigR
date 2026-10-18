@@ -1,6 +1,6 @@
 import uuid
 from sqlalchemy import Column, String, Text, DateTime, func, ForeignKey, Enum as SqlEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import enum
 from ..core.database import Base
@@ -22,6 +22,9 @@ class Dispute(Base):
     status = Column(SqlEnum(DisputeStatus), default=DisputeStatus.OPEN)
     resolution = Column(String(50), nullable=True)  # "refund", "release", "split"
     ai_summary = Column(Text, nullable=True)  # AI-generated neutral jury brief
+    # AI arbiter's structured recommendation (outcome / provider_percent / rationale…).
+    # A recommendation only — an admin applies it; the model never moves money.
+    ai_recommendation = Column(JSONB, nullable=True)
     resolved_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

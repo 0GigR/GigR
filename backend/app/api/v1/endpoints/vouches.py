@@ -45,6 +45,19 @@ async def vouch_for_provider(
         raise HTTPException(status_code=404, detail="Provider not found")
     provider_wallet = provider_user.wallet_public_key
 
+    # PayPal rail: no NFT. The vouch is anchored to the PayPal payout that paid
+    # the provider for this job — a real, checkable reference to a completed,
+    # paid-for piece of work — and is therefore final immediately.
+    from ....services import paypal_escrow
+    if paypal_escrow.uses_paypal(job):
+        ref = job.paypal_payout_batch_id or job.paypal_capture_id or str(job.id)
+        vouch = await create_vouch(
+            db, job.id, current_user.id, job.provider_id, f"paypal:{ref}", f"paypal:{ref}"
+        )
+        await db.commit()
+        await db.refresh(vouch)
+        return vouch
+
     # Create the vouch record immediately with "pending" status
     vouch = await create_vouch(db, job.id, current_user.id, job.provider_id, "pending", "pending")
     await db.commit()

@@ -184,7 +184,7 @@ async def cleanup_session(db_ready):
     async with engine.begin() as conn:
         # Child rows referencing the run's jobs / users.
         if job_ids:
-            for table in ("messages", "scope_amendments", "disputes", "vouches"):
+            for table in ("messages", "scope_amendments", "disputes", "vouches", "payment_events"):
                 await conn.execute(
                     text(f"DELETE FROM {table} WHERE job_id IN ({_in_clause(job_ids)})")
                 )

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,8 +15,9 @@ from ....crud.job import (
 )
 from ....crud.notification import create_notification
 from ....crud.user import get_user_by_id
-from ....schemas.job import JobCreate, JobOut, JobAssign
+from ....schemas.job import JobCreate, JobOut, JobAssign, PayPalCapture
 from ....models.user import User
+from ....services import paypal_escrow
 from ....services.solana_client import get_platform_payer, init_escrow, release_escrow, cancel_escrow
 from ....services.wallet import get_user_keypair as _get_user_keypair
 from ....services.exchange_rate import get_ngn_usd_rate
@@ -48,10 +49,20 @@ async def _get_solana_account(pubkey: Pubkey) -> bool:
         pass
     return False
 
-# USDC Devnet mint
-USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET)
+# USDC Devnet mint (Solana rail only — unset when PAYMENT_RAIL=paypal)
+USDC_MINT = Pubkey.from_string(settings.USDC_MINT_DEVNET) if settings.USDC_MINT_DEVNET else None
 
 router = APIRouter()
+
+
+def _frontend_origin(request: Request) -> str:
+    """Where PayPal should send the payer back to: this deployment's frontend."""
+    from ....main import ALLOWED_ORIGINS  # late import — main imports this module
+
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if origin and origin in ALLOWED_ORIGINS:
+        return origin
+    return (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
 
 
 # ------------------------------------------------------------------
@@ -549,6 +560,13 @@ async def fund_job_route(
     if job.status == "funded":
         return job
 
+    if paypal_escrow.uses_paypal(job) or settings.PAYMENT_RAIL == "paypal":
+        # PayPal escrow is funded by approving a checkout, not by a single call.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Funding runs through PayPal checkout: POST /jobs/{id}/paypal/checkout.",
+        )
+
     client_user = current_user
     client_kp = _get_user_keypair(client_user)
     # Capture what we need as plain locals up front — never touch ORM lazy
@@ -648,6 +666,112 @@ async def fund_job_route(
     return await _mark_funded_and_return()
 
 
+@router.post("/{job_id}/paypal/checkout")
+async def paypal_checkout_route(
+    job_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start funding escrow: create a PayPal order and return the approval link.
+
+    The caller (the web app, or an AI agent acting for the client) sends the human
+    to ``approval_url``; PayPal brings them back and ``/paypal/capture`` moves the
+    money into escrow. Nothing is charged until the client approves in PayPal.
+    """
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the client can fund")
+    if not job.provider_id:
+        raise HTTPException(status_code=400, detail="Assign a provider before funding")
+
+    provider = await get_user_by_id(db, job.provider_id)
+    if not provider:
+        raise HTTPException(status_code=404, detail="Provider not found")
+
+    if not provider.paypal_email:
+        # Tell the provider what's blocking the job, then stop.
+        await create_notification(
+            db,
+            user_id=provider.id,
+            title="Add your PayPal to get paid",
+            message=f'The client is ready to fund "{job.title}" but you have no PayPal account linked.',
+            link="/dashboard/profile",
+            type="payment",
+        )
+        await db.commit()
+
+    origin = _frontend_origin(request)
+    result = await paypal_escrow.start_checkout(
+        db, job, provider,
+        client_id=current_user.id,
+        return_url=f"{origin}/dashboard/paypal/return?job={job.id}",
+        cancel_url=f"{origin}/dashboard/activity?paypal=cancelled&job={job.id}",
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/{job_id}/paypal/capture", response_model=JobOut)
+async def paypal_capture_route(
+    job_id: uuid.UUID,
+    body: PayPalCapture,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Finish funding: capture the approved PayPal order into escrow (idempotent)."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the client can fund")
+
+    await paypal_escrow.capture_checkout(db, job, body.order_id, actor_id=current_user.id)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.get("/{job_id}/payment")
+async def job_payment_route(
+    job_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Where this job's money is, plus the ledger of every PayPal step (client/provider only)."""
+    from ....models.payment_event import PaymentEvent
+
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if current_user.id not in (job.client_id, job.provider_id):
+        raise HTTPException(status_code=403, detail="Not your job")
+
+    rows = (await db.execute(
+        select(PaymentEvent)
+        .where(PaymentEvent.job_id == job.id, PaymentEvent.kind != "webhook")
+        .order_by(PaymentEvent.created_at.asc())
+    )).scalars().all()
+    return {
+        **paypal_escrow.payment_summary(job),
+        "fee_percent": settings.PLATFORM_FEE_PERCENT,
+        "events": [
+            {
+                "kind": e.kind,
+                "paypal_id": e.paypal_id,
+                "amount": float(e.amount) if e.amount is not None else None,
+                "currency": e.currency,
+                "status": e.status,
+                "detail": e.detail,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in rows
+        ],
+    }
+
+
 @router.post("/{job_id}/release", response_model=JobOut)
 async def release_job_route(
     job_id: uuid.UUID,
@@ -662,6 +786,12 @@ async def release_job_route(
     if job.status not in ("funded", "in_progress", "completed"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not in a releasable state")
     if job.status == "completed":
+        return job
+
+    if paypal_escrow.uses_paypal(job):
+        await paypal_escrow.release_to_provider(db, job, reason="client_release")
+        await db.commit()
+        await db.refresh(job)
         return job
 
     client_user = current_user
@@ -830,9 +960,15 @@ async def cancel_job_route(
         await db.refresh(job)
         return job
 
-    # Post‑funding: only client can cancel on‑chain
+    # Post‑funding: only client can cancel (and get the escrow back)
     if job.client_id != current_user.id:
         raise HTTPException(status_code=400, detail="Only client can cancel after funding")
+
+    if paypal_escrow.uses_paypal(job):
+        await paypal_escrow.refund_to_client(db, job, reason="cancelled_by_client")
+        await db.commit()
+        await db.refresh(job)
+        return job
 
     client_user = current_user
 

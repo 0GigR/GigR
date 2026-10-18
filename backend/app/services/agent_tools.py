@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.category import Category
 from ..models.job import Job
 from ..models.service import ServiceListing
+from ..core.config import settings
 from ..models.user import User
 from . import groq_client
 
@@ -236,11 +237,107 @@ async def _tool_my_applications(db: AsyncSession, user: User, args: Dict[str, An
 
 
 async def _tool_get_wallet(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
+    from ..core.config import settings
+
+    if settings.PAYMENT_RAIL == "paypal":
+        return {
+            "ok": True,
+            "rail": "paypal",
+            "paypal_account_linked": bool(user.paypal_email),
+            "note": "Payments run through PayPal escrow. A provider needs a linked PayPal account "
+                    "to be paid; clients approve each escrow payment in PayPal themselves.",
+        }
     return {
         "ok": True,
+        "rail": "solana",
         "wallet_public_key": user.wallet_public_key,
         "note": "Funding and releasing escrow are manual actions the user performs in the app.",
     }
+
+
+async def _owned_job(db: AsyncSession, user: User, args: Dict[str, Any], *, as_client: bool):
+    """Resolve ``job_id`` to a job the user may act on, or an error dict."""
+    from ..crud.job import get_job_by_id
+
+    raw = args.get("job_id")
+    if not raw:
+        return None, _error("job_id is required")
+    try:
+        job_id = UUID(str(raw))
+    except (ValueError, TypeError):
+        return None, _error("job_id is not a valid id")
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        return None, _error("job not found")
+    if as_client and str(job.client_id) != str(user.id):
+        return None, _error("only the client who posted this job can pay for it")
+    if not as_client and str(user.id) not in (str(job.client_id), str(job.provider_id)):
+        return None, _error("this is not the user's job")
+    return job, None
+
+
+async def _tool_prepare_escrow_payment(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
+    """Create the PayPal checkout for a job's escrow and hand back the approval link.
+
+    This is agentic commerce with a human in the loop: the agent does all the
+    legwork (finds the order, converts the price, creates the PayPal order) but
+    the money only moves when the *user* opens the link and approves it in PayPal.
+    """
+    from fastapi import HTTPException
+
+    from ..core.config import settings
+    from ..crud.user import get_user_by_id
+    from . import paypal_escrow
+
+    if settings.PAYMENT_RAIL != "paypal":
+        return _error("PayPal payments are not the active rail on this deployment")
+
+    job, err = await _owned_job(db, user, args, as_client=True)
+    if err:
+        return err
+    if not job.provider_id:
+        return _error("this job has no hired provider yet — hire someone first")
+    if job.status == "funded" or job.paypal_capture_id:
+        return {"ok": True, "already_funded": True, "job_title": job.title,
+                "note": "Escrow is already funded."}
+    if job.status != "assigned":
+        return _error(f"job is '{job.status}'; escrow can only be funded once a provider is hired (assigned)")
+
+    provider = await get_user_by_id(db, job.provider_id)
+    base = (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/")
+    try:
+        checkout = await paypal_escrow.start_checkout(
+            db, job, provider,
+            client_id=user.id,
+            return_url=f"{base}/dashboard/paypal/return?job={job.id}",
+            cancel_url=f"{base}/dashboard/activity?paypal=cancelled&job={job.id}",
+        )
+        await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        return _error(str(exc.detail))
+
+    return {
+        "ok": True,
+        "job_id": str(job.id),
+        "job_title": job.title,
+        "amount": checkout["amount"],
+        "currency": checkout["currency"],
+        "approval_url": checkout["approval_url"],
+        "requires_human_approval": True,
+        "note": "Nothing has been charged. The user must open approval_url and approve the "
+                "payment in PayPal; it is then held in escrow until they release it.",
+    }
+
+
+async def _tool_payment_status(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
+    from . import paypal_escrow
+
+    job, err = await _owned_job(db, user, args, as_client=False)
+    if err:
+        return err
+    summary = paypal_escrow.payment_summary(job)
+    return {"ok": True, "job_title": job.title, "job_status": job.status, **summary}
 
 
 async def _tool_get_my_location(db: AsyncSession, user: User, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -447,9 +544,37 @@ _TOOL_TABLE: Dict[str, Dict[str, Any]] = {
         "handler": _tool_my_applications,
     },
     "get_wallet": {
-        "description": "Get the user's wallet public key.",
+        "description": "Get the user's payment setup: whether a PayPal account is linked "
+                       "(PayPal rail) or the wallet public key (Solana rail).",
         "parameters": {"type": "object", "properties": {}, "required": []},
         "handler": _tool_get_wallet,
+    },
+    "prepare_escrow_payment": {
+        "description": "Create the PayPal checkout that funds a job's escrow and return an approval "
+                       "link for the user. Use when the user wants to pay/fund a job they hired "
+                       "someone for. You cannot charge anyone: the user must open the link and "
+                       "approve in PayPal. Never say the payment is done.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "The assigned job's id (from my_jobs)."},
+            },
+            "required": ["job_id"],
+        },
+        "handler": _tool_prepare_escrow_payment,
+    },
+    "payment_status": {
+        "description": "Where a job's money is right now: unfunded, awaiting_approval, escrowed, "
+                       "released or refunded, with the amount. Use before claiming anything about "
+                       "a payment.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "job_id": {"type": "string", "description": "The job's id (from my_jobs)."},
+            },
+            "required": ["job_id"],
+        },
+        "handler": _tool_payment_status,
     },
     "get_my_location": {
         "description": "Get the user's saved location. Call this before location-specific work.",
@@ -560,6 +685,8 @@ async def build_user_context(db: AsyncSession, user: User) -> Dict[str, Any]:
         "display_name": user.display_name,
         "has_location": location is not None,
         "location": location,
+        "payment_rail": settings.PAYMENT_RAIL,
+        "paypal_account_linked": bool(getattr(user, "paypal_email", None)),
         "wallet_connected": bool(user.wallet_public_key),
         "jobs_posted": [
             {"id": str(j.id), "title": j.title, "status": j.status, "price": float(j.price)}
@@ -580,8 +707,10 @@ You can call tools to look things up and to act on the user's behalf. Rules:
 - Prices are in Naira. Use the user's saved location for anything location-specific;
   call get_my_location first if you are unsure whether one exists.
 - Only apply to jobs, request services, or post jobs when the user actually asked for it.
-- You can NEVER move money. Escrow funding and release are manual actions the user
-  performs in the app — never claim a payment happened.
+- You can NEVER move money yourself. For a job the user has hired someone for you MAY call
+  prepare_escrow_payment, which only creates a PayPal checkout and returns an approval link the
+  user must open and approve in PayPal. Releasing escrow is always the user's own action in the
+  app. Never claim a payment happened — call payment_status and report exactly what it says.
 - Be brief: 1-3 sentences in the final answer, and say concretely what you did.
 """
 
@@ -608,7 +737,13 @@ def _summarise_step(name: str, result: Dict[str, Any]) -> str:
     if name == "get_my_location":
         return "checked location" if result.get("location") else "no saved location"
     if name == "get_wallet":
-        return "checked wallet"
+        return "checked payment setup"
+    if name == "prepare_escrow_payment":
+        if result.get("already_funded"):
+            return "escrow already funded"
+        return f"prepared PayPal checkout ({result.get('amount')} {result.get('currency')}) — awaiting your approval"
+    if name == "payment_status":
+        return f"payment status: {result.get('state')}"
     return name
 
 

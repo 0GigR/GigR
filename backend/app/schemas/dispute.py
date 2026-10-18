@@ -9,6 +9,8 @@ class DisputeCreate(BaseModel):
 
 class DisputeResolve(BaseModel):
     resolution: str  # "refund", "release", "split"
+    # Only for "split": share of the escrow the provider receives (1-99).
+    provider_percent: Optional[int] = None
 
 class DisputeOut(BaseModel):
     id: UUID
