@@ -10,6 +10,7 @@ from sqlalchemy import Column, String, Text, DateTime, func, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from ..core.database import Base
+from ..core.rail import explicit_rail, explicit_origin
 
 
 class AgentTask(Base):
@@ -37,6 +38,11 @@ class AgentTask(Base):
 
     # Final result payload (e.g. list of found services, job id created, etc.)
     result = Column(JSONB, nullable=True)
+
+    # The payment rail and frontend that queued this task. The agent worker runs it
+    # later with no request attached, so it re-adopts these (core/rail.adopt).
+    payment_rail = Column(String(10), nullable=True, default=explicit_rail)
+    frontend_origin = Column(String(255), nullable=True, default=explicit_origin)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

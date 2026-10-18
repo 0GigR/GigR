@@ -84,6 +84,8 @@ class Settings(BaseSettings):
 
     # Frontend
     FRONTEND_URL: str | None = Field(default=None, env="FRONTEND_URL")
+    # Comma-separated origins of any other frontends using this backend (CORS + PayPal return).
+    EXTRA_FRONTEND_URLS: str = Field(default="", env="EXTRA_FRONTEND_URLS")
 
     # App secrets
     SECRET_KEY: str = Field(..., env="SECRET_KEY")

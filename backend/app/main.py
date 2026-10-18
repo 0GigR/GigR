@@ -127,6 +127,8 @@ ALLOWED_ORIGINS = [
 # In production, set FRONTEND_URL env var to your deployed frontend URL
 if os.getenv("FRONTEND_URL"):
     ALLOWED_ORIGINS.append(os.getenv("FRONTEND_URL"))
+# Further frontends on this backend (e.g. a second deploy with another VITE_PAYMENT_RAIL).
+ALLOWED_ORIGINS.extend(u.strip().rstrip("/") for u in settings.EXTRA_FRONTEND_URLS.split(",") if u.strip())
 
 app.add_middleware(
     CORSMiddleware,
@@ -139,8 +141,10 @@ app.add_middleware(
 @app.middleware("http")
 async def payment_rail_middleware(request, call_next):
     """Remember the caller's chosen payment rail (X-Payment-Rail) for this request."""
-    from .core.rail import RAIL_HEADER, set_request_rail, reset_request_rail
+    from .core.rail import RAIL_HEADER, set_request_rail, reset_request_rail, set_request_origin
     token = set_request_rail(request.headers.get(RAIL_HEADER))
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    set_request_origin(origin if origin in ALLOWED_ORIGINS else None)
     try:
         return await call_next(request)
     finally:

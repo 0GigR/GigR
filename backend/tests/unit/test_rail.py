@@ -39,3 +39,31 @@ def test_unknown_value_falls_back_to_default(both_rails):
         assert rail.current_rail() == "solana"
     finally:
         rail.reset_request_rail(token)
+
+
+def test_agent_task_context_is_readopted(both_rails):
+    """The agent worker has no request; it restores the rail and frontend the task was queued from."""
+    rail.adopt("paypal", "https://pay.example.com/")
+    try:
+        assert rail.current_rail() == "paypal"
+        assert rail.current_frontend_url() == "https://pay.example.com"
+    finally:
+        rail.adopt(None, None)
+    assert rail.current_rail() == "solana"
+
+
+async def test_every_request_carries_the_rail_end_to_end(both_rails, monkeypatch):
+    """Middleware → contextvar → endpoint, and CORS lets the custom header through."""
+    import httpx
+    from app.main import app
+
+    monkeypatch.setattr(settings, "PAYPAL_CLIENT_ID", "id")
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        for want in ("paypal", "solana"):
+            r = await c.get("/api/v1/config/public", headers={"X-Payment-Rail": want})
+            assert r.json()["payment_rail"] == want
+        pre = await c.options("/api/v1/config/public", headers={
+            "Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-payment-rail,authorization"})
+        assert pre.status_code == 200
+        assert "x-payment-rail" in pre.headers["access-control-allow-headers"].lower()
