@@ -105,7 +105,7 @@ function CounterpartyAvatar({ userId, size = 'md' }: { userId?: string | null; s
   )
 }
 
-function CounterpartyLabel({ userId, fallback = 'Counterparty' }: { userId?: string | null; fallback?: string }) {
+function CounterpartyLabel({ userId, fallback = 'User' }: { userId?: string | null; fallback?: string }) {
   const { data: counterpartyUser } = useQuery<CounterpartyUser>({
     queryKey: ['counterparty-user', userId],
     queryFn: async () => {
@@ -674,7 +674,7 @@ export default function MessagesPage() {
                 No Contract Room Selected
               </h2>
               <p className="text-xs text-gray-500 max-w-sm mt-1">
-                Choose a conversation from the left to enter its contract room, review escrow terms, or message your counterparty.
+                Choose a conversation from the left to enter the chat room, check payment details, or message the other person.
               </p>
             </div>
           ) : (
@@ -700,10 +700,10 @@ export default function MessagesPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
-                          <CounterpartyLabel userId={counterpartyId} fallback="Counterparty" />
+                          <CounterpartyLabel userId={counterpartyId} fallback="User" />
                         </h2>
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                          {isClient ? 'Freelancer' : 'Client'}
+                          {isClient ? 'Worker' : 'Customer'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-0.5">

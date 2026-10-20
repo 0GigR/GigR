@@ -74,7 +74,7 @@ async def propose_amendment(
             db,
             user_id=target_user_id,
             title="Scope Amendment Proposed",
-            message=f"{current_user.display_name or 'Counterparty'} proposed a scope change for \"{job.title}\".",
+            message=f"{current_user.display_name or 'The other person'} proposed a scope change for \"{job.title}\".",
             link=f"/dashboard/messages?jobId={job.id}",
             type="work",
         )

@@ -441,7 +441,7 @@ export default function LandingPage() {
             {
               quote: 'The AI assistant handled all the preliminary questions and details for my branding project. I just approved the final files and got paid.',
               name: 'Tobi A.',
-              role: 'Freelance Designer',
+              role: 'Brand Designer',
               initials: 'TA',
             },
           ].map((t, i) => (
