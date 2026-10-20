@@ -703,11 +703,15 @@ export default function MessagesPage() {
                           <CounterpartyLabel userId={counterpartyId} fallback="User" />
                         </h2>
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                          {isClient ? 'Worker' : 'Customer'}
+                          {isClient ? 'Worker' : 'Client'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-0.5">
                         {selectedJob.title} · <span className="font-semibold text-gray-900 dark:text-gray-100">₦{Number(selectedJob.price).toLocaleString()}</span>
+                        <span className="text-gray-300 dark:text-gray-600 mx-1.5">·</span>
+                        <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                          {isClient ? 'You are the client' : 'You are the worker'}
+                        </span>
                       </p>
                     </div>
                   </div>
