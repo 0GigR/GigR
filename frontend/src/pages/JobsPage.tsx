@@ -566,9 +566,9 @@ export default function JobsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      toast.success('Work submitted! The client has been notified and has 1 hour to review before auto-release.')
+      toast.success('Project delivered for review! Client notified (1h auto-release window).')
     },
-    onError: (err: any) => toast.error(extractError(err, 'Failed to submit work')),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to deliver project')),
   })
 
   const cancelMutation = useMutation({
@@ -669,6 +669,20 @@ export default function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ['myJobs'] })
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed to release milestone')),
+  })
+
+  const submitMilestoneWorkMutation = useMutation({
+    mutationFn: async (milestoneId: string) => {
+      const { data } = await api.post(`/jobs/${contractRoomJobId}/milestones/${milestoneId}/submit-work`)
+      return data
+    },
+    onSuccess: () => {
+      toast.success('Milestone delivered! 1-hour review timer has started.')
+      refetchMilestones()
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to deliver milestone')),
   })
 
   // Handlers
@@ -1309,6 +1323,8 @@ export default function JobsPage() {
                             className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
                               m.status === 'released'
                                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                : m.status === 'under_review' || m.status === 'submitted'
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-bold'
                                 : m.status === 'funded'
                                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
                                 : m.status === 'refunded'
@@ -1316,7 +1332,7 @@ export default function JobsPage() {
                                 : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                           >
-                            [{m.status.toUpperCase()}]
+                            [{m.status === 'under_review' ? 'UNDER REVIEW (1H)' : m.status.toUpperCase()}]
                           </span>
                         </div>
                         <p className="font-semibold text-gray-900 dark:text-gray-100">
@@ -1342,22 +1358,51 @@ export default function JobsPage() {
                             {isPayPal ? 'Fund with PayPal' : 'Fund Escrow'}
                           </Button>
                         )}
-                        {isClient && m.status === 'funded' && (
+                        {/* Provider: Deliver Milestone */}
+                        {!isClient && m.status === 'funded' && (
                           <Button
                             size="sm"
-                            className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
-                            onClick={() => releaseMilestoneMutation.mutate(m.id)}
-                            disabled={releaseMilestoneMutation.isPending}
+                            variant="outline"
+                            className="h-7 text-xs border-black text-black hover:bg-black hover:text-white dark:border-white dark:text-white font-mono"
+                            onClick={() => submitMilestoneWorkMutation.mutate(m.id)}
+                            disabled={submitMilestoneWorkMutation.isPending}
                           >
-                            {releaseMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-                            Release
+                            {submitMilestoneWorkMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                            Deliver Milestone
                           </Button>
                         )}
+                        {/* Client: Approve & Release or Dispute */}
+                        {isClient && (m.status === 'funded' || m.status === 'under_review' || m.status === 'submitted') && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-mono"
+                              onClick={() => releaseMilestoneMutation.mutate(m.id)}
+                              disabled={releaseMilestoneMutation.isPending}
+                            >
+                              {releaseMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                              Approve & Release
+                            </Button>
+                            {(m.status === 'under_review' || m.status === 'submitted') && (
+                              <Link
+                                to={`/dashboard/disputes?job=${contractRoomJobId}`}
+                                className="h-7 text-xs border border-red-300 text-red-600 hover:bg-red-50 px-2 py-1 rounded font-mono inline-flex items-center"
+                              >
+                                Dispute
+                              </Link>
+                            )}
+                          </div>
+                        )}
+                        {!isClient && (m.status === 'under_review' || m.status === 'submitted') && (
+                          <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">
+                            [Under 1h Review]
+                          </span>
+                        )}
                         {m.status === 'released' && (
-                          <span className="text-[11px] text-emerald-600 font-medium">Released</span>
+                          <span className="text-[11px] text-emerald-600 font-medium font-mono">[RELEASED ✓]</span>
                         )}
                         {m.status === 'refunded' && (
-                          <span className="text-[11px] text-amber-600 font-medium">Refunded</span>
+                          <span className="text-[11px] text-amber-600 font-medium font-mono">[REFUNDED]</span>
                         )}
                       </div>
                     </div>
@@ -1583,6 +1628,7 @@ function JobCard({
 }) {
   const isClient = user?.id === job.client_id
   const isProvider = user?.id === job.provider_id
+  const navigate = useNavigate()
   const [showAssign, setShowAssign] = useState(false)
   const [showFullDesc, setShowFullDesc] = useState(false)
   const [expandedApps, setExpandedApps] = useState<Set<string>>(new Set())
@@ -1817,11 +1863,28 @@ function JobCard({
             </Button>
           </>
         )}
-        {job.status === 'funded' && isClient && (
-          <Button size="sm" onClick={() => onRelease(job.id)} disabled={releasePending} className="bg-blue-600 text-white">
-            {releasePending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-            {releasePending ? 'Releasing...' : 'Release Pay'}
-          </Button>
+        {(job.status === 'funded' || job.status === 'submitted') && isClient && (
+          <>
+            <Button
+              size="sm"
+              onClick={() => onRelease(job.id)}
+              disabled={releasePending}
+              className={job.status === 'submitted' ? "bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs" : "bg-black hover:bg-gray-800 text-white font-mono text-xs"}
+            >
+              {releasePending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+              {releasePending ? 'Releasing...' : job.status === 'submitted' ? 'Approve & Release' : 'Release Funds'}
+            </Button>
+            {job.status === 'submitted' && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => navigate(`/dashboard/disputes?job=${job.id}`)}
+                className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 font-mono text-xs"
+              >
+                Dispute
+              </Button>
+            )}
+          </>
         )}
         {job.status === 'completed' && isClient && (
           <Button
@@ -1850,10 +1913,10 @@ function JobCard({
             variant="outline"
             onClick={() => onSubmitWork(job.id)}
             disabled={submitWorkPending}
-            className="border-black text-black hover:bg-black hover:text-white"
+            className="border-black text-black hover:bg-black hover:text-white font-mono text-xs"
           >
             {submitWorkPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
-            {submitWorkPending ? 'Submitting...' : 'Submit Work'}
+            {submitWorkPending ? 'Delivering...' : 'Deliver Project (1h Review)'}
           </Button>
         )}
         {job.status === 'requested' && isProvider && (

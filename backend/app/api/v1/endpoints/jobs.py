@@ -1455,8 +1455,8 @@ async def release_job_milestone(
         raise HTTPException(status_code=404, detail="Milestone not found")
     if milestone.status == "released":
         return milestone
-    if milestone.status != "funded" or not milestone.escrow_address:
-        raise HTTPException(status_code=400, detail=f"Milestone is not in funded state (status={milestone.status})")
+    if milestone.status not in ("funded", "under_review", "submitted") or not milestone.escrow_address:
+        raise HTTPException(status_code=400, detail=f"Milestone is not in funded or review state (status={milestone.status})")
 
     if milestone.paypal_capture_id:
         # Funded through PayPal: pay the provider out of the captured escrow.
@@ -1523,4 +1523,87 @@ async def release_job_milestone(
     )
     await db.commit()
     await db.refresh(milestone)
+    return milestone
+
+
+@router.post("/{job_id}/milestones/{milestone_id}/submit-work", response_model=MilestoneOut)
+async def submit_milestone_work_route(
+    job_id: uuid.UUID,
+    milestone_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Provider marks a specific milestone as delivered.
+
+    Moves the milestone to `under_review` and starts the 1-hour auto-release timer:
+    during this 1 hour, the client can either release immediately or open a dispute.
+    If the review window lapses with no dispute, the background scanner auto-releases
+    the milestone escrow to the provider.
+    """
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.provider_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the provider can deliver work for this milestone")
+
+    result = await db.execute(
+        select(JobMilestone).where(and_(JobMilestone.id == milestone_id, JobMilestone.job_id == job_id))
+    )
+    milestone = result.scalar_one_or_none()
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    if milestone.status not in ("funded", "under_review", "submitted"):
+        raise HTTPException(status_code=400, detail="Milestone must be funded before delivering work")
+
+    now = datetime.now(timezone.utc)
+    milestone.status = "under_review"
+    milestone.work_submitted_at = now
+    milestone.auto_release_at = now + timedelta(seconds=settings.AUTO_RELEASE_SECONDS)
+    job.status = "in_progress"
+    await db.commit()
+    await db.refresh(milestone)
+
+    # In-app chat announcement
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    amount_str = f"${milestone.paypal_amount:.2f}" if milestone.paypal_amount else f"₦{float(milestone.amount):,.0f}"
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f">> {current_user.display_name or 'The provider'} delivered milestone \"{milestone.title}\" ({amount_str}). The 1-hour review timer has started. Please review and approve release or dispute."
+    )
+    await manager.broadcast_new_message(auto)
+
+    # In-app bell notification to client
+    await create_notification(
+        db,
+        user_id=job.client_id,
+        title="Milestone Delivered · 1h Review Window",
+        message=f"{current_user.display_name or 'The provider'} delivered milestone \"{milestone.title}\". Please review within 1 hour before auto-release.",
+        link=f"/dashboard/messages?jobId={job.id}",
+        type="work",
+    )
+
+    # Email notification to client via Brevo
+    client = await get_user_by_id(db, job.client_id)
+    if client and client.email:
+        frontend_url = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "https://gigrr.vercel.app"
+        _send_email_background(
+            to_email=client.email,
+            subject=f"Milestone Delivered: {milestone.title} ({job.title}) — 1 Hour Review Window",
+            html_content=(
+                f"<div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #111; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #eaeaea; rounded: 12px;'>"
+                f"<h2 style='margin-top: 0; font-size: 20px;'>Deliverable Submitted for Review</h2>"
+                f"<p><strong>{current_user.display_name}</strong> has delivered the work for milestone: "
+                f"<strong>{milestone.title}</strong> ({amount_str}) on project <strong>{job.title}</strong>.</p>"
+                f"<div style='background: #f8f9fa; border-left: 4px solid #000; padding: 14px 16px; margin: 20px 0; border-radius: 4px;'>"
+                f"<p style='margin: 0 0 8px 0; font-weight: bold;'>⏳ 1-Hour Review Window Active</p>"
+                f"<p style='margin: 0; font-size: 13px; color: #555;'>In this window, you can either <strong>Approve & Release</strong> the payment or <strong>Open a Dispute</strong> if revisions or fixes are needed. If no action is taken within 1 hour, the held funds will automatically release to the provider.</p>"
+                f"</div>"
+                f"<p style='margin-top: 24px;'><a href='{frontend_url}/dashboard/messages?jobId={job.id}' "
+                f"style='display: inline-block; background: #000; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;'>"
+                f"Review Deliverable in Contract Room →</a></p>"
+                f"</div>"
+            ),
+        )
+
     return milestone

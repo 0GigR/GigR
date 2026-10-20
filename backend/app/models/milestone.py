@@ -35,5 +35,7 @@ class JobMilestone(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     funded_at = Column(DateTime(timezone=True), nullable=True)
     released_at = Column(DateTime(timezone=True), nullable=True)
+    work_submitted_at = Column(DateTime(timezone=True), nullable=True)
+    auto_release_at = Column(DateTime(timezone=True), nullable=True)
 
     job = relationship("Job", back_populates="milestones")
