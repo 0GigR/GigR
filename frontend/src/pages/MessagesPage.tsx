@@ -404,9 +404,9 @@ export default function MessagesPage() {
       if (selectedJob?.id) {
         api.get(`/jobs/${selectedJob.id}`).then((jobRes) => setSelectedJob(jobRes.data)).catch(() => {})
       }
-      toast.success('[OK] Work submitted. The client has been notified to inspect and release payment.')
+      toast.success('[OK] Deliverable submitted for review. The client has 1 hour to approve or dispute.')
     },
-    onError: (err: any) => toast.error(extractError(err, 'Failed to submit work')),
+    onError: (err: any) => toast.error(extractError(err, 'Failed to deliver project')),
   })
 
   const releasePaymentMutation = useMutation({
@@ -712,9 +712,9 @@ export default function MessagesPage() {
                     </div>
                   </div>
 
-                  {/* Action buttons (Finish / Submit Work, Release, Fund) */}
+                  {/* Action buttons (Deliver / Submit, Release, Dispute, Fund) */}
                   <div className="flex items-center gap-2">
-                    {/* Provider: Finish / Submit Work */}
+                    {/* Provider: Deliver Project (1h Review) */}
                     {!isClient && (selectedJob.status === 'funded' || selectedJob.status === 'in_progress') && (
                       <Button
                         size="sm"
@@ -727,25 +727,35 @@ export default function MessagesPage() {
                         ) : (
                           <CheckCircle className="w-3.5 h-3.5 mr-1 text-emerald-400" />
                         )}
-                        [FINISH / SUBMIT WORK]
+                        [DELIVER PROJECT (1H REVIEW)]
                       </Button>
                     )}
 
-                    {/* Client: Accept & Release payment */}
+                    {/* Client: Approve & Release payment / Dispute */}
                     {isClient && selectedJob.status === 'submitted' && (
-                      <Button
-                        size="sm"
-                        onClick={() => releasePaymentMutation.mutate(selectedJob.id)}
-                        disabled={releasePaymentMutation.isPending}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
-                      >
-                        {releasePaymentMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                        ) : (
-                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                        )}
-                        [ACCEPT & RELEASE PAYMENT]
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => releasePaymentMutation.mutate(selectedJob.id)}
+                          disabled={releasePaymentMutation.isPending}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                        >
+                          {releasePaymentMutation.isPending ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+                          ) : (
+                            <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          )}
+                          [APPROVE & RELEASE PAYMENT]
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/dashboard/disputes?job=${selectedJob.id}`)}
+                          className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                        >
+                          [DISPUTE]
+                        </Button>
+                      </>
                     )}
 
                     {/* Client: Fund escrow */}
@@ -782,7 +792,7 @@ export default function MessagesPage() {
                       </span>
                     ) : selectedJob.status === 'submitted' ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-600 dark:text-amber-400 font-semibold">
-                        [WORK SUBMITTED · READY FOR CLIENT APPROVAL]
+                        [DELIVERABLE UNDER REVIEW · 1H AUTO-RELEASE WINDOW]
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500">

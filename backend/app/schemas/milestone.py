@@ -38,5 +38,7 @@ class MilestoneOut(BaseModel):
     created_at: datetime
     funded_at: Optional[datetime] = None
     released_at: Optional[datetime] = None
+    work_submitted_at: Optional[datetime] = None
+    auto_release_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

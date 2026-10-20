@@ -607,7 +607,7 @@ async def has_milestone_escrow(db: AsyncSession, job: Job) -> bool:
 
 def milestone_held(ms: JobMilestone) -> bool:
     """Money for this stage is captured and has neither been paid out nor refunded."""
-    return bool(ms.paypal_capture_id) and ms.status == "funded" and not ms.paypal_payout_batch_id
+    return bool(ms.paypal_capture_id) and ms.status in ("funded", "under_review", "submitted") and not ms.paypal_payout_batch_id
 
 
 async def milestone_for_order(db: AsyncSession, job_id: uuid.UUID, order_id: str) -> Optional[JobMilestone]:
