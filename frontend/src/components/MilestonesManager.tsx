@@ -155,22 +155,28 @@ export function MilestonesManager({
     .reduce((sum, m) => sum + parseFloat(String(m.amount || 0)), 0)
   const remainingUnfunded = Math.max(0, jobPrice - totalMilestonesSum)
   const isJobActive = !['completed', 'cancelled'].includes(jobStatus)
+  const isAmountExceeded = Boolean(newAmount && parseFloat(newAmount) > remainingUnfunded)
 
   return (
-    <div className="rounded-xl border border-border bg-card/60 p-3.5 space-y-3 text-card-foreground">
+    <div className={`rounded-xl border border-border bg-card/60 ${compact ? 'p-2 sm:p-2.5 space-y-2' : 'p-3.5 space-y-3'} text-card-foreground`}>
       {/* Header bar / accordion toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-          <h4 className="font-semibold text-xs sm:text-sm">
-            Milestones & Staged Escrow ({milestones.length})
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <h4 className="font-semibold text-xs sm:text-sm truncate">
+            Milestones ({milestones.length})
           </h4>
-          <span className="text-[11px] text-muted-foreground font-medium">
+          <span className="text-[11px] text-muted-foreground font-medium truncate">
             {fmtPrice(totalReleased)} / {fmtPrice(jobPrice)} released
           </span>
+          {compact && totalInFlight > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-medium shrink-0">
+              {fmtPrice(totalInFlight)} in escrow
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-1.5">
-          {isClient && isJobActive && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isClient && isJobActive && remainingUnfunded > 0 && (
             <Button
               size="sm"
               variant="outline"
@@ -191,36 +197,39 @@ export function MilestonesManager({
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 w-7 p-0"
+              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
               onClick={() => setIsExpanded(!isExpanded)}
             >
-              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              <span>{isExpanded ? 'Hide' : 'Details'}</span>
+              {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </Button>
           )}
         </div>
       </div>
 
-      {/* Progress metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 border-t border-border/60">
-        <div className="p-2 rounded-lg bg-background/50 border border-border/50">
-          <p className="text-[10px] text-muted-foreground">Total Price</p>
-          <p className="font-bold">{fmtPrice(jobPrice)}</p>
+      {/* Progress metrics (full mode only) */}
+      {!compact && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 border-t border-border/60">
+          <div className="p-2 rounded-lg bg-background/50 border border-border/50">
+            <p className="text-[10px] text-muted-foreground">Total Price</p>
+            <p className="font-bold">{fmtPrice(jobPrice)}</p>
+          </div>
+          <div className="p-2 rounded-lg bg-background/50 border border-border/50">
+            <p className="text-[10px] text-muted-foreground">Released</p>
+            <p className="font-bold text-emerald-600 dark:text-emerald-400">{fmtPrice(totalReleased)}</p>
+          </div>
+          <div className="p-2 rounded-lg bg-background/50 border border-border/50">
+            <p className="text-[10px] text-muted-foreground">In Escrow</p>
+            <p className="font-bold text-indigo-600 dark:text-indigo-400">{fmtPrice(totalInFlight)}</p>
+          </div>
+          <div className="p-2 rounded-lg bg-background/50 border border-border/50">
+            <p className="text-[10px] text-muted-foreground">Unfunded Balance</p>
+            <p className={`font-bold ${remainingUnfunded > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
+              {fmtPrice(remainingUnfunded)}
+            </p>
+          </div>
         </div>
-        <div className="p-2 rounded-lg bg-background/50 border border-border/50">
-          <p className="text-[10px] text-muted-foreground">Released</p>
-          <p className="font-bold text-emerald-600 dark:text-emerald-400">{fmtPrice(totalReleased)}</p>
-        </div>
-        <div className="p-2 rounded-lg bg-background/50 border border-border/50">
-          <p className="text-[10px] text-muted-foreground">In Escrow</p>
-          <p className="font-bold text-indigo-600 dark:text-indigo-400">{fmtPrice(totalInFlight)}</p>
-        </div>
-        <div className="p-2 rounded-lg bg-background/50 border border-border/50">
-          <p className="text-[10px] text-muted-foreground">Unfunded Balance</p>
-          <p className={`font-bold ${remainingUnfunded > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
-            {fmtPrice(remainingUnfunded)}
-          </p>
-        </div>
-      </div>
+      )}
 
       {/* Collapsible content */}
       {isExpanded && (
@@ -231,8 +240,8 @@ export function MilestonesManager({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold">Create New Milestone</span>
                 {remainingUnfunded > 0 && (
-                  <span className="text-[10px] text-muted-foreground">
-                    Remaining to fund: {fmtPrice(remainingUnfunded)}
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    Remaining balance: {fmtPrice(remainingUnfunded)}
                   </span>
                 )}
               </div>
@@ -247,6 +256,11 @@ export function MilestonesManager({
                 value={newAmount}
                 onChange={setNewAmount}
               />
+              {isAmountExceeded && (
+                <p className="text-[11px] text-red-500 font-medium">
+                  Amount exceeds remaining job balance ({fmtPrice(remainingUnfunded)})
+                </p>
+              )}
               <Input
                 placeholder="Deliverables / notes (optional)"
                 value={newDesc}
@@ -257,7 +271,7 @@ export function MilestonesManager({
                 <Button
                   size="sm"
                   className="h-7 text-xs bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200"
-                  disabled={!newTitle.trim() || !newAmount || parseFloat(newAmount) <= 0 || createMilestoneMutation.isPending}
+                  disabled={!newTitle.trim() || !newAmount || parseFloat(newAmount) <= 0 || isAmountExceeded || createMilestoneMutation.isPending}
                   onClick={() =>
                     createMilestoneMutation.mutate({
                       title: newTitle.trim(),
@@ -281,7 +295,7 @@ export function MilestonesManager({
             </div>
           )}
 
-          {/* Milestones list */}
+          {/* Milestones list with max height containment in compact mode */}
           {isLoading ? (
             <div className="flex items-center justify-center p-4">
               <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -307,7 +321,7 @@ export function MilestonesManager({
               )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className={`space-y-2 ${compact ? 'max-h-52 overflow-y-auto pr-1' : ''}`}>
               {milestones.map((m) => {
                 const amountNum = parseFloat(String(m.amount))
                 const isUnderReview = m.status === 'under_review' || m.status === 'submitted'

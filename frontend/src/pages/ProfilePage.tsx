@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAuthStore } from '@/store/authStore'
 import { Clock, Coins, RefreshCw, Trash2 } from 'lucide-react'
 import { FundWalletButton } from '@/components/FundWalletButton'
+import { WalletTransferModal } from '@/components/WalletTransferModal'
 import { PayoutAccountCard } from '@/components/PayoutAccountCard'
 import { useRail } from '@/lib/config'
 import { vouchProof, VOUCH_TONE_CLASS } from '@/lib/vouch'
@@ -23,7 +24,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 
 import { Link } from 'react-router-dom'
 import {
-  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown, Share2, ExternalLink
+  Mail, Phone, Key, Copy, Star, Calendar, MapPin, Shield, Camera, Edit3, CheckCircle, XCircle, Eye, EyeOff, ChevronDown, Share2, ExternalLink, Send
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { processImageFile } from '@/lib/imageUtils'
@@ -150,6 +151,7 @@ export default function ProfilePage() {
 
   const [showUSDC, setShowUSDC] = useState(false)
   const [showWalletAddress, setShowWalletAddress] = useState(false)
+  const [showTransferModal, setShowTransferModal] = useState(false)
 
   const usdcFloat = parseFloat(walletBalance?.usdc ?? '0')
   const ngnRate = rateData?.ngn_per_usd ?? null
@@ -447,11 +449,27 @@ export default function ProfilePage() {
                   <Copy className="w-3 h-3" />
                 </Button>
                 <FundWalletButton walletAddress={walletInfo.wallet_public_key} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs font-semibold gap-1 bg-white hover:bg-gray-100 dark:bg-gray-900"
+                  onClick={() => setShowTransferModal(true)}
+                >
+                  <Send className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                  Transfer
+                </Button>
               </div>
             </div>
           ) : (
             <Skeleton className="h-10 w-full" />
           ))}
+
+          <WalletTransferModal
+            open={showTransferModal}
+            onClose={() => setShowTransferModal(false)}
+            currentSolBalance={walletBalance?.sol ?? 0}
+            currentUsdcBalance={walletBalance?.usdc ?? '0.00'}
+          />
 
           {/* Display currency — how prices across Gigr are shown */}
           <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
