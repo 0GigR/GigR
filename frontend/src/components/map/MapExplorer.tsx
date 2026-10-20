@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Briefcase, Wrench, MapPin, Sparkles } from 'lucide-react'
+import { Briefcase, Wrench, MapPin, Sparkles, X } from 'lucide-react'
 import { fmtPrice } from '@/store/currencyStore'
 import { NeighborhoodMap, type MapPoint } from '@/components/NeighborhoodMap'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -82,22 +82,23 @@ export function MapExplorer({
     <div className="space-y-3">
       {/* Agent Live Search & Overlay Banners */}
       {isAgentSearching && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-gray-200 text-xs animate-pulse">
-          <span className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
-          <span className="font-semibold">[AGENT ACTIVE]</span>
-          <span className="truncate">Scanning providers for &quot;{activeSearchQuery}&quot;</span>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-200 text-xs animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+          <span className="font-semibold text-white">Assistant Active</span>
+          <span className="text-gray-400 truncate">Scanning providers for &quot;{activeSearchQuery}&quot;</span>
         </div>
       )}
       {hasAgentResults && (
-        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-gray-900 border border-gray-700 text-gray-100 text-xs">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-gray-300" />
-            <span className="font-semibold text-white">[AGENT OVERLAY]</span>
-            <span>{agentMarkers.length} match(es) from your recent agent search</span>
+        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-100 text-xs shadow-xs">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <span className="font-semibold text-white shrink-0">Assistant Search Results</span>
+            <span className="text-gray-400 truncate">({agentMarkers.length} match{agentMarkers.length === 1 ? '' : 'es'})</span>
           </div>
           <button
+            type="button"
             onClick={clearAgentPins}
-            className="text-xs text-gray-400 hover:text-white underline ml-2 cursor-pointer"
+            className="text-xs text-gray-400 hover:text-white hover:underline ml-2 cursor-pointer shrink-0 font-medium"
           >
             Clear Overlay
           </button>
@@ -167,10 +168,10 @@ export function MapExplorer({
             <button
               type="button"
               onClick={() => setReticlePoint(null)}
-              className="text-gray-500 hover:text-gray-300 text-[10px] font-mono"
+              className="text-gray-400 hover:text-gray-200 p-0.5 rounded-md hover:bg-gray-800 transition-colors"
               aria-label="Dismiss reticle"
             >
-              [X]
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
           {reticlePoint.distanceKm !== undefined && reticlePoint.distanceKm !== null && (
@@ -197,9 +198,9 @@ export function MapExplorer({
                 submitCommand(`Request ${reticlePoint.title}`)
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1 px-2 rounded-lg bg-white hover:bg-gray-200 text-black text-[11px] font-mono font-medium transition-colors"
+              className="flex-1 py-1.5 px-3 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-semibold transition-colors"
             >
-              [REQUEST]
+              Request
             </button>
             <button
               type="button"
@@ -210,9 +211,9 @@ export function MapExplorer({
                 )
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1 px-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 text-[11px] font-mono transition-colors"
+              className="flex-1 py-1.5 px-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 text-xs font-medium transition-colors"
             >
-              [AUTO-NEGOTIATE]
+              Auto-Negotiate
             </button>
           </div>
         </div>

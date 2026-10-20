@@ -84,8 +84,8 @@ export default function AgentCapsule() {
         {mode === 'idle' && (
           <div className="flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
-            <span className="text-[10px] font-mono text-gray-400 tracking-wider whitespace-nowrap">
-              [AGENT IDLE]
+            <span className="text-[10px] text-gray-400 font-medium tracking-wide whitespace-nowrap">
+              Standby
             </span>
           </div>
         )}
@@ -103,7 +103,7 @@ export default function AgentCapsule() {
               ))}
             </span>
             <span className="text-xs text-gray-200 truncate leading-snug">
-              {thinkMessage ?? '[RUNNING]'}
+              {thinkMessage ?? 'Processing...'}
             </span>
           </div>
         )}
@@ -111,7 +111,7 @@ export default function AgentCapsule() {
         {/* Dialog state — action chips */}
         {mode === 'dialog' && options.length > 0 && (
           <div className="flex flex-col gap-1.5 w-full">
-            <span className="text-[10px] font-mono text-gray-300 tracking-wider">[PENDING]</span>
+            <span className="text-[10px] text-gray-300 font-medium tracking-wide">Action Needed</span>
             <div className="flex flex-wrap gap-1.5">
               {options.map((opt) => (
                 <button
