@@ -1701,9 +1701,9 @@ function JobCard({
             <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
               {isClient ? (
-                <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-normal text-xs">Client</Badge>
+                <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-normal text-xs">Customer</Badge>
               ) : isProvider ? (
-                <Badge className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-normal text-xs">Provider</Badge>
+                <Badge className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-normal text-xs">Worker</Badge>
               ) : null}
               {job.service_listing_id && (
                 <Link

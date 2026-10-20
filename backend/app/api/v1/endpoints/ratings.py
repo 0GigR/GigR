@@ -32,7 +32,7 @@ async def submit_rating(
     # Determine who is being rated
     ratee_id = job.provider_id if current_user.id == job.client_id else job.client_id
     if not ratee_id:
-        raise HTTPException(status_code=400, detail="No counterparty to rate")
+        raise HTTPException(status_code=400, detail="No other user to rate")
 
     # Check for existing rating
     existing = await db.execute(

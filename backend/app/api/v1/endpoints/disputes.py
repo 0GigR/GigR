@@ -289,7 +289,7 @@ async def raise_dispute(
         db,
         user_id=other_party_id,
         title="⚠️ Dispute Opened",
-        message=f"{current_user.display_name or 'The counterparty'} opened a dispute for \"{job.title}\". Escrow has been frozen.",
+        message=f"{current_user.display_name or 'The other person'} opened a dispute for \"{job.title}\". Escrow has been frozen.",
         link=f"/dashboard/disputes?job={job.id}",
         type="dispute",
     )

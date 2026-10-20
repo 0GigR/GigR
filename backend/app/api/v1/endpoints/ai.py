@@ -64,7 +64,7 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # System prompt for Groq Llama-3 NLP
-_GROQ_SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable assistant for Gigr, a Nigerian freelance and services marketplace.
+_GROQ_SYSTEM_PROMPT = """You are Gigidy AI, the friendly and reliable assistant for Gigr, a neighbourhood jobs, gigs, and services marketplace.
 Extract the user's intent from their message and return ONLY a JSON object with these fields:
 
 {
@@ -97,7 +97,7 @@ Rules:
 - "plan" = compound request containing two or more distinct goals (e.g. "clean my room and fix the tap", "find a photographer and post a job for a DJ"). Populate params.steps with the subtask objects.
 - "post_job" = user wants to HIRE SOMEONE / create a task
 - "post_service" = user wants to WORK / offer their skills
-- "find_job" = user is a freelancer looking for open jobs to apply to
+- "find_job" = user is a worker looking for open jobs to apply to
 - "negotiate" = user wants to find AND negotiate price (e.g. "find someone for 5k and negotiate")
 - "within 20km" / "in 10 km" → params.radius_km = 20 / 10. Only set it when the
   user actually mentions a distance.
@@ -1202,7 +1202,7 @@ async def _groq_improve_posting(raw_text: str, kind: str) -> Dict[str, str]:
         return _fallback()
 
     system = (
-        "You are a professional copywriter for Gigr, a Nigerian freelance marketplace. "
+        "You are a professional copywriter for Gigr, a neighbourhood gigs and services marketplace. "
         "Given a raw, messy user command, produce a clean listing. "
         "Return ONLY a JSON object with exactly two fields: "
         '"title" and "description".\n'
@@ -2455,7 +2455,7 @@ async def _check_negotiation_reply(task_id: str):
 
         # Ask Groq: should we accept this price or counter?
         system_prompt = (
-            "You are a negotiation assistant on Gigr, a Nigerian freelance marketplace. "
+            "You are a negotiation assistant on Gigr, a neighbourhood gigs and services marketplace. "
             "Analyse the provider's reply to our price offer. "
             "Return ONLY JSON: {\"decision\": \"accept\" | \"counter\" | \"walk\", "
             "\"counter_price\": <number or null>, \"reply\": \"<1-2 sentence message to send>\"}. "
