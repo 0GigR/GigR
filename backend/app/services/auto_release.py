@@ -21,6 +21,7 @@ from ..models.job import Job
 from ..models.milestone import JobMilestone
 from ..crud.job import update_job_status, get_job_by_id
 from ..crud.user import get_user_by_id
+from ..crud.notification import create_notification
 from .solana_client import release_escrow, ensure_ata_exists, get_platform_payer
 from .wallet import get_user_keypair
 from . import paypal_escrow
@@ -36,7 +37,17 @@ async def _release_job(db: AsyncSession, job: Job) -> None:
     if paypal_escrow.uses_paypal(job):
         # Review window lapsed with no release/dispute: pay the provider via PayPal.
         job_id = job.id
+        client_id = job.client_id
+        job_title = job.title
         summary = await paypal_escrow.release_to_provider(db, job, reason="auto_release")
+        await create_notification(
+            db,
+            user_id=client_id,
+            title="Escrow Auto-Released",
+            message=f'The 1-hour review window for "{job_title}" has expired. Payment has been sent to the provider.',
+            link="/dashboard/activity",
+            type="payment",
+        )
         await db.commit()  # expires the ORM row — only use plain values below
         logger.info(f"[auto_release] paid out job {job_id} via PayPal batch {summary.get('payout_batch_id')}")
         return
@@ -76,6 +87,22 @@ async def _release_job(db: AsyncSession, job: Job) -> None:
         escrow_address=str(escrow_pubkey),
     )
     await update_job_status(db, job, "completed")
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Escrow Auto-Released",
+        message=f'The 1-hour review window for "{job.title}" expired. Funds have been released to your wallet!',
+        link="/dashboard/activity",
+        type="payment",
+    )
+    await create_notification(
+        db,
+        user_id=job.client_id,
+        title="Job Auto-Completed",
+        message=f'The 1-hour review window for "{job.title}" expired. Escrow has been released to the provider.',
+        link="/dashboard/activity",
+        type="payment",
+    )
     await db.commit()
     logger.info(f"[auto_release] released escrow for job {job.id}: {tx_sig}")
 
@@ -83,6 +110,14 @@ async def _release_job(db: AsyncSession, job: Job) -> None:
 async def _release_milestone(db: AsyncSession, ms: JobMilestone, job: Job) -> None:
     if ms.paypal_capture_id:
         await paypal_escrow.release_milestone(db, job, ms, reason="auto_release")
+        await create_notification(
+            db,
+            user_id=job.client_id,
+            title="Milestone Auto-Released",
+            message=f'The review window for milestone "{ms.title}" expired. Funds have been sent to the provider.',
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="payment",
+        )
         await db.commit()
         logger.info(f"[auto_release] auto-released PayPal milestone {ms.id} for job {job.id}")
         return
@@ -127,6 +162,24 @@ async def _release_milestone(db: AsyncSession, ms: JobMilestone, job: Job) -> No
     ms.status = "released"
     ms.released_at = datetime.now(timezone.utc)
     ms.auto_release_at = None
+
+    amount_str = f"₦{float(ms.amount or 0):,.0f}"
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="Milestone Auto-Released",
+        message=f'Milestone "{ms.title}" ({amount_str}) has been auto-released to your wallet!',
+        link=f"/dashboard/messages?jobId={job.id}",
+        type="payment",
+    )
+    await create_notification(
+        db,
+        user_id=job.client_id,
+        title="Milestone Auto-Released",
+        message=f'The review window for milestone "{ms.title}" ({amount_str}) expired. Escrow has been released to the provider.',
+        link=f"/dashboard/messages?jobId={job.id}",
+        type="payment",
+    )
 
     # Check if all milestones released
     all_ms_res = await db.execute(select(JobMilestone).where(JobMilestone.job_id == job.id))
