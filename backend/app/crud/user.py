@@ -73,11 +73,23 @@ async def get_users_paginated(
     db: AsyncSession,
     offset: int = 0,
     limit: int = 20,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    role: Optional[str] = None,
+    is_verified: Optional[bool] = None,
 ) -> List[User]:
+    from sqlalchemy import or_ as _or
     query = select(User)
     if search:
-        query = query.where(User.display_name.ilike(f"%{search}%"))
+        s = f"%{search}%"
+        query = query.where(_or(
+            User.display_name.ilike(s),
+            User.email.ilike(s),
+            User.username.ilike(s),
+        ))
+    if role:
+        query = query.where(User.role == role)
+    if is_verified is not None:
+        query = query.where(User.is_verified == is_verified)
     query = query.order_by(User.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     return result.scalars().all()

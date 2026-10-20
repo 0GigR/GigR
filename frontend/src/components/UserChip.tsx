@@ -23,7 +23,7 @@ export default function UserChip({
 
   return (
     <Link
-      to={`/dashboard/user/${userId}`}
+      to={`/profile/${userId}`}
       className={`inline-flex items-center gap-1.5 hover:opacity-80 transition-opacity ${className}`}
       onClick={(e) => e.stopPropagation()}
     >

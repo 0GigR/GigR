@@ -25,6 +25,7 @@ import {
   Share2,
   MessageSquare,
   ShieldCheck,
+  Loader2,
 } from 'lucide-react'
 import OnlineIndicator from '@/components/OnlineIndicator'
 import AuthDialog from '@/components/AuthDialog'
@@ -255,13 +256,23 @@ export default function PublicProfilePage() {
     }
   }
 
-  const handleContact = () => {
+  const [contactPending, setContactPending] = useState(false)
+
+  const handleContact = async () => {
     if (!currentUser) {
       setAuthOpen(true)
       return
     }
-    if (currentUser.id === profile?.id) return
-    navigate('/dashboard/messages')
+    if (!profile || currentUser.id === profile.id) return
+    setContactPending(true)
+    try {
+      const { data } = await api.post(`/jobs/direct-inquiry/${profile.id}`)
+      navigate(`/dashboard/messages?jobId=${data.id}`)
+    } catch (err: any) {
+      toast.error(extractError(err, 'Failed to open conversation'))
+    } finally {
+      setContactPending(false)
+    }
   }
 
   const handleRequestService = async (service: Service) => {
@@ -276,8 +287,9 @@ export default function PublicProfilePage() {
     if (requestingServiceId) return
     setRequestingServiceId(service.id)
     try {
-      await api.post(`/jobs/request-service/${service.id}`)
-      toast.success(`Request sent for "${service.title}"! View it under Jobs.`)
+      const { data } = await api.post(`/jobs/request-service/${service.id}`)
+      toast.success(`Request sent for "${service.title}"!`)
+      navigate(`/dashboard/messages?jobId=${data.id}`)
     } catch (err: any) {
       toast.error(extractError(err, 'Failed to request service'))
     } finally {
@@ -449,9 +461,10 @@ export default function PublicProfilePage() {
               <Button
                 size="sm"
                 onClick={handleContact}
+                disabled={contactPending}
                 className="h-8 text-xs bg-black text-white dark:bg-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200"
               >
-                <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+                {contactPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <MessageSquare className="w-3.5 h-3.5 mr-1.5" />}
                 Message
               </Button>
             ) : (

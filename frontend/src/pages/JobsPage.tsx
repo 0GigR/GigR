@@ -1,6 +1,6 @@
 import { fmtPrice, useCurrencyStore } from '@/store/currencyStore'
 import { useState, useRef, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
@@ -119,6 +119,7 @@ export default function JobsPage() {
   const { user } = useAuthStore()
   const displayCode = useCurrencyStore((s) => s.code)
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<'open' | 'mine' | 'map'>(
     tabParam === 'map' ? 'map' : tabParam === 'mine' ? 'mine' : 'open'
@@ -558,6 +559,18 @@ export default function JobsPage() {
     onError: (err: any) => toast.error(extractError(err, 'Action failed')),
   })
 
+  const submitWorkMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      const { data } = await api.post(`/jobs/${jobId}/submit-work`)
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Work submitted! The client has been notified and has 1 hour to review before auto-release.')
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to submit work')),
+  })
+
   const cancelMutation = useMutation({
     mutationFn: async (jobId: string) => {
       await api.post(`/jobs/${jobId}/cancel`)
@@ -717,31 +730,16 @@ export default function JobsPage() {
   const handleAssign = (jobId: string, providerId: string) => assignMutation.mutate({ jobId, providerId })
 
   const openContractRoom = (job: Job) => {
-    // Determine which thread to open:
-    // - If viewer is the client on an OPEN job, they use the discussion thread
-    //   list (handled by the threads UI) — default to no specific thread.
-    // - If viewer is an applicant (not client, not yet provider) on an open job,
-    //   open THEIR own discussion thread.
-    // - Otherwise (assigned/funded, or you are the provider), open the contract
-    //   room (applicant_id = null).
-    const isOpenJob = job.status === 'open'
-    const iAmClient = job.client_id === user?.id
-    if (isOpenJob && !iAmClient) {
-      setThreadApplicantId(user?.id ?? null)
-    } else {
-      setThreadApplicantId(null)
-    }
     setContractRoomJobId(job.id)
     setContractRoomJob(job)
-    setContractRoomOpen(true)
+    navigate(`/dashboard/messages?jobId=${job.id}`)
   }
 
   // Poster opens a specific applicant's discussion thread
   const openDiscussionThread = (job: Job, applicantId: string) => {
-    setThreadApplicantId(applicantId)
     setContractRoomJobId(job.id)
     setContractRoomJob(job)
-    setContractRoomOpen(true)
+    navigate(`/dashboard/messages?jobId=${job.id}&applicantId=${applicantId}`)
   }
 
   const handleSendMessage = async () => {
@@ -966,6 +964,8 @@ export default function JobsPage() {
                   fundPending={fundMutation.isPending}
                   releasePending={releaseMutation.isPending}
                   vouchPending={vouchMutation.isPending}
+                  onSubmitWork={submitWorkMutation.mutate}
+                  submitWorkPending={submitWorkMutation.isPending}
                   acceptPending={acceptMutation.isPending}
                 />
                 </motion.div>
@@ -1077,6 +1077,8 @@ export default function JobsPage() {
                             releasePending={releaseMutation.isPending}
                             vouchPending={vouchMutation.isPending}
                             acceptPending={acceptMutation.isPending}
+                            onSubmitWork={submitWorkMutation.mutate}
+                            submitWorkPending={submitWorkMutation.isPending}
                           />
                         </motion.div>
                       ))}
@@ -1550,6 +1552,7 @@ function JobCard({
   hasApplied, hasVouched, onImageClick,
   distanceKm, categoryName,
   applyPending, assignPending, fundPending, releasePending, vouchPending, acceptPending,
+  onSubmitWork, submitWorkPending,
 }: {
   job: Job
   user: any
@@ -1575,6 +1578,8 @@ function JobCard({
   releasePending?: boolean
   vouchPending?: boolean
   acceptPending?: boolean
+  onSubmitWork?: (jobId: string) => void
+  submitWorkPending?: boolean
 }) {
   const isClient = user?.id === job.client_id
   const isProvider = user?.id === job.provider_id
@@ -1591,7 +1596,13 @@ function JobCard({
     })
   }
 
-  const { data: poster } = useUserInfo(job.client_id)
+  // Show the counterparty — the person you're interacting WITH, not yourself.
+  // If you're the client → show the provider. If you're the provider → show the client.
+  // If you're neither (browsing open jobs) → show the client (poster) as usual.
+  const counterpartyId = user?.id === job.client_id
+    ? (job.provider_id ?? job.client_id)
+    : job.client_id
+  const { data: counterparty } = useUserInfo(counterpartyId)
   // Applicant count comes from the list endpoint (applications_count) — avoids
   // a per-card request for every job on the page.
   const appCount = job.applications_count ?? undefined
@@ -1610,23 +1621,35 @@ function JobCard({
   return (
     <Card className="bg-card text-card-foreground border-border shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
       <CardHeader className="pb-2">
-        {/* Poster info */}
+        {/* Counterparty info — always shows the OTHER party, not yourself */}
         <div className="mb-2">
           <UserChip
-            userId={job.client_id}
-            name={poster?.display_name}
-            avatarUrl={poster?.profile_image_url}
-            lastSeenAt={(poster as any)?.last_seen_at}
+            userId={counterpartyId}
+            name={counterparty?.display_name}
+            avatarUrl={counterparty?.profile_image_url}
+            lastSeenAt={(counterparty as any)?.last_seen_at}
           />
         </div>
         <div className="flex justify-between items-start">
           <div className="flex flex-col items-start gap-1">
             <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
-            {isClient ? (
-              <Badge variant="outline" className="text-blue-600 bg-blue-50 border-blue-200 font-normal">You are the Client</Badge>
-            ) : isProvider ? (
-              <Badge variant="outline" className="text-purple-600 bg-purple-50 border-purple-200 font-normal">You are the Provider</Badge>
-            ) : null}
+            <div className="flex items-center gap-2 flex-wrap">
+              {isClient ? (
+                <Badge variant="outline" className="text-black border-black font-normal">You are the Client</Badge>
+              ) : isProvider ? (
+                <Badge variant="outline" className="text-black border-black font-normal">You are the Provider</Badge>
+              ) : null}
+              {job.service_listing_id && (
+                <Link
+                  to={`/dashboard/services/${job.service_listing_id}`}
+                  className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-black dark:hover:text-white underline"
+                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                >
+                  <span>Linked Service Listing</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              )}
+            </div>
           </div>
           {statusBadge(job.status)}
         </div>
@@ -1817,8 +1840,20 @@ function JobCard({
           </Button>
         )}
         {job.status === 'assigned' && isProvider && (
-          <Button size="sm" variant="outline" className="border-green-600 text-green-600" onClick={() => onContractRoom(job)}>
+          <Button size="sm" variant="outline" className="border-black text-black hover:bg-black hover:text-white" onClick={() => onContractRoom(job)}>
             <Play className="w-3 h-3 mr-1" /> Start Working
+          </Button>
+        )}
+        {job.status === 'funded' && isProvider && onSubmitWork && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onSubmitWork(job.id)}
+            disabled={submitWorkPending}
+            className="border-black text-black hover:bg-black hover:text-white"
+          >
+            {submitWorkPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
+            {submitWorkPending ? 'Submitting...' : 'Submit Work'}
           </Button>
         )}
         {job.status === 'requested' && isProvider && (

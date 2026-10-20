@@ -124,10 +124,13 @@ def require_perm_any(*perms: str):
 async def list_users(
     offset: int = 0,
     limit: int = 50,
+    q: str | None = None,
+    role: str | None = None,
+    is_verified: bool | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_perm_any("users:view", "users:manage")),
 ):
-    users = await get_users_paginated(db, offset=offset, limit=limit)
+    users = await get_users_paginated(db, offset=offset, limit=limit, search=q, role=role, is_verified=is_verified)
     # Raw ORM rows carry PostGIS WKBElement fields that FastAPI can't
     # serialise — project a safe subset instead of returning the objects.
     return [
@@ -135,12 +138,74 @@ async def list_users(
             "id": str(u.id),
             "email": u.email,
             "display_name": u.display_name,
+            "username": u.username,
+            "phone_number": u.phone_number,
             "role": u.role,
+            "is_verified": bool(u.is_verified),
+            "is_identity_verified": bool(u.is_identity_verified),
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,
         }
         for u in users
     ]
+
+
+@router.post("/users/{user_id}/toggle-verify")
+async def toggle_verify_user(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_perm("users:manage")),
+):
+    """Toggle a user's verified badge status."""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_verified = not bool(user.is_verified)
+    await db.commit()
+    await db.refresh(user)
+    return {
+        "id": str(user.id),
+        "display_name": user.display_name,
+        "is_verified": user.is_verified,
+    }
+
+
+@router.get("/escrows")
+async def list_escrows(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_perm_any("jobs:manage", "users:manage")),
+):
+    """Central audit of all live active escrows on both Solana and PayPal rails."""
+    from sqlalchemy import select as _select
+    from ....models.job import Job
+    result = await db.execute(
+        _select(Job)
+        .where(Job.status.in_(["funded", "in_progress", "submitted"]))
+        .order_by(Job.created_at.desc())
+    )
+    jobs = result.scalars().all()
+    escrows = []
+    for j in jobs:
+        client = await get_user_by_id(db, j.client_id)
+        provider = await get_user_by_id(db, j.provider_id) if j.provider_id else None
+        rail = "paypal" if (j.paypal_capture_id or j.paypal_order_id) else "solana"
+        escrows.append({
+            "job_id": str(j.id),
+            "title": j.title,
+            "price": float(j.price or 0),
+            "status": j.status,
+            "created_at": j.created_at.isoformat() if j.created_at else None,
+            "work_submitted_at": j.work_submitted_at.isoformat() if j.work_submitted_at else None,
+            "auto_release_at": j.auto_release_at.isoformat() if j.auto_release_at else None,
+            "client_id": str(j.client_id),
+            "client_name": client.display_name if client else "Unknown",
+            "provider_id": str(j.provider_id) if j.provider_id else None,
+            "provider_name": provider.display_name if provider else "Unassigned",
+            "rail": rail,
+            "escrow_address": j.escrow_address,
+            "paypal_capture_id": j.paypal_capture_id,
+        })
+    return escrows
 
 
 @router.delete("/users/{user_id}", status_code=204)
