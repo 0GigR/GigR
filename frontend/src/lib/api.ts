@@ -47,6 +47,35 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// ── Shared single-flight refresh promise to prevent concurrent 401 races ───
+let refreshPromise: Promise<string | null> | null = null
+
+async function requestTokenRefresh(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const storedRefresh = getRefreshToken()
+        const res = await axios.post(
+          `${import.meta.env.VITE_API_URL || '/api/v1'}/auth/refresh`,
+          storedRefresh ? { refresh_token: storedRefresh } : {},
+          { withCredentials: true, headers: { 'Content-Type': 'application/json' } }
+        )
+        const { access_token, refresh_token } = res.data ?? {}
+        if (access_token) saveToken(access_token)
+        if (refresh_token) saveRefreshToken(refresh_token)
+        return access_token || null
+      } catch {
+        clearTokens()
+        useAuthStore.getState().logout()
+        return null
+      } finally {
+        refreshPromise = null
+      }
+    })()
+  }
+  return refreshPromise
+}
+
 // ── Response interceptor: handle 401 / token refresh ─────────────────────────
 api.interceptors.response.use(
   (response) => response,
@@ -73,42 +102,26 @@ api.interceptors.response.use(
         return Promise.reject(error)
       }
 
-      try {
-        // Send the stored refresh token as well as relying on the cookie: with
-        // third-party cookies blocked (iOS Safari, installed PWA) the cookie
-        // never arrives, and refresh used to fail there — logging the user out
-        // the moment the 24h access token expired.
-        const refreshRes = await api.post(
-          '/auth/refresh',
-          storedRefresh ? { refresh_token: storedRefresh } : {},
-        )
-        const { access_token, refresh_token } = refreshRes.data ?? {}
-        if (access_token) {
-          saveToken(access_token)
-          originalRequest.headers['Authorization'] = `Bearer ${access_token}`
-        }
-        if (refresh_token) saveRefreshToken(refresh_token)
+      const newAccessToken = await requestTokenRefresh()
+      if (newAccessToken) {
+        originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`
         return api(originalRequest)
-      } catch {
-        // Refresh failed – log out and redirect only if on a protected route
-        clearTokens()
-        useAuthStore.getState().logout()
-
-        const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
-        const isPublicPage =
-          currentPath === '/' ||
-          currentPath.startsWith('/profile') ||
-          currentPath.startsWith('/user') ||
-          currentPath.startsWith('/login') ||
-          currentPath.startsWith('/register') ||
-          currentPath.startsWith('/forgot-password') ||
-          currentPath.startsWith('/reset-password')
-
-        if (!isPublicPage) {
-          window.location.href = '/'
-        }
-        return Promise.reject(error)
       }
+
+      const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+      const isPublicPage =
+        currentPath === '/' ||
+        currentPath.startsWith('/profile') ||
+        currentPath.startsWith('/user') ||
+        currentPath.startsWith('/login') ||
+        currentPath.startsWith('/register') ||
+        currentPath.startsWith('/forgot-password') ||
+        currentPath.startsWith('/reset-password')
+
+      if (!isPublicPage && typeof window !== 'undefined') {
+        window.location.href = '/'
+      }
+      return Promise.reject(error)
     }
 
     // Handle generic 400 errors (payment, validation, etc.) with a toast

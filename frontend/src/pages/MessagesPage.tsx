@@ -483,6 +483,17 @@ export default function MessagesPage() {
   })
 
   const handleSendMessage = () => {
+    const text = messageText.trim()
+    if (text.toLowerCase().includes('@gigidy')) {
+      const lower = text.toLowerCase()
+      if (lower.includes('request') || lower.includes('contract') || lower.includes('price') || lower.includes('milestone')) {
+        const priceMatch = text.match(/(?:₦|\$|ngn)?\s*([0-9]+(?:,[0-9]+)*(?:\.[0-9]+)?)/i)
+        if (priceMatch && priceMatch[1]) {
+          setContractPrice(priceMatch[1].replace(/,/g, ''))
+        }
+        setShowCreateContract(true)
+      }
+    }
     if (imageFile && imagePreview) {
       sendImageMutation.mutate({ file: imageFile, caption: messageText })
       return
@@ -965,6 +976,19 @@ export default function MessagesPage() {
                               </span>
                             ) : (
                               <div className="flex items-center gap-1.5 ml-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setContractTitle(svc.title)
+                                    setContractPrice(svc.price ? String(svc.price) : '')
+                                    setContractDesc(svc.description || '')
+                                    setShowCreateContract(true)
+                                  }}
+                                  className="text-[10px] font-bold text-white bg-black dark:bg-white dark:text-black px-2 py-0.5 rounded-md hover:opacity-90 transition-opacity"
+                                  title="Request this service and set contract terms"
+                                >
+                                  Request
+                                </button>
                                 {isClient && ['requested', 'open'].includes(selectedJob.status) && (
                                   <button
                                     type="button"
@@ -973,12 +997,15 @@ export default function MessagesPage() {
                                     className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
                                     title="Tag this service and set contract price"
                                   >
-                                    Tag Service
+                                    Tag
                                   </button>
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => setMessageText(`Inquiring about "${svc.title}" (₦${Number(svc.price).toLocaleString()}): `)}
+                                  onClick={() => {
+                                    setMessageText(`Inquiring about "${svc.title}" (₦${Number(svc.price).toLocaleString()}): `)
+                                    textareaRef.current?.focus()
+                                  }}
                                   className="text-[10px] text-gray-500 hover:text-black dark:hover:text-white"
                                   title="Discuss this service in chat"
                                 >
@@ -1266,43 +1293,91 @@ export default function MessagesPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 flex gap-2 items-end bg-white dark:bg-gray-950 shrink-0">
-                  <label className="cursor-pointer p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0">
-                    <ImagePlus className="w-5 h-5" />
-                    <input
-                      type="file"
-                      accept="image/*, .heic, .heif, .webp"
-                      className="hidden"
-                      onChange={handleImageSelect}
+                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
+                  {messageText.toLowerCase().includes('@gigidy') && (
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                      <span className="font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">Gigidy AI:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMessageText('@gigidy request service ')
+                          textareaRef.current?.focus()
+                        }}
+                        className="px-2 py-0.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white shrink-0"
+                      >
+                        request [service]
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMessageText('@gigidy propose contract at ')
+                          textareaRef.current?.focus()
+                        }}
+                        className="px-2 py-0.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white shrink-0"
+                      >
+                        propose contract
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateContract(true)}
+                        className="px-2 py-0.5 rounded-full bg-black text-white dark:bg-white dark:text-black shrink-0 font-medium"
+                      >
+                        Open Contract Builder
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="p-2.5 sm:p-3 flex gap-2 items-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContractTitle('')
+                        setContractPrice('')
+                        setContractDesc('')
+                        setShowCreateContract(true)
+                      }}
+                      className="p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
+                      title="Propose Contract & Escrow"
+                    >
+                      <Briefcase className="w-5 h-5" />
+                    </button>
+                    <label className="cursor-pointer p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0">
+                      <ImagePlus className="w-5 h-5" />
+                      <input
+                        type="file"
+                        accept="image/*, .heic, .heif, .webp"
+                        className="hidden"
+                        onChange={handleImageSelect}
+                      />
+                    </label>
+                    <textarea
+                      ref={textareaRef}
+                      rows={1}
+                      placeholder={isDirectMessage ? "Send a direct message or type @gigidy..." : "Type a message..."}
+                      value={messageText}
+                      onChange={(e) => {
+                        setMessageText(e.target.value)
+                        e.target.style.height = 'auto'
+                        e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && !isSending) {
+                          e.preventDefault()
+                          handleSendMessage()
+                        }
+                      }}
+                      className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                     />
-                  </label>
-                  <textarea
-                    ref={textareaRef}
-                    rows={1}
-                    placeholder={isDirectMessage ? "Send a direct message..." : "Type a message..."}
-                    value={messageText}
-                    onChange={(e) => {
-                      setMessageText(e.target.value)
-                      e.target.style.height = 'auto'
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 128)}px`
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !isSending) {
-                        e.preventDefault()
-                        handleSendMessage()
-                      }
-                    }}
-                    className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={handleSendMessage}
-                    disabled={!messageText.trim() || isSending}
-                    className="bg-black hover:bg-gray-800 text-white h-9 px-3 rounded-xl disabled:opacity-40 shrink-0"
-                    title="Send message"
-                  >
-                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSendMessage}
+                      disabled={!messageText.trim() || isSending}
+                      className="bg-black hover:bg-gray-800 text-white h-9 px-3 rounded-xl disabled:opacity-40 shrink-0"
+                      title="Send message"
+                    >
+                      {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    </Button>
+                  </div>
                 </div>
               )}
             </>

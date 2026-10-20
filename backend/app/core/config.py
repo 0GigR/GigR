@@ -89,7 +89,7 @@ class Settings(BaseSettings):
 
     # App secrets
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours; refresh token handles longer sessions
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 60  # 60 days so sessions remain active without abrupt logouts
     ALGORITHM: str = "HS256"
     ADMIN_SECRET: str = Field(..., env="ADMIN_SECRET")
 

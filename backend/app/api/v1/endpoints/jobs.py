@@ -515,16 +515,33 @@ async def my_conversations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """All jobs the user has a chat in."""
-    from sqlalchemy import select as _select, or_ as _or
+    """All jobs the user has a chat in.
+    Completed or cancelled contract rooms are archived after 7 days to keep the inbox clean.
+    Direct messages (status == 'requested' and price == 0) remain permanent.
+    """
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select as _select, or_ as _or, and_ as _and
     from ....models.message import Message
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     msg_jobs = _select(Message.job_id).where(Message.sender_id == current_user.id)
+
+    lifecycle_condition = _or(
+        Job.status.notin_(["completed", "cancelled"]),
+        _and(Job.status == "requested", Job.price == 0),
+        Job.updated_at >= cutoff,
+        Job.created_at >= cutoff,
+    )
+
     result = await db.execute(
-        _select(Job).where(_or(
-            Job.client_id == current_user.id,
-            Job.provider_id == current_user.id,
-            Job.id.in_(msg_jobs),
-        )).order_by(Job.created_at.desc())
+        _select(Job).where(
+            _or(
+                Job.client_id == current_user.id,
+                Job.provider_id == current_user.id,
+                Job.id.in_(msg_jobs),
+            ),
+            lifecycle_condition,
+        ).order_by(Job.created_at.desc())
     )
     return result.scalars().unique().all()
 
@@ -1328,6 +1345,27 @@ async def create_job_milestone(
         raise HTTPException(status_code=404, detail="Job not found")
     if current_user.id not in (job.client_id, job.provider_id):
         raise HTTPException(status_code=403, detail="Only parties to the job can add milestones")
+
+    new_amount = Decimal(str(milestone_in.amount))
+    if new_amount <= 0:
+        raise HTTPException(status_code=400, detail="Milestone amount must be greater than zero")
+
+    # Guard: prevent overfunding beyond agreed job price
+    job_price = Decimal(str(job.price or 0))
+    existing_ms_res = await db.execute(
+        select(JobMilestone).where(
+            JobMilestone.job_id == job_id,
+            JobMilestone.status != "cancelled",
+        )
+    )
+    existing_ms = existing_ms_res.scalars().all()
+    current_ms_total = sum(Decimal(str(m.amount or 0)) for m in existing_ms)
+    if job_price > 0 and (current_ms_total + new_amount) > job_price:
+        remaining_balance = max(Decimal(0), job_price - current_ms_total)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Milestone amount (NGN {float(new_amount):,.2f}) exceeds remaining job balance (NGN {float(remaining_balance):,.2f}).",
+        )
 
     existing_res = await db.execute(
         select(JobMilestone.milestone_index).where(JobMilestone.job_id == job_id)

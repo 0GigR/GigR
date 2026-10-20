@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import api, { saveToken, saveRefreshToken, clearTokens } from '@/lib/api'
 
 interface User {
@@ -37,71 +38,85 @@ interface AuthState {
   fetchUser: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isLoading: true,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      isLoading: true,
 
-  fetchUser: async () => {
-    try {
-      const res = await api.get('/auth/me')
-      set({ user: res.data, isLoading: false })
-    } catch {
-      set({ user: null, isLoading: false })
-    }
-  },
+      fetchUser: async () => {
+        try {
+          const res = await api.get('/auth/me')
+          set({ user: res.data, isLoading: false })
+        } catch {
+          const token = typeof window !== 'undefined' ? localStorage.getItem('baros_access_token') : null
+          const refresh = typeof window !== 'undefined' ? localStorage.getItem('baros_refresh_token') : null
+          if (!token && !refresh) {
+            set({ user: null, isLoading: false })
+          } else {
+            set({ isLoading: false })
+          }
+        }
+      },
 
-  login: async (email, password) => {
-    // Backend returns { access_token, token_type } AND sets HttpOnly cookies.
-    // We also save to localStorage so the Bearer header fallback works in
-    // cross-site deployments (Vercel + Render) where Chrome blocks cookies.
-    const res = await api.post('/auth/login', { email, password })
-    if (res.data?.access_token) {
-      saveToken(res.data.access_token)
-    }
-    // Persist the rotating refresh token too, so the session survives even where
-    // third-party cookies are blocked.
-    if (res.data?.refresh_token) {
-      saveRefreshToken(res.data.refresh_token)
-    }
-    const userRes = await api.get('/auth/me')
-    set({ user: userRes.data })
-  },
+      login: async (email, password) => {
+        // Backend returns { access_token, token_type } AND sets HttpOnly cookies.
+        // We also save to localStorage so the Bearer header fallback works in
+        // cross-site deployments (Vercel + Render) where Chrome blocks cookies.
+        const res = await api.post('/auth/login', { email, password })
+        if (res.data?.access_token) {
+          saveToken(res.data.access_token)
+        }
+        // Persist the rotating refresh token too, so the session survives even where
+        // third-party cookies are blocked.
+        if (res.data?.refresh_token) {
+          saveRefreshToken(res.data.refresh_token)
+        }
+        const userRes = await api.get('/auth/me')
+        set({ user: userRes.data, isLoading: false })
+      },
 
-  register: async (data) => {
-    await api.post('/auth/register', data)
-    if (data.password) {
-      const res = await api.post('/auth/login', { email: data.email, password: data.password })
-      if (res.data?.access_token) {
-        saveToken(res.data.access_token)
-      }
-      if (res.data?.refresh_token) {
-        saveRefreshToken(res.data.refresh_token)
-      }
-    }
-    const userRes = await api.get('/auth/me')
-    set({ user: userRes.data })
-  },
+      register: async (data) => {
+        await api.post('/auth/register', data)
+        if (data.password) {
+          const res = await api.post('/auth/login', { email: data.email, password: data.password })
+          if (res.data?.access_token) {
+            saveToken(res.data.access_token)
+          }
+          if (res.data?.refresh_token) {
+            saveRefreshToken(res.data.refresh_token)
+          }
+        }
+        const userRes = await api.get('/auth/me')
+        set({ user: userRes.data, isLoading: false })
+      },
 
-  googleAuth: async (cred) => {
-    // Accepts either an ID token (classic button) or an OAuth access token
-    // (custom useGoogleLogin button). Backend handles both.
-    const body = typeof cred === 'string' ? { token: cred } : cred
-    const res = await api.post('/auth/google', body)
-    if (res.data?.access_token) {
-      saveToken(res.data.access_token)
-    }
-    if (res.data?.refresh_token) {
-      saveRefreshToken(res.data.refresh_token)
-    }
-    const userRes = await api.get('/auth/me')
-    set({ user: userRes.data })
-  },
+      googleAuth: async (cred) => {
+        // Accepts either an ID token (classic button) or an OAuth access token
+        // (custom useGoogleLogin button). Backend handles both.
+        const body = typeof cred === 'string' ? { token: cred } : cred
+        const res = await api.post('/auth/google', body)
+        if (res.data?.access_token) {
+          saveToken(res.data.access_token)
+        }
+        if (res.data?.refresh_token) {
+          saveRefreshToken(res.data.refresh_token)
+        }
+        const userRes = await api.get('/auth/me')
+        set({ user: userRes.data, isLoading: false })
+      },
 
-  logout: async () => {
-    try {
-      await api.post('/auth/logout')
-    } catch {}
-    clearTokens()
-    set({ user: null })
-  },
-}))
+      logout: async () => {
+        try {
+          await api.post('/auth/logout')
+        } catch {}
+        clearTokens()
+        set({ user: null, isLoading: false })
+      },
+    }),
+    {
+      name: 'gigr:auth_store',
+      partialize: (state) => ({ user: state.user }),
+    }
+  )
+)

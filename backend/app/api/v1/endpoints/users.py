@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from ....core.dependencies import get_db, get_current_user
@@ -121,6 +122,171 @@ async def get_my_balance(current_user: User = Depends(get_current_user)):
         # Return zeros rather than a 500 — the UI can handle this gracefully
 
     return {"sol": round(sol_balance, 6), "usdc": usdc_balance}
+
+
+class WalletTransferIn(BaseModel):
+    recipient: str
+    amount: float
+    currency: str = "SOL"
+
+
+@router.post("/me/transfer")
+async def transfer_funds(
+    data: WalletTransferIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Transfer SOL or USDC from user's in-app Solana wallet to another user or external address."""
+    from ....core.rail import current_rail
+    from ....core.config import settings
+    from ....services.wallet import get_user_keypair
+    from ....crud.notification import create_notification
+    from solders.pubkey import Pubkey
+    from solders.system_program import TransferParams, transfer
+    from solders.transaction import VersionedTransaction
+    from solders.message import MessageV0
+    from solana.rpc.async_api import AsyncClient
+    from solana.rpc.commitment import Confirmed
+    from solana.rpc.types import TxOpts
+    from sqlalchemy import or_ as _or
+
+    if current_rail() != "solana":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wallet transfers are only supported on the Solana rail.",
+        )
+
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Transfer amount must be greater than zero.")
+
+    recipient_clean = data.recipient.strip().lstrip("@")
+    target_user = None
+
+    # Check if recipient is a Gigr user (by username, email, display_name, or wallet pubkey)
+    user_q = await db.execute(
+        select(User).where(
+            _or(
+                User.username == recipient_clean,
+                User.email == recipient_clean,
+                User.display_name == recipient_clean,
+                User.wallet_public_key == recipient_clean,
+            )
+        )
+    )
+    target_user = user_q.scalar_one_or_none()
+
+    if target_user:
+        recipient_pubkey_str = target_user.wallet_public_key
+    else:
+        try:
+            Pubkey.from_string(recipient_clean)
+            recipient_pubkey_str = recipient_clean
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail="Recipient not found. Provide a valid Solana address or Gigr username.",
+            )
+
+    if not recipient_pubkey_str:
+        raise HTTPException(status_code=400, detail="Recipient has no Solana wallet address configured.")
+
+    if recipient_pubkey_str == current_user.wallet_public_key:
+        raise HTTPException(status_code=400, detail="Cannot transfer funds to your own wallet.")
+
+    sender_kp = get_user_keypair(current_user)
+    recipient_pk = Pubkey.from_string(recipient_pubkey_str)
+
+    currency_upper = data.currency.upper().strip()
+    if currency_upper not in ("SOL", "USDC"):
+        raise HTTPException(status_code=400, detail="Supported currencies are SOL and USDC.")
+
+    tx_sig = None
+
+    async with AsyncClient(settings.SOLANA_RPC_URL, timeout=30) as client:
+        if currency_upper == "SOL":
+            lamports = int(data.amount * 1_000_000_000)
+            bal_res = await client.get_balance(sender_kp.pubkey())
+            current_lamports = bal_res.value
+            fee_lamports = 5000
+            if current_lamports < (lamports + fee_lamports):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Insufficient SOL balance. Required: {data.amount + (fee_lamports/1e9):.6f} SOL, Available: {current_lamports/1e9:.6f} SOL",
+                )
+
+            ix = transfer(
+                TransferParams(
+                    from_pubkey=sender_kp.pubkey(),
+                    to_pubkey=recipient_pk,
+                    lamports=lamports,
+                )
+            )
+            blockhash_resp = await client.get_latest_blockhash()
+            recent_blockhash = blockhash_resp.value.blockhash
+            msg = MessageV0.try_compile(
+                payer=sender_kp.pubkey(),
+                instructions=[ix],
+                address_lookup_table_accounts=[],
+                recent_blockhash=recent_blockhash,
+            )
+            tx = VersionedTransaction(msg, [sender_kp])
+            send_res = await client.send_transaction(
+                tx, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
+            )
+            tx_sig = str(send_res.value)
+        else:
+            # USDC transfer via SPL token
+            from spl.token.instructions import get_associated_token_address, transfer_checked
+            from ....services.solana_client import ensure_ata_exists, get_platform_payer
+
+            mint_pubkey = Pubkey.from_string(settings.USDC_MINT_DEVNET)
+            sender_ata = get_associated_token_address(sender_kp.pubkey(), mint_pubkey)
+
+            # Ensure recipient ATA exists (platform payer funds rent if needed)
+            payer_kp = get_platform_payer()
+            recipient_ata = await ensure_ata_exists(payer_kp, recipient_pk, mint_pubkey)
+
+            amount_base_units = int(data.amount * 1_000_000)  # USDC has 6 decimals
+            ix = transfer_checked(
+                source=sender_ata,
+                mint=mint_pubkey,
+                dest=recipient_ata,
+                owner=sender_kp.pubkey(),
+                amount=amount_base_units,
+                decimals=6,
+            )
+            blockhash_resp = await client.get_latest_blockhash()
+            recent_blockhash = blockhash_resp.value.blockhash
+            msg = MessageV0.try_compile(
+                payer=sender_kp.pubkey(),
+                instructions=[ix],
+                address_lookup_table_accounts=[],
+                recent_blockhash=recent_blockhash,
+            )
+            tx = VersionedTransaction(msg, [sender_kp])
+            send_res = await client.send_transaction(
+                tx, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
+            )
+            tx_sig = str(send_res.value)
+
+    if target_user:
+        await create_notification(
+            db,
+            user_id=target_user.id,
+            title="Wallet Transfer Received",
+            message=f"You received {data.amount} {currency_upper} from {current_user.display_name or 'a user'}!",
+            link="/dashboard/profile",
+            type="wallet",
+        )
+        await db.commit()
+
+    return {
+        "status": "success",
+        "tx_hash": tx_sig,
+        "amount": data.amount,
+        "currency": currency_upper,
+        "recipient": recipient_pubkey_str,
+    }
 
 
 @router.post("/me/verify-identity")

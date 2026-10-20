@@ -61,6 +61,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       networkMode: 'always',
+      staleTime: 2 * 60 * 1000, // 2 minutes: serve cached data instantly on refresh without skeleton flicker
+      gcTime: 24 * 60 * 60 * 1000,
+      refetchOnWindowFocus: false, // Prevents loading bar flash on tab switch
     },
     mutations: {
       networkMode: 'always',
@@ -90,19 +93,31 @@ function CatchAll() {
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuthStore()
-  if (isLoading) return <div className="flex h-screen items-center justify-center">Loading…</div>
+  if (isLoading && !user) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
+      </div>
+    )
+  }
   if (!user) return <Navigate to="/" replace />
   return children
 }
 
 function App() {
-  const { fetchUser, isLoading } = useAuthStore()
+  const { fetchUser, user, isLoading } = useAuthStore()
 
   useEffect(() => {
     fetchUser()
-  }, [])
+  }, [fetchUser])
 
-  if (isLoading) return <div className="flex h-screen items-center justify-center">Loading…</div>
+  if (isLoading && !user) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <ErrorBoundary>
