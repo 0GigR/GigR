@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
@@ -46,6 +46,7 @@ type Message = components['schemas']['MessageOut']
 interface CounterpartyUser {
   id: string
   display_name: string
+  username?: string | null
   profile_image_url?: string | null
   last_seen_at?: string | null
 }
@@ -84,9 +85,10 @@ function CounterpartyAvatar({ userId, size = 'md' }: { userId?: string | null; s
     : '?'
 
   const dim = size === 'sm' ? 'w-8 h-8 text-[11px]' : size === 'lg' ? 'w-11 h-11 text-sm' : 'w-10 h-10 text-xs'
+  const profileUrl = userId ? `/profile/${counterpartyUser?.username || userId}` : '#'
 
   return (
-    <div className="relative shrink-0">
+    <Link to={profileUrl} className="relative shrink-0 hover:opacity-80 transition-opacity" title="View Portfolio">
       {counterpartyUser?.profile_image_url ? (
         <img
           src={counterpartyUser.profile_image_url}
@@ -99,7 +101,7 @@ function CounterpartyAvatar({ userId, size = 'md' }: { userId?: string | null; s
         </span>
       )}
       <OnlineIndicator lastSeenAt={counterpartyUser?.last_seen_at} className="absolute bottom-0 right-0" />
-    </div>
+    </Link>
   )
 }
 
@@ -114,7 +116,13 @@ function CounterpartyLabel({ userId, fallback = 'Counterparty' }: { userId?: str
     staleTime: 5 * 60 * 1000,
   })
 
-  return <span>{counterpartyUser?.display_name || fallback}</span>
+  const profileUrl = userId ? `/profile/${counterpartyUser?.username || userId}` : '#'
+
+  return (
+    <Link to={profileUrl} className="hover:underline" title="View Portfolio">
+      {counterpartyUser?.display_name || fallback}
+    </Link>
+  )
 }
 
 export default function MessagesPage() {
@@ -175,13 +183,16 @@ export default function MessagesPage() {
 
   const lastSelectedJobIdRef = useRef<string | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
-  const deepLinkJobId = searchParams.get('jobId')
+  const deepLinkJobId = searchParams.get('jobId') || searchParams.get('job') || searchParams.get('room')
+  const deepLinkApplicantId = searchParams.get('applicantId')
 
   useEffect(() => {
     if (!deepLinkJobId) return
     const clearParam = () => {
       const next = new URLSearchParams(searchParams)
       next.delete('jobId')
+      next.delete('job')
+      next.delete('room')
       setSearchParams(next, { replace: true })
     }
     const matchingJob = myConversations?.find((j) => j.id === deepLinkJobId)
@@ -217,9 +228,10 @@ export default function MessagesPage() {
   }, [selectedJob?.id])
 
   const { data: initialMessages, isLoading: msgsLoading } = useQuery<Message[]>({
-    queryKey: ['messages', selectedJob?.id],
+    queryKey: ['messages', selectedJob?.id, deepLinkApplicantId],
     queryFn: async () => {
-      const response = await api.get(`/messages/${selectedJob?.id}`)
+      const params = deepLinkApplicantId ? { applicant_id: deepLinkApplicantId } : undefined
+      const response = await api.get(`/messages/${selectedJob?.id}`, { params })
       return response.data
     },
     enabled: !!selectedJob?.id,
@@ -299,6 +311,7 @@ export default function MessagesPage() {
       const response = await api.post('/messages', {
         job_id: selectedJob?.id,
         content: messageText.trim(),
+        applicant_id: deepLinkApplicantId || undefined,
       })
       return response.data
     },
@@ -321,6 +334,7 @@ export default function MessagesPage() {
         job_id: selectedJob?.id,
         content: caption?.trim() || '[IMAGE ATTACHMENT]',
         image_url: uploadedUrl,
+        applicant_id: deepLinkApplicantId || undefined,
       })
       return response.data
     },
@@ -472,6 +486,32 @@ export default function MessagesPage() {
     : null
 
   const isClient = selectedJob ? selectedJob.client_id === user?.id : false
+
+  const providerId = selectedJob?.provider_id || (selectedJob?.client_id === user?.id ? counterpartyId : user?.id)
+
+  const { data: providerServices } = useQuery<any[]>({
+    queryKey: ['providerServices', providerId],
+    queryFn: async () => {
+      if (!providerId) return []
+      const response = await api.get(`/services/provider/${providerId}`)
+      return response.data || []
+    },
+    enabled: !!providerId && !!selectedJob,
+  })
+
+  const linkServiceMutation = useMutation({
+    mutationFn: async (serviceId: string) => {
+      const { data } = await api.post(`/jobs/${selectedJob?.id}/link-service/${serviceId}`)
+      return data
+    },
+    onSuccess: (updatedJob) => {
+      setSelectedJob(updatedJob)
+      queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
+      queryClient.invalidateQueries({ queryKey: ['messages', selectedJob?.id] })
+      toast.success('Service tagged! Contract terms and price updated.')
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to link service')),
+  })
 
   const renderStatusBadge = (jobStatus: string) => {
     const base = 'text-[10px] font-mono font-semibold px-2 py-0.5 rounded tracking-wider uppercase'
@@ -776,6 +816,63 @@ export default function MessagesPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Available Provider Services Strip */}
+                {providerServices && providerServices.length > 0 && (
+                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                      <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider shrink-0">
+                        Services:
+                      </span>
+                      {providerServices.map((svc: any) => {
+                        const isCurrentService = selectedJob.service_listing_id === svc.id
+                        return (
+                          <div
+                            key={svc.id}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs shrink-0 transition-all',
+                              isCurrentService
+                                ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white font-medium'
+                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-gray-400'
+                            )}
+                          >
+                            <span className="truncate max-w-[140px] font-medium">{svc.title}</span>
+                            <span className="font-mono text-[11px] opacity-80">
+                              ₦{Number(svc.price).toLocaleString()}
+                            </span>
+                            {isCurrentService ? (
+                              <span className="text-[10px] ml-1 bg-white/20 dark:bg-black/20 px-1 py-0.5 rounded font-mono">
+                                [TAGGED ✓]
+                              </span>
+                            ) : (
+                              <div className="flex items-center gap-1.5 ml-1">
+                                {isClient && ['requested', 'open'].includes(selectedJob.status) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => linkServiceMutation.mutate(svc.id)}
+                                    disabled={linkServiceMutation.isPending}
+                                    className="text-[10px] underline font-mono font-semibold hover:opacity-80"
+                                    title="Tag this service and set contract price"
+                                  >
+                                    [Tag Service]
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setMessageText(`Inquiring about "${svc.title}" (₦${Number(svc.price).toLocaleString()}): `)}
+                                  className="text-[10px] text-gray-400 hover:text-black dark:hover:text-white font-mono"
+                                  title="Discuss this service in chat"
+                                >
+                                  [Discuss]
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Chat Message Stream */}

@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuthStore } from '@/store/authStore'
-import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save, Users, Wallet, CheckCircle, Gavel, LayoutDashboard } from 'lucide-react'
+import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save, Users, Wallet, CheckCircle, Gavel, LayoutDashboard, BadgeCheck, Search, ExternalLink } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -96,13 +96,36 @@ export default function AdminDashboard() {
       return data
     },
   })
+  const [userSearch, setUserSearch] = useState('')
+
   const { data: adminUsers } = useQuery({
-    queryKey: ['admin-users'],
+    queryKey: ['admin-users', userSearch],
     queryFn: async () => {
-      const { data } = await api.get('/admin/users', { params: { limit: 100 } })
+      const { data } = await api.get('/admin/users', { params: { limit: 100, q: userSearch || undefined } })
       return data
     },
   })
+
+  const { data: adminEscrows } = useQuery<any[]>({
+    queryKey: ['admin-escrows'],
+    queryFn: async () => {
+      const { data } = await api.get('/admin/escrows')
+      return data
+    },
+  })
+
+  const toggleVerifyMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const { data } = await api.post(`/admin/users/${userId}/toggle-verify`)
+      return data
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      toast.success(`${res.display_name} is now ${res.is_verified ? 'Verified ✓' : 'Unverified'}`)
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to toggle verification')),
+  })
+
   const { data: adminMessages } = useQuery({
     queryKey: ['admin-messages'],
     queryFn: async () => {
@@ -335,17 +358,31 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Shield className="w-7 h-7" /> Admin Dashboard
-        </h1>
-        <p className="text-gray-500">Manage disputes and administrators.</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            <Shield className="w-7 h-7" /> Admin Dashboard
+          </h1>
+          <p className="text-gray-500">Manage disputes, escrows, moderation, and administrators.</p>
+        </div>
+        <div>
+          {isSuperadmin ? (
+            <Badge variant="outline" className="border-black text-black dark:border-white dark:text-white font-mono text-xs px-3 py-1">
+              [SUPERADMIN · ROOT ACCESS]
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="border-gray-400 text-gray-700 dark:text-gray-300 font-mono text-xs px-3 py-1">
+              [ADMIN · RESTRICTED IAM]
+            </Badge>
+          )}
+        </div>
       </div>
       <Tabs defaultValue="overview">
         <TabsList className="flex-wrap">
           <TabsTrigger value="overview">
             <LayoutDashboard className="w-3.5 h-3.5 mr-1.5" /> Overview
           </TabsTrigger>
+          {hasPerm('jobs:manage') && <TabsTrigger value="escrows"><Wallet className="w-3.5 h-3.5 mr-1.5" /> Escrows ({adminEscrows?.length || 0})</TabsTrigger>}
           {hasPerm('announce:manage') && <TabsTrigger value="announce">Announce</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Open Disputes</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="resolved">Resolved</TabsTrigger>}
@@ -384,6 +421,68 @@ export default function AdminDashboard() {
               <p>None yet — ask the superadmin to tag you with the abilities you need.</p>
             )}
           </div>
+        </TabsContent>
+
+        {/* Escrows — Oversight of all currently funded and in-progress jobs */}
+        <TabsContent value="escrows" className="mt-6 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex justify-between items-center">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Wallet className="w-4 h-4" /> Live Active Escrows ({adminEscrows?.length || 0})
+                </CardTitle>
+                <span className="text-xs text-gray-500 font-mono">
+                  Real-time cross-rail funds in flight
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {adminEscrows && adminEscrows.length > 0 ? (
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {adminEscrows.map((esc: any) => (
+                    <div key={esc.job_id} className="py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+                      <div className="space-y-1 min-w-[200px]">
+                        <div className="flex items-center gap-2">
+                          <Link to={`/dashboard/jobs?jobId=${esc.job_id}`} className="font-semibold hover:underline truncate max-w-[240px]">
+                            {esc.title}
+                          </Link>
+                          <Badge variant="outline" className="font-mono text-[10px] uppercase">
+                            {esc.status}
+                          </Badge>
+                          <Badge variant="outline" className={esc.rail === 'paypal' ? 'border-blue-400 text-blue-600 font-mono text-[10px]' : 'border-purple-400 text-purple-600 font-mono text-[10px]'}>
+                            {esc.rail === 'paypal' ? 'PayPal' : 'Solana'}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          Client: <span className="font-medium text-gray-700 dark:text-gray-300">{esc.client_name}</span> · Provider: <span className="font-medium text-gray-700 dark:text-gray-300">{esc.provider_name}</span>
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-sm">
+                            {esc.rail === 'paypal' ? `$${esc.price.toFixed(2)}` : `₦${esc.price.toLocaleString()}`}
+                          </p>
+                          <p className="text-[10px] text-gray-400 font-mono">
+                            {esc.escrow_address ? `${esc.escrow_address.slice(0, 6)}...${esc.escrow_address.slice(-4)}` : esc.paypal_capture_id ? `Order: ${esc.paypal_capture_id.slice(0, 8)}...` : 'Escrow PDA'}
+                          </p>
+                        </div>
+
+                        <Link
+                          to={`/dashboard/messages?jobId=${esc.job_id}`}
+                          className="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 font-mono flex items-center gap-1"
+                        >
+                          Contract Room <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 py-4 text-center">No active escrows currently in flight.</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="disputes" className="mt-6">
@@ -641,29 +740,63 @@ export default function AdminDashboard() {
           {/* Users */}
           {hasPerm('users:manage') && (
           <Card className="mb-4">
-            <CardHeader>
-              <CardTitle className="text-base">Users ({adminUsers?.length || 0})</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap justify-between items-center gap-2">
+                <CardTitle className="text-base">Users ({adminUsers?.length || 0})</CardTitle>
+                <div className="relative w-64">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-gray-400" />
+                  <Input
+                    placeholder="Search users..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    className="h-8 pl-8 text-xs"
+                  />
+                </div>
+              </div>
             </CardHeader>
-            <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
+            <CardContent className="space-y-2 max-h-[350px] overflow-y-auto">
               {(adminUsers as any[])?.map((u: any) => (
-                <div key={u.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                <div key={u.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-800">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{u.display_name || u.email}</p>
-                    <p className="text-xs text-gray-500 truncate">{u.email} · {u.role}</p>
+                    <div className="flex items-center gap-1.5">
+                      <Link to={`/profile/${u.username || u.id}`} className="text-sm font-medium hover:underline truncate">
+                        {u.display_name || u.email}
+                      </Link>
+                      {u.is_verified && (
+                        <span title="Verified Badge">
+                          <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate">
+                      {u.email} {u.username ? `(@${u.username})` : ''} · <span className="font-mono uppercase text-[10px]">{u.role}</span>
+                    </p>
                   </div>
-                  {u.role !== 'superadmin' && (
+                  <div className="flex items-center gap-2 shrink-0">
                     <Button
                       size="sm"
-                      variant="destructive"
-                      onClick={() => {
-                        if (confirm(`Delete user ${u.email}? This removes their account, jobs and services.`)) deleteUserMutation.mutate(u.id)
-                      }}
+                      variant="outline"
+                      onClick={() => toggleVerifyMutation.mutate(u.id)}
+                      disabled={toggleVerifyMutation.isPending}
+                      className={`h-7 text-xs font-mono px-2 ${u.is_verified ? 'border-emerald-500 text-emerald-600' : 'border-gray-300'}`}
                     >
-                      <Trash2 className="w-3 h-3" />
+                      {u.is_verified ? 'Verified ✓' : 'Verify'}
                     </Button>
-                  )}
+                    {u.role !== 'superadmin' && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 w-7 p-0"
+                        onClick={() => {
+                          if (confirm(`Delete user ${u.email}? This removes their account, jobs and services.`)) deleteUserMutation.mutate(u.id)
+                        }}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              )) || <p className="text-sm text-gray-500">No users.</p>}
+              )) || <p className="text-sm text-gray-500">No users found.</p>}
             </CardContent>
           </Card>
           )}

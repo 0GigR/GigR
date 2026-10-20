@@ -28,6 +28,7 @@ def _assert_thread_access(job, current_user: User, applicant_id: uuid.UUID | Non
 
 
 @router.get("/job/{job_id}", response_model=list[MessageOut])
+@router.get("/{job_id}", response_model=list[MessageOut])
 async def messages_for_job(
     job_id: uuid.UUID,
     since_id: uuid.UUID | None = Query(None),

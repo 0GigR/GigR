@@ -756,10 +756,18 @@ async def _mark_milestone_funded(
 
 
 async def _maybe_complete_job(db: AsyncSession, job: Job) -> None:
-    """The job is done once every milestone is settled and at least one was paid."""
+    """The job is done once every milestone is settled, at least one was paid,
+    and total released milestones cover the job price."""
     stages = await milestones_of(db, job)
+    total_released = sum(
+        Decimal(str(m.amount or 0))
+        for m in stages
+        if m.status == "released"
+    )
+    job_price = Decimal(str(job.price or 0))
     if stages and all(m.status in ("released", "refunded") for m in stages) \
-            and any(m.status == "released" for m in stages):
+            and any(m.status == "released" for m in stages) \
+            and (job_price <= Decimal("0") or total_released >= job_price):
         job.status = "completed"
 
 
@@ -879,7 +887,10 @@ async def _settle_milestones(
             )
         return payment_summary(job)
 
-    job.status = "completed"
+    if action == "split":
+        job.status = "completed"
+    else:
+        await _maybe_complete_job(db, job)
     if provider and action == "release" and paid > 0:
         await create_notification(
             db, user_id=provider.id, title="Payment Released",

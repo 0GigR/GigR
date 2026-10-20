@@ -270,6 +270,130 @@ async def request_service(
     return (await get_job_by_id(db, job.id)) or job
 
 
+@router.post("/direct-inquiry/{target_user_id}", response_model=JobOut)
+async def direct_inquiry(
+    target_user_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Find or create an active direct conversation / inquiry with another user."""
+    if target_user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot start a conversation with yourself")
+
+    target_user = await get_user_by_id(db, target_user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Check for an existing active conversation/job between these two users
+    from sqlalchemy import select as _select, or_ as _or, and_ as _and
+    existing_result = await db.execute(
+        _select(Job)
+        .where(
+            _or(
+                _and_(Job.client_id == current_user.id, Job.provider_id == target_user_id),
+                _and_(Job.client_id == target_user_id, Job.provider_id == current_user.id),
+            )
+        )
+        .where(Job.status.notin_(["completed", "cancelled"]))
+        .order_by(Job.created_at.desc())
+    )
+    existing_job = existing_result.scalars().first()
+    if existing_job:
+        return existing_job
+
+    # Create a new inquiry job room
+    inquiry_job = Job(
+        client_id=current_user.id,
+        provider_id=target_user.id,
+        title=f"Chat with {target_user.display_name or 'Provider'}",
+        description=f"Direct discussion between {current_user.display_name or 'Client'} and {target_user.display_name or 'Provider'}",
+        price=0,
+        status="requested",
+        contract_job_id=hex(uuid.uuid4().int & 0xFFFFFFFFFFFFFFFF),
+    )
+    db.add(inquiry_job)
+    await db.commit()
+    await db.refresh(inquiry_job)
+
+    # Initial friendly message so conversation appears in both inboxes
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, inquiry_job.id, current_user.id,
+        f"👋 Hi {target_user.display_name or 'there'}! I'd like to discuss working with you."
+    )
+    await manager.broadcast_new_message(auto)
+
+    await create_notification(
+        db,
+        user_id=target_user.id,
+        title=f"New message from {current_user.display_name or 'Someone'}",
+        message=f"{current_user.display_name or 'Someone'} started a direct discussion with you.",
+        link=f"/dashboard/messages?jobId={inquiry_job.id}",
+        type="message",
+    )
+    await db.commit()
+
+    return (await get_job_by_id(db, inquiry_job.id)) or inquiry_job
+
+
+@router.post("/{job_id}/link-service/{service_id}", response_model=JobOut)
+async def link_service_to_job(
+    job_id: uuid.UUID,
+    service_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tag or request a specific service listing inside an existing conversation."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id and job.provider_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not a participant in this conversation")
+    if job.status not in ("requested", "open"):
+        raise HTTPException(status_code=400, detail="Cannot change service on an active contract or funded job")
+
+    from ....crud.service import get_service_by_id
+    service = await get_service_by_id(db, service_id)
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    job.service_listing_id = service.id
+    job.title = service.title
+    job.description = f"Request for service: {service.title}"
+    job.price = service.price
+    job.category_id = service.category_id
+    if service.latitude is not None and service.longitude is not None:
+        from ....core.geo import to_wkt_point
+        job.location = to_wkt_point(service.latitude, service.longitude)
+
+    await db.commit()
+    await db.refresh(job)
+
+    # Post an announcement message into the chat room
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"🏷️ Service tagged: \"{service.title}\" for ₦{float(service.price):,.0f}. Terms updated!"
+    )
+    await manager.broadcast_new_message(auto)
+
+    other_user_id = job.provider_id if current_user.id == job.client_id else job.client_id
+    if other_user_id:
+        await create_notification(
+            db,
+            user_id=other_user_id,
+            title="Service linked in conversation",
+            message=f"{current_user.display_name or 'User'} tagged \"{service.title}\" in your chat.",
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="request",
+        )
+        await db.commit()
+
+    return (await get_job_by_id(db, job.id)) or job
+
+
 @router.post("/{job_id}/accept-request", response_model=JobOut)
 async def accept_request(
     job_id: uuid.UUID,
@@ -858,6 +982,28 @@ async def release_job_route(
 
     async def _mark_completed_and_return():
         """Idempotently flip the DB to completed, notify, and return the fresh job."""
+        # Guard: if the job uses staged milestones, the full-release route must not
+        # complete it. Each milestone must be released individually so the platform
+        # can accurately track partial payments. Attempting a full release on a
+        # milestone job is a sign the client is trying to bypass the milestone flow.
+        from sqlalchemy import select as _select
+        from ....models.milestone import JobMilestone
+        ms_res = await db.execute(
+            _select(JobMilestone).where(JobMilestone.job_id == job_id)
+        )
+        milestones = ms_res.scalars().all()
+        if milestones:
+            unreleased = [m for m in milestones if m.status != "released"]
+            if unreleased:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"This job has {len(unreleased)} unreleased milestone(s). "
+                        "Each milestone must be released individually before the job "
+                        "can be marked as completed."
+                    ),
+                )
+        # All milestones released (or no milestones) — safe to complete.
         await transition_job_status(db, job_id, ["funded", "in_progress"], "completed")
         await create_notification(
             db,
@@ -921,8 +1067,8 @@ async def submit_work_route(
         raise HTTPException(status_code=404, detail="Job not found")
     if job.provider_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the provider can submit work")
-    if job.status != "funded":
-        raise HTTPException(status_code=400, detail="Job must be funded before submitting work")
+    if job.status not in ("funded", "in_progress"):
+        raise HTTPException(status_code=400, detail="Job must be funded or in progress before submitting work")
 
     now = datetime.now(timezone.utc)
     job.status = "in_progress"
@@ -1358,10 +1504,13 @@ async def release_job_milestone(
     milestone.status = "released"
     milestone.released_at = datetime.now(timezone.utc)
 
-    # Check if all milestones are released
+    # Check if all milestones are released and the released sum covers the full job price
     all_milestones_res = await db.execute(select(JobMilestone).where(JobMilestone.job_id == job_id))
     all_milestones = all_milestones_res.scalars().all()
-    if all_milestones and all(m.status == "released" for m in all_milestones):
+    from decimal import Decimal
+    total_released = sum(Decimal(str(m.amount or 0)) for m in all_milestones if m.status == "released")
+    job_price = Decimal(str(job.price or 0))
+    if all_milestones and all(m.status == "released" for m in all_milestones) and (job_price <= 0 or total_released >= job_price):
         job.status = "completed"
 
     await create_notification(
