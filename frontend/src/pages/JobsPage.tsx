@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAuthStore } from '@/store/authStore'
 import { useRadiusStore } from '@/store/radiusStore'
 import UserChip from '@/components/UserChip'
+import { MilestonesManager } from '@/components/MilestonesManager'
 import { MapExplorer } from '@/components/map/MapExplorer'
 import { useGeolocation } from '@/hooks/useGeolocation'
 import {
@@ -1539,15 +1540,70 @@ export default function JobsPage() {
       {/* Job Detail Modal */}
       {detailJob && (
         <Dialog open={!!detailJob} onOpenChange={() => setDetailJob(null)}>
-          <DialogContent className="sm:max-w-2xl bg-background text-foreground">
-            <DialogHeader><DialogTitle>{detailJob.title}</DialogTitle></DialogHeader>
+          <DialogContent className="sm:max-w-2xl bg-background text-foreground max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-bold">{detailJob.title}</DialogTitle>
+            </DialogHeader>
             <div className="space-y-4">
-              {detailJob.image_url && <img src={detailJob.image_url} className="rounded-lg max-h-64 object-cover cursor-pointer" onClick={() => setLightboxSrc(detailJob.image_url!)} />}
-              <p>{detailJob.description}</p>
-              <div className="flex gap-4 text-sm">
-                <span>Price: {fmtPrice(parseFloat(detailJob.price as string))}</span>
-                {detailJob.min_price && detailJob.max_price && <span>Range: {fmtPrice(detailJob.min_price)} – {fmtPrice(detailJob.max_price)}</span>}
-                <span>Status: {statusBadge(detailJob.status)}</span>
+              {detailJob.image_url && (
+                <img
+                  src={detailJob.image_url}
+                  className="rounded-xl max-h-64 w-full object-cover cursor-pointer"
+                  onClick={() => setLightboxSrc(detailJob.image_url!)}
+                />
+              )}
+              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+                {detailJob.description}
+              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm py-2.5 border-y border-border">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-base font-bold">
+                    Price: {fmtPrice(parseFloat(detailJob.price as string || '0'))}
+                  </span>
+                  {detailJob.min_price && detailJob.max_price && (
+                    <span className="text-xs text-muted-foreground">
+                      ({fmtPrice(detailJob.min_price)} – {fmtPrice(detailJob.max_price)})
+                    </span>
+                  )}
+                </div>
+                <div>{statusBadge(detailJob.status)}</div>
+              </div>
+
+              {/* Milestones & Escrow Manager */}
+              <MilestonesManager
+                jobId={detailJob.id}
+                jobTitle={detailJob.title}
+                jobPrice={parseFloat(detailJob.price as string || '0')}
+                jobStatus={detailJob.status}
+                isClient={user?.id === detailJob.client_id}
+                isProvider={user?.id === detailJob.provider_id}
+                onUpdated={() => {
+                  queryClient.invalidateQueries({ queryKey: ['jobs'] })
+                  queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+                }}
+              />
+
+              {/* Modal footer actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDetailJob(null)}
+                >
+                  Close
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black"
+                  onClick={() => {
+                    const j = detailJob
+                    setDetailJob(null)
+                    openContractRoom(j)
+                  }}
+                >
+                  <MessageCircle className="w-3.5 h-3.5 mr-1.5" />
+                  Open Contract Room & Chat
+                </Button>
               </div>
             </div>
           </DialogContent>
@@ -1884,7 +1940,7 @@ function JobCard({
             </Button>
           </>
         )}
-        {(job.status === 'funded' || job.status === 'submitted') && isClient && (
+        {(job.status === 'funded' || job.status === 'in_progress' || job.status === 'submitted') && isClient && (
           <>
             <Button
               size="sm"
@@ -1894,6 +1950,14 @@ function JobCard({
             >
               {releasePending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
               {releasePending ? 'Releasing...' : job.status === 'submitted' ? 'Approve & Release' : 'Release Funds'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onDetail(job)}
+              className="text-xs border-gray-200 dark:border-gray-700 font-medium"
+            >
+              <Shield className="w-3 h-3 mr-1" /> Milestones & Escrow
             </Button>
             {job.status === 'submitted' && (
               <Button
@@ -1928,7 +1992,7 @@ function JobCard({
             <Play className="w-3 h-3 mr-1" /> Start Working
           </Button>
         )}
-        {job.status === 'funded' && isProvider && onSubmitWork && (
+        {(job.status === 'funded' || job.status === 'in_progress') && isProvider && onSubmitWork && (
           <Button
             size="sm"
             variant="outline"

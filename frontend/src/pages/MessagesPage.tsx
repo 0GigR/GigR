@@ -28,6 +28,8 @@ import {
   X,
   Search,
   ShieldCheck,
+  Shield,
+  Briefcase,
   ExternalLink,
   ArrowLeft,
   CheckCircle,
@@ -39,6 +41,9 @@ import ChatMessageContent from '@/components/ChatMessageContent'
 import { cn } from '@/lib/utils'
 import { useRail } from '@/lib/config'
 import { startPayPalCheckout, redirectToPayPal } from '@/lib/paypal'
+import { MilestonesManager } from '@/components/MilestonesManager'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 
 type Job = components['schemas']['JobOut']
 type Message = components['schemas']['MessageOut']
@@ -147,7 +152,33 @@ export default function MessagesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'contracts' | 'direct'>('all')
+
+  const [showCreateContract, setShowCreateContract] = useState(false)
+  const [contractTitle, setContractTitle] = useState('')
+  const [contractPrice, setContractPrice] = useState('')
+  const [contractDesc, setContractDesc] = useState('')
+
+  const proposeContractMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedJob) return
+      const { data } = await api.post(`/jobs/${selectedJob.id}/propose-contract`, {
+        title: contractTitle.trim(),
+        price: parseFloat(contractPrice),
+        description: contractDesc.trim() || undefined,
+      })
+      return data
+    },
+    onSuccess: (updated) => {
+      toast.success('Contract created! You can now fund escrow or add milestones.')
+      setShowCreateContract(false)
+      setSelectedJob(updated)
+      queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+    },
+    onError: (err: any) => toast.error(extractError(err, 'Failed to create contract')),
+  })
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -294,10 +325,10 @@ export default function MessagesPage() {
 
   const filteredJobs = useMemo(() => {
     let result = activeJobs
-    if (statusFilter === 'active') {
-      result = result.filter((j) => !['completed', 'cancelled'].includes(j.status))
-    } else if (statusFilter === 'completed') {
-      result = result.filter((j) => ['completed', 'cancelled'].includes(j.status))
+    if (statusFilter === 'contracts') {
+      result = result.filter((j) => !(j.status === 'requested' && Number(j.price) === 0))
+    } else if (statusFilter === 'direct') {
+      result = result.filter((j) => j.status === 'requested' && Number(j.price) === 0)
     }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
@@ -486,6 +517,7 @@ export default function MessagesPage() {
     : null
 
   const isClient = selectedJob ? selectedJob.client_id === user?.id : false
+  const isDirectMessage = Boolean(selectedJob && selectedJob.status === 'requested' && Number(selectedJob.price) === 0)
 
   const providerId = selectedJob?.provider_id || (selectedJob?.client_id === user?.id ? counterpartyId : user?.id)
 
@@ -536,7 +568,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-5.5rem)] flex flex-col animate-in fade-in duration-200">
+    <div className="h-[calc(100dvh-7.5rem)] md:h-[calc(100vh-5.5rem)] flex flex-col min-h-0 animate-in fade-in duration-200">
       <div className="flex-1 grid lg:grid-cols-12 gap-4 min-h-0">
         {/* Left Sidebar: Contract rooms list */}
         <div
@@ -566,19 +598,19 @@ export default function MessagesPage() {
               />
             </div>
             <div className="flex gap-1">
-              {(['all', 'active', 'completed'] as const).map((mode) => (
+              {(['all', 'contracts', 'direct'] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
                   onClick={() => setStatusFilter(mode)}
                   className={cn(
-                    'flex-1 py-1 text-[11px] font-medium rounded-lg capitalize transition-colors',
+                    'flex-1 py-1 text-[11px] font-medium rounded-lg capitalize transition-colors truncate',
                     statusFilter === mode
                       ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
                       : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
                   )}
                 >
-                  {mode}
+                  {mode === 'direct' ? 'Direct' : mode}
                 </button>
               ))}
             </div>
@@ -602,6 +634,7 @@ export default function MessagesPage() {
                 const unreadCount = currentMeta?.unreadCount ?? 0
                 const isSelected = selectedJob?.id === job.id
                 const otherPartyId = job.client_id === user?.id ? job.provider_id : job.client_id
+                const isJobDM = job.status === 'requested' && Number(job.price) === 0
 
                 return (
                   <button
@@ -634,15 +667,27 @@ export default function MessagesPage() {
                       </div>
 
                       <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                        {job.title}
+                        {isJobDM && job.title === 'Direct Message Inquiry' ? 'Direct Message' : job.title}
                       </p>
 
                       <div className="flex items-center justify-between gap-1 mt-1">
-                        <span className="text-[11px] font-mono font-semibold text-gray-900 dark:text-gray-100">
-                          ₦{Number(job.price).toLocaleString()}
-                        </span>
+                        {isJobDM ? (
+                          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                            Direct Chat
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-mono font-semibold text-gray-900 dark:text-gray-100">
+                            ₦{Number(job.price).toLocaleString()}
+                          </span>
+                        )}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {renderStatusBadge(job.status)}
+                          {isJobDM ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              Direct
+                            </span>
+                          ) : (
+                            renderStatusBadge(job.status)
+                          )}
                           {unreadCount > 0 && (
                             <span className="min-w-[18px] h-4 px-1 text-[10px] font-bold text-white bg-black dark:bg-white dark:text-black rounded-full flex items-center justify-center">
                               {unreadCount}
@@ -680,156 +725,216 @@ export default function MessagesPage() {
           ) : (
             <>
               {/* Executive Contract Room Header */}
-              <div className="border-b border-gray-200 dark:border-gray-800 p-3.5 bg-gray-50/70 dark:bg-gray-950/70 shrink-0 space-y-2">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
+              <div className="border-b border-gray-200 dark:border-gray-800 p-2.5 sm:p-3.5 bg-gray-50/70 dark:bg-gray-950/70 shrink-0 space-y-2">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     {/* Back button for mobile navigation */}
                     <button
                       type="button"
                       onClick={() => setSelectedJob(null)}
-                      className="lg:hidden p-1.5 -ml-1 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg flex items-center gap-1 text-xs font-semibold"
+                      className="lg:hidden p-1.5 -ml-1 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg flex items-center gap-1 text-xs font-semibold shrink-0"
                       aria-label="Back to conversations list"
                     >
                       <ArrowLeft className="w-4 h-4" />
-                      Back
+                      <span className="hidden sm:inline">Back</span>
                     </button>
 
-                    {/* Counterparty avatar & details */}
-                    <CounterpartyAvatar userId={counterpartyId} size="lg" />
+                    {/* Counterparty avatar */}
+                    <CounterpartyAvatar userId={counterpartyId} size="md" />
 
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h2 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
                           <CounterpartyLabel userId={counterpartyId} fallback="User" />
                         </h2>
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
-                          {isClient ? 'Worker' : 'Client'}
-                        </span>
+                        {isDirectMessage ? (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shrink-0">
+                            Direct Message
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 shrink-0">
+                            {isClient ? 'Worker' : 'Client'}
+                          </span>
+                        )}
                       </div>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">
-                        {selectedJob.title} · <span className="font-semibold text-gray-900 dark:text-gray-100">₦{Number(selectedJob.price).toLocaleString()}</span>
-                        <span className="text-gray-300 dark:text-gray-600 mx-1.5">·</span>
-                        <span className="font-medium text-indigo-600 dark:text-indigo-400">
-                          {isClient ? 'You are the client' : 'You are the worker'}
-                        </span>
+                      <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
+                        {isDirectMessage ? (
+                          <span>Direct Inquiry · Chat freely</span>
+                        ) : (
+                          <>
+                            <span className="truncate">{selectedJob.title}</span>
+                            <span className="mx-1">·</span>
+                            <span className="font-semibold text-gray-900 dark:text-gray-100 font-mono">
+                              ₦{Number(selectedJob.price).toLocaleString()}
+                            </span>
+                            <span className="mx-1">·</span>
+                            <span className="font-medium text-indigo-600 dark:text-indigo-400">
+                              {isClient ? 'You are the client' : 'You are the worker'}
+                            </span>
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>
 
-                  {/* Action buttons (Deliver / Submit, Release, Dispute, Fund) */}
-                  <div className="flex items-center gap-2">
-                    {/* Provider: Deliver Project (1h Review) */}
-                    {!isClient && (selectedJob.status === 'funded' || selectedJob.status === 'in_progress') && (
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {isDirectMessage ? (
                       <Button
                         size="sm"
-                        onClick={() => submitWorkMutation.mutate(selectedJob.id)}
-                        disabled={submitWorkMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-3 rounded-xl shadow-xs"
+                        onClick={() => {
+                          setContractTitle(selectedJob.title === 'Direct Message Inquiry' ? '' : selectedJob.title)
+                          setContractPrice('')
+                          setContractDesc('')
+                          setShowCreateContract(true)
+                        }}
+                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs font-medium"
                       >
-                        {submitWorkMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                        ) : (
-                          <CheckCircle className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-                        )}
-                        Deliver Project (1h Review)
+                        <Briefcase className="w-3.5 h-3.5 sm:mr-1" />
+                        <span className="hidden sm:inline">Create Contract</span>
+                        <span className="sm:hidden">Contract</span>
                       </Button>
-                    )}
-
-                    {/* Client: Approve & Release payment / Dispute */}
-                    {isClient && selectedJob.status === 'submitted' && (
+                    ) : (
                       <>
-                        <Button
-                          size="sm"
-                          onClick={() => releasePaymentMutation.mutate(selectedJob.id)}
-                          disabled={releasePaymentMutation.isPending}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3 rounded-xl shadow-xs font-medium"
-                        >
-                          {releasePaymentMutation.isPending ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                          ) : (
-                            <CheckCircle className="w-3.5 h-3.5 mr-1" />
-                          )}
-                          Approve & Release Payment
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/dashboard/disputes?job=${selectedJob.id}`)}
-                          className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 text-xs h-8 px-3 rounded-xl shadow-xs"
-                        >
-                          Dispute
-                        </Button>
+                        {/* Provider: Deliver Project (1h Review) */}
+                        {!isClient && (selectedJob.status === 'funded' || selectedJob.status === 'in_progress') && (
+                          <Button
+                            size="sm"
+                            onClick={() => submitWorkMutation.mutate(selectedJob.id)}
+                            disabled={submitWorkMutation.isPending}
+                            className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                          >
+                            {submitWorkMutation.isPending ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" />
+                            ) : (
+                              <CheckCircle className="w-3.5 h-3.5 sm:mr-1 text-emerald-400" />
+                            )}
+                            <span className="hidden sm:inline">Deliver Project (1h Review)</span>
+                            <span className="sm:hidden">Deliver</span>
+                          </Button>
+                        )}
+
+                        {/* Client: Approve & Release payment / Dispute */}
+                        {isClient && selectedJob.status === 'submitted' && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => releasePaymentMutation.mutate(selectedJob.id)}
+                              disabled={releasePaymentMutation.isPending}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs font-medium"
+                            >
+                              {releasePaymentMutation.isPending ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" />
+                              ) : (
+                                <CheckCircle className="w-3.5 h-3.5 sm:mr-1" />
+                              )}
+                              <span className="hidden sm:inline">Approve & Release Payment</span>
+                              <span className="sm:hidden">Release</span>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => navigate(`/dashboard/disputes?job=${selectedJob.id}`)}
+                              className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                            >
+                              Dispute
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Client: Fund escrow */}
+                        {isClient && (selectedJob.status === 'open' || selectedJob.status === 'assigned') && (
+                          <Button
+                            size="sm"
+                            onClick={() => fundEscrowMutation.mutate(selectedJob.id)}
+                            disabled={fundEscrowMutation.isPending}
+                            className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                          >
+                            {fundEscrowMutation.isPending ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" />
+                            ) : (
+                              <ShieldCheck className="w-3.5 h-3.5 sm:mr-1 text-emerald-400" />
+                            )}
+                            <span className="hidden sm:inline">Fund Escrow</span>
+                            <span className="sm:hidden">Fund</span>
+                          </Button>
+                        )}
+
+                        {renderStatusBadge(selectedJob.status)}
                       </>
                     )}
-
-                    {/* Client: Fund escrow */}
-                    {isClient && (selectedJob.status === 'open' || selectedJob.status === 'assigned') && (
-                      <Button
-                        size="sm"
-                        onClick={() => fundEscrowMutation.mutate(selectedJob.id)}
-                        disabled={fundEscrowMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-3 rounded-xl shadow-xs"
-                      >
-                        {fundEscrowMutation.isPending ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-                        ) : (
-                          <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-                        )}
-                        Fund Escrow
-                      </Button>
-                    )}
-
-                    {renderStatusBadge(selectedJob.status)}
                   </div>
                 </div>
 
-                {/* Sub-bar: Escrow status & quick links */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-200 dark:border-gray-800 text-xs">
-                  <div className="flex items-center gap-2">
-                    {selectedJob.status === 'funded' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        <ShieldCheck className="w-3.5 h-3.5" /> {isPayPal ? 'Escrow Funded · PayPal' : 'Escrow Secured · Solana'}
-                      </span>
-                    ) : selectedJob.status === 'in_progress' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        <ShieldCheck className="w-3.5 h-3.5" /> In Progress · Escrow Locked
-                      </span>
-                    ) : selectedJob.status === 'submitted' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                        Under Review · 1h Auto-Release Window
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
-                        Pending Escrow Funding
-                      </span>
-                    )}
+                {/* Sub-bar: Escrow status & quick links (for contract rooms only) */}
+                {!isDirectMessage && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-200 dark:border-gray-800 text-xs">
+                    <div className="flex items-center gap-2">
+                      {selectedJob.status === 'funded' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                          <ShieldCheck className="w-3.5 h-3.5" /> {isPayPal ? 'Escrow Funded · PayPal' : 'Escrow Secured · Solana'}
+                        </span>
+                      ) : selectedJob.status === 'in_progress' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                          <ShieldCheck className="w-3.5 h-3.5" /> In Progress · Escrow Active
+                        </span>
+                      ) : selectedJob.status === 'submitted' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                          Under Review · 1h Auto-Release Window
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                          Pending Escrow Funding
+                        </span>
+                      )}
 
-                    {selectedJob.escrow_address && (
-                      <span className="text-[10px] font-mono text-gray-400">
-                        ({selectedJob.escrow_address.slice(0, 6)}...{selectedJob.escrow_address.slice(-4)})
-                      </span>
-                    )}
-                  </div>
+                      {selectedJob.escrow_address && (
+                        <span className="text-[10px] font-mono text-gray-400">
+                          ({selectedJob.escrow_address.slice(0, 6)}...{selectedJob.escrow_address.slice(-4)})
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/dashboard/jobs?jobId=${selectedJob.id}`)}
-                      className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
-                    >
-                      View Gig <ExternalLink className="w-3 h-3" />
-                    </button>
-                    {!['completed', 'cancelled'].includes(selectedJob.status) && (
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowScopeAmend(!showScopeAmend)}
+                        onClick={() => navigate(`/dashboard/jobs?jobId=${selectedJob.id}`)}
                         className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
                       >
-                        Propose Amendment
+                        View Gig <ExternalLink className="w-3 h-3" />
                       </button>
-                    )}
+                      {!['completed', 'cancelled'].includes(selectedJob.status) && (
+                        <button
+                          type="button"
+                          onClick={() => setShowScopeAmend(!showScopeAmend)}
+                          className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
+                        >
+                          Propose Amendment
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* Milestones Manager (contract rooms only) */}
+                {!isDirectMessage && (
+                  <div className="pt-1 border-t border-gray-200 dark:border-gray-800">
+                    <MilestonesManager
+                      jobId={selectedJob.id}
+                      jobTitle={selectedJob.title}
+                      jobPrice={parseFloat(selectedJob.price as string || '0')}
+                      jobStatus={selectedJob.status}
+                      isClient={isClient}
+                      isProvider={!isClient}
+                      compact={true}
+                      onUpdated={() => {
+                        queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
+                        queryClient.invalidateQueries({ queryKey: ['jobs'] })
+                        queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Available Provider Services Strip */}
                 {providerServices && providerServices.length > 0 && (
@@ -1127,7 +1232,7 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ) : imagePreview ? (
-                <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2 items-center bg-white dark:bg-gray-950 shrink-0">
+                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 flex gap-2 items-center bg-white dark:bg-gray-950 shrink-0">
                   <img src={imagePreview} alt="Preview" className="w-12 h-12 rounded-xl object-cover shrink-0 ring-1 ring-gray-300" />
                   <textarea
                     ref={textareaRef}
@@ -1145,7 +1250,7 @@ export default function MessagesPage() {
                         handleSendMessage()
                       }
                     }}
-                    className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32"
+                    className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                     autoFocus
                   />
                   <Button
@@ -1161,7 +1266,7 @@ export default function MessagesPage() {
                   </Button>
                 </div>
               ) : (
-                <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2 items-end bg-white dark:bg-gray-950 shrink-0">
+                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 flex gap-2 items-end bg-white dark:bg-gray-950 shrink-0">
                   <label className="cursor-pointer p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0">
                     <ImagePlus className="w-5 h-5" />
                     <input
@@ -1174,7 +1279,7 @@ export default function MessagesPage() {
                   <textarea
                     ref={textareaRef}
                     rows={1}
-                    placeholder="Type a message..."
+                    placeholder={isDirectMessage ? "Send a direct message..." : "Type a message..."}
                     value={messageText}
                     onChange={(e) => {
                       setMessageText(e.target.value)
@@ -1208,6 +1313,82 @@ export default function MessagesPage() {
       {lightboxSrc && (
         <ImageViewer open={!!lightboxSrc} onClose={() => setLightboxSrc(null)} src={lightboxSrc} />
       )}
+
+      {/* Turn Direct Message into Contract Dialog */}
+      <Dialog open={showCreateContract} onOpenChange={setShowCreateContract}>
+        <DialogContent className="max-w-md p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              Turn Chat into Agreed Contract
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Set the agreed title and total price for this contract. Once created, you can fund escrow or set up payment milestones.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Job / Contract Title
+              </label>
+              <Input
+                placeholder="e.g. Website landing page design"
+                value={contractTitle}
+                onChange={(e) => setContractTitle(e.target.value)}
+                className="text-xs rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Agreed Price (₦)
+              </label>
+              <Input
+                type="number"
+                min="1"
+                placeholder="e.g. 25000"
+                value={contractPrice}
+                onChange={(e) => setContractPrice(e.target.value)}
+                className="text-xs rounded-xl font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                Contract Details / Scope (Optional)
+              </label>
+              <Textarea
+                placeholder="Outline deliverables, deadlines, or expectations..."
+                rows={3}
+                value={contractDesc}
+                onChange={(e) => setContractDesc(e.target.value)}
+                className="text-xs rounded-xl"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCreateContract(false)}
+              className="text-xs rounded-xl"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => proposeContractMutation.mutate()}
+              disabled={!contractTitle.trim() || !contractPrice || Number(contractPrice) <= 0 || proposeContractMutation.isPending}
+              className="bg-black hover:bg-gray-800 text-white text-xs rounded-xl font-semibold px-4"
+            >
+              {proposeContractMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              ) : (
+                <Shield className="w-3.5 h-3.5 mr-1" />
+              )}
+              Create Contract & Escrow
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

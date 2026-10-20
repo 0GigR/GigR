@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
+from decimal import Decimal
 from typing import Optional, List
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -290,8 +292,8 @@ async def direct_inquiry(
         _select(Job)
         .where(
             _or(
-                _and_(Job.client_id == current_user.id, Job.provider_id == target_user_id),
-                _and_(Job.client_id == target_user_id, Job.provider_id == current_user.id),
+                _and(Job.client_id == current_user.id, Job.provider_id == target_user_id),
+                _and(Job.client_id == target_user_id, Job.provider_id == current_user.id),
             )
         )
         .where(Job.status.notin_(["completed", "cancelled"]))
@@ -320,7 +322,7 @@ async def direct_inquiry(
     from ....services.ws_manager import manager
     auto = await create_message(
         db, inquiry_job.id, current_user.id,
-        f"👋 Hi {target_user.display_name or 'there'}! I'd like to discuss working with you."
+        f"Hi {target_user.display_name or 'there'}! I would like to discuss working with you."
     )
     await manager.broadcast_new_message(auto)
 
@@ -375,7 +377,7 @@ async def link_service_to_job(
     from ....services.ws_manager import manager
     auto = await create_message(
         db, job.id, current_user.id,
-        f"🏷️ Service tagged: \"{service.title}\" for ₦{float(service.price):,.0f}. Terms updated!"
+        f"Service tagged: \"{service.title}\" for NGN {float(service.price):,.0f}. Terms updated!"
     )
     await manager.broadcast_new_message(auto)
 
@@ -441,6 +443,63 @@ async def accept_request(
         )
 
     return job
+
+
+class ProposeContractIn(BaseModel):
+    title: str
+    price: float
+    description: Optional[str] = None
+
+
+@router.post("/{job_id}/propose-contract", response_model=JobOut)
+async def propose_contract(
+    job_id: uuid.UUID,
+    data: ProposeContractIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Convert a direct message inquiry or discussion into an agreed contract ready for escrow funding."""
+    job = await get_job_by_id(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.client_id != current_user.id and job.provider_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You are not a participant in this conversation")
+    if job.status not in ("requested", "open", "assigned"):
+        raise HTTPException(status_code=400, detail="Cannot alter terms of an already funded or active contract")
+    if data.price <= 0:
+        raise HTTPException(status_code=400, detail="Contract price must be greater than zero")
+
+    job.title = data.title.strip()
+    job.price = Decimal(str(data.price))
+    if data.description:
+        job.description = data.description.strip()
+    job.status = "assigned"
+
+    await db.commit()
+    await db.refresh(job)
+
+    # Post an announcement message into the chat room
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f"Contract terms set: \"{job.title}\" for NGN {float(job.price):,.2f}. The customer can now fund escrow."
+    )
+    await manager.broadcast_new_message(auto)
+
+    other_user_id = job.provider_id if current_user.id == job.client_id else job.client_id
+    if other_user_id:
+        await create_notification(
+            db,
+            user_id=other_user_id,
+            title="Contract Terms Set",
+            message=f"{current_user.display_name or 'The other person'} set contract terms for \"{job.title}\" (NGN {float(job.price):,.2f}).",
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="work",
+        )
+        await db.commit()
+
+    return (await get_job_by_id(db, job.id)) or job
 
 
 @router.get("/exchange-rate")
