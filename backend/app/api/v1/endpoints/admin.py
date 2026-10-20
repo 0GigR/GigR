@@ -260,6 +260,33 @@ async def admin_stats(
     }
 
 
+# ── System Self-Healing & Health Audit ───────────────────────────────────────
+
+@router.get("/self-heal/status")
+async def self_heal_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_perm_any("stats:view", "jobs:manage")),
+):
+    """Retrieve the latest self-healing audit report, or trigger a dry-run check."""
+    from ....services.self_healing_service import get_latest_report, run_all_heals
+    report = get_latest_report()
+    if not report:
+        report = (await run_all_heals(db, dry_run=True)).to_dict()
+    return report
+
+
+@router.post("/self-heal/run")
+async def self_heal_run(
+    dry_run: bool = False,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_perm_any("jobs:manage", "users:manage")),
+):
+    """Trigger an on-demand system-wide self-healing cycle across all subsystems."""
+    from ....services.self_healing_service import run_all_heals
+    report = await run_all_heals(db, dry_run=dry_run)
+    return report.to_dict()
+
+
 # ── Jobs / Services / Messages ───────────────────────────────────────────────
 
 @router.get("/jobs")

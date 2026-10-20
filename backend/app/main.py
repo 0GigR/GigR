@@ -58,40 +58,7 @@ async def _dedup_duplicate_jobs():
             logger.info("[dedup] Cancelled %d duplicate service-request job(s)", cancelled)
 
 
-async def _reconcile_prematurely_completed_jobs():
-    """Self-healing audit: if any job was marked 'completed' while having unreleased
-    milestones or where total released amount is less than the job price, revert its
-    status to 'in_progress'."""
-    from decimal import Decimal
-    from sqlalchemy import select
-    from .models.job import Job
-    from .models.milestone import JobMilestone
-    from .core.database import async_session
-
-    try:
-        async with async_session() as db:
-            res = await db.execute(select(Job).where(Job.status == "completed"))
-            completed_jobs = res.scalars().all()
-            reverted = 0
-            for j in completed_jobs:
-                ms_res = await db.execute(select(JobMilestone).where(JobMilestone.job_id == j.id))
-                milestones = ms_res.scalars().all()
-                if milestones:
-                    unreleased = [m for m in milestones if m.status != "released"]
-                    total_released = sum(Decimal(str(m.amount or 0)) for m in milestones if m.status == "released")
-                    job_price = Decimal(str(j.price or 0))
-                    if unreleased or (job_price > 0 and total_released < job_price):
-                        j.status = "in_progress"
-                        reverted += 1
-                        logger.warning(
-                            f"[reconcile] Job {j.id} ('{j.title}') had unreleased/partial milestones "
-                            f"(released={total_released}/{job_price}). Reverted to in_progress."
-                        )
-            if reverted:
-                await db.commit()
-                logger.info(f"[reconcile] Restored {reverted} prematurely completed job(s) to in_progress.")
-    except Exception as e:
-        logger.warning(f"[reconcile] Job milestone audit failed: {e}")
+from .services.self_healing_service import run_all_heals, self_healing_loop
 
 
 @app.on_event("startup")
@@ -104,11 +71,12 @@ async def on_startup():
 
     await init_db()
 
-    # Self-healing audit: reverse prematurely completed jobs that still have unreleased milestones or unpaid balances
+    # System-wide self-healing audit at boot
     try:
-        await _reconcile_prematurely_completed_jobs()
+        async with async_session() as db:
+            await run_all_heals(db, dry_run=False)
     except Exception as e:
-        logger.warning("[reconcile] skipped: %s", e)
+        logger.warning("[self_heal] boot audit skipped: %s", e)
 
     # Fail loudly at boot if the VAPID key is broken — web push was silently
     # dying for weeks because the send path swallowed the exception.
@@ -144,6 +112,12 @@ async def on_startup():
 
     # Follow-up nudges: providers are waiting / your application is unanswered
     asyncio.create_task(nudge_loop())
+
+    # Continuous self-healing loop across all subsystems (jobs, milestones, disputes, timers, tasks, auth)
+    if settings.SELF_HEALING_ENABLED:
+        asyncio.create_task(self_healing_loop())
+    else:
+        logger.info("[self_heal] In-process loop disabled (running via external cron/worker).")
 
 # CORS
 # app.add_middleware(
