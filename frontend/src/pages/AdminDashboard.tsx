@@ -367,12 +367,12 @@ export default function AdminDashboard() {
         </div>
         <div>
           {isSuperadmin ? (
-            <Badge variant="outline" className="border-black text-black dark:border-white dark:text-white font-mono text-xs px-3 py-1">
-              [SUPERADMIN · ROOT ACCESS]
+            <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-xs px-3 py-1 font-medium">
+              Superadmin · Root Access
             </Badge>
           ) : (
-            <Badge variant="outline" className="border-gray-400 text-gray-700 dark:text-gray-300 font-mono text-xs px-3 py-1">
-              [ADMIN · RESTRICTED IAM]
+            <Badge className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700 text-xs px-3 py-1 font-medium">
+              Admin · Restricted Access
             </Badge>
           )}
         </div>

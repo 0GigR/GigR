@@ -113,7 +113,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           <Link to={`/dashboard/services/${service.id}`} className="hover:underline decoration-2 underline-offset-2">
             <CardTitle className="text-lg font-semibold">{service.title}</CardTitle>
           </Link>
-          <Badge variant={service.is_active ? 'default' : 'secondary'} className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}>
+          <Badge className={service.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 font-medium text-xs' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 font-medium text-xs'}>
             {service.is_active ? 'Active' : 'Paused'}
           </Badge>
         </div>
@@ -164,7 +164,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
                   <Send className="w-3 h-3" /> Requested
                 </span>
               )}
-              <Button size="sm" variant="default" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-black text-white hover:bg-gray-800 disabled:opacity-60">
+              <Button size="sm" onClick={() => onRequest(service)} disabled={hasRequested || isRequesting} className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs font-medium disabled:opacity-60">
                 {isRequesting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
                 {hasRequested ? 'Requested' : isRequesting ? 'Sending...' : 'Request'}
               </Button>
