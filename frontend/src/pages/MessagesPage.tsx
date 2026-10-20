@@ -384,7 +384,7 @@ export default function MessagesPage() {
       await api.post(`/amendments/${amendmentId}/accept`, { accept })
     },
     onSuccess: (_, variables) => {
-      toast.success(variables.accept ? '[OK] Amendment accepted' : '[OK] Amendment rejected')
+      toast.success(variables.accept ? 'Amendment accepted' : 'Amendment rejected')
       queryClient.invalidateQueries({ queryKey: ['amendments', selectedJob?.id] })
       queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
       if (selectedJob?.id) {
@@ -404,7 +404,7 @@ export default function MessagesPage() {
       if (selectedJob?.id) {
         api.get(`/jobs/${selectedJob.id}`).then((jobRes) => setSelectedJob(jobRes.data)).catch(() => {})
       }
-      toast.success('[OK] Deliverable submitted for review. The client has 1 hour to approve or dispute.')
+      toast.success('Deliverable submitted for review. The client has 1 hour to approve or dispute.')
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed to deliver project')),
   })
@@ -418,7 +418,7 @@ export default function MessagesPage() {
       if (selectedJob?.id) {
         api.get(`/jobs/${selectedJob.id}`).then((jobRes) => setSelectedJob(jobRes.data)).catch(() => {})
       }
-      toast.success('[OK] Escrow payment released to provider!')
+      toast.success('Escrow payment released to provider!')
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed to release payment')),
   })
@@ -446,7 +446,7 @@ export default function MessagesPage() {
       if (selectedJob?.id) {
         api.get(`/jobs/${selectedJob.id}`).then((jobRes) => setSelectedJob(jobRes.data)).catch(() => {})
       }
-      toast.success('[OK] Escrow funded on Solana!')
+      toast.success('Escrow funded on Solana!')
     },
     onError: (err: any) => toast.error(extractError(err, 'Failed to fund escrow')),
   })
@@ -514,24 +514,24 @@ export default function MessagesPage() {
   })
 
   const renderStatusBadge = (jobStatus: string) => {
-    const base = 'text-[10px] font-mono font-semibold px-2 py-0.5 rounded tracking-wider uppercase'
+    const base = 'text-[11px] font-medium px-2.5 py-0.5 rounded-full border'
     switch (jobStatus) {
       case 'open':
-        return <span className={`${base} bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300`}>[OPEN]</span>
+        return <span className={`${base} bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:border-blue-800`}>Open</span>
       case 'assigned':
-        return <span className={`${base} bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200`}>[ASSIGNED]</span>
+        return <span className={`${base} bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800`}>Assigned</span>
       case 'funded':
-        return <span className={`${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300`}>[FUNDED]</span>
+        return <span className={`${base} bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800`}>Funded</span>
       case 'in_progress':
-        return <span className={`${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300`}>[IN PROGRESS]</span>
+        return <span className={`${base} bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800`}>In Progress</span>
       case 'submitted':
-        return <span className={`${base} bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300`}>[SUBMITTED]</span>
+        return <span className={`${base} bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 font-semibold`}>Under Review</span>
       case 'completed':
-        return <span className={`${base} bg-black text-white dark:bg-white dark:text-black`}>[COMPLETED]</span>
+        return <span className={`${base} bg-zinc-900 text-white border-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-200`}>Completed</span>
       case 'cancelled':
-        return <span className={`${base} bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300`}>[CANCELLED]</span>
+        return <span className={`${base} bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800`}>Cancelled</span>
       default:
-        return <span className={`${base} bg-gray-100 text-gray-600`}>[{jobStatus}]</span>
+        return <span className={`${base} bg-gray-50 text-gray-700 border-gray-200`}>{jobStatus}</span>
     }
   }
 
@@ -702,12 +702,12 @@ export default function MessagesPage() {
                         <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
                           <CounterpartyLabel userId={counterpartyId} fallback="Counterparty" />
                         </h2>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-semibold">
-                          [{isClient ? 'FREELANCER' : 'CLIENT'}]
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                          {isClient ? 'Freelancer' : 'Client'}
                         </span>
                       </div>
                       <p className="text-xs text-gray-500 truncate mt-0.5">
-                        {selectedJob.title} · <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">₦{Number(selectedJob.price).toLocaleString()}</span>
+                        {selectedJob.title} · <span className="font-semibold text-gray-900 dark:text-gray-100">₦{Number(selectedJob.price).toLocaleString()}</span>
                       </p>
                     </div>
                   </div>
@@ -720,14 +720,14 @@ export default function MessagesPage() {
                         size="sm"
                         onClick={() => submitWorkMutation.mutate(selectedJob.id)}
                         disabled={submitWorkMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-3 rounded-xl shadow-xs"
                       >
                         {submitWorkMutation.isPending ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
                         ) : (
                           <CheckCircle className="w-3.5 h-3.5 mr-1 text-emerald-400" />
                         )}
-                        [DELIVER PROJECT (1H REVIEW)]
+                        Deliver Project (1h Review)
                       </Button>
                     )}
 
@@ -738,22 +738,22 @@ export default function MessagesPage() {
                           size="sm"
                           onClick={() => releasePaymentMutation.mutate(selectedJob.id)}
                           disabled={releasePaymentMutation.isPending}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3 rounded-xl shadow-xs font-medium"
                         >
                           {releasePaymentMutation.isPending ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
                           ) : (
                             <CheckCircle className="w-3.5 h-3.5 mr-1" />
                           )}
-                          [APPROVE & RELEASE PAYMENT]
+                          Approve & Release Payment
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => navigate(`/dashboard/disputes?job=${selectedJob.id}`)}
-                          className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                          className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 text-xs h-8 px-3 rounded-xl shadow-xs"
                         >
-                          [DISPUTE]
+                          Dispute
                         </Button>
                       </>
                     )}
@@ -764,14 +764,14 @@ export default function MessagesPage() {
                         size="sm"
                         onClick={() => fundEscrowMutation.mutate(selectedJob.id)}
                         disabled={fundEscrowMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white font-mono text-xs h-8 px-3 rounded-xl shadow-xs"
+                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-3 rounded-xl shadow-xs"
                       >
                         {fundEscrowMutation.isPending ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
                         ) : (
                           <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
                         )}
-                        [FUND ESCROW]
+                        Fund Escrow
                       </Button>
                     )}
 
@@ -783,20 +783,20 @@ export default function MessagesPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-200 dark:border-gray-800 text-xs">
                   <div className="flex items-center gap-2">
                     {selectedJob.status === 'funded' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> {isPayPal ? '[ESCROW FUNDED · HELD IN PAYPAL]' : '[ESCROW FUNDED · SECURED ON SOLANA]'}
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        <ShieldCheck className="w-3.5 h-3.5" /> {isPayPal ? 'Escrow Funded · PayPal' : 'Escrow Secured · Solana'}
                       </span>
                     ) : selectedJob.status === 'in_progress' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> [IN PROGRESS · ESCROW LOCKED]
+                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        <ShieldCheck className="w-3.5 h-3.5" /> In Progress · Escrow Locked
                       </span>
                     ) : selectedJob.status === 'submitted' ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-600 dark:text-amber-400 font-semibold">
-                        [DELIVERABLE UNDER REVIEW · 1H AUTO-RELEASE WINDOW]
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                        Under Review · 1h Auto-Release Window
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-500">
-                        [ESCROW PENDING FUNDING]
+                      <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                        Pending Escrow Funding
                       </span>
                     )}
 
@@ -811,17 +811,17 @@ export default function MessagesPage() {
                     <button
                       type="button"
                       onClick={() => navigate(`/dashboard/jobs?jobId=${selectedJob.id}`)}
-                      className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
+                      className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
                     >
-                      [VIEW GIG] <ExternalLink className="w-3 h-3" />
+                      View Gig <ExternalLink className="w-3 h-3" />
                     </button>
                     {!['completed', 'cancelled'].includes(selectedJob.status) && (
                       <button
                         type="button"
                         onClick={() => setShowScopeAmend(!showScopeAmend)}
-                        className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
+                        className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
                       >
-                        [PROPOSE AMENDMENT]
+                        Propose Amendment
                       </button>
                     )}
                   </div>
@@ -831,7 +831,7 @@ export default function MessagesPage() {
                 {providerServices && providerServices.length > 0 && (
                   <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                      <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider shrink-0">
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider shrink-0 font-medium">
                         Services:
                       </span>
                       {providerServices.map((svc: any) => {
@@ -840,19 +840,19 @@ export default function MessagesPage() {
                           <div
                             key={svc.id}
                             className={cn(
-                              'inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs shrink-0 transition-all',
+                              'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs shrink-0 transition-all',
                               isCurrentService
                                 ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white font-medium'
                                 : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-gray-400'
                             )}
                           >
                             <span className="truncate max-w-[140px] font-medium">{svc.title}</span>
-                            <span className="font-mono text-[11px] opacity-80">
+                            <span className="text-[11px] opacity-80 font-semibold">
                               ₦{Number(svc.price).toLocaleString()}
                             </span>
                             {isCurrentService ? (
-                              <span className="text-[10px] ml-1 bg-white/20 dark:bg-black/20 px-1 py-0.5 rounded font-mono">
-                                [TAGGED ✓]
+                              <span className="text-[10px] ml-1 bg-white/20 dark:bg-black/20 px-1.5 py-0.5 rounded-full font-medium">
+                                Tagged ✓
                               </span>
                             ) : (
                               <div className="flex items-center gap-1.5 ml-1">
@@ -861,19 +861,19 @@ export default function MessagesPage() {
                                     type="button"
                                     onClick={() => linkServiceMutation.mutate(svc.id)}
                                     disabled={linkServiceMutation.isPending}
-                                    className="text-[10px] underline font-mono font-semibold hover:opacity-80"
+                                    className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
                                     title="Tag this service and set contract price"
                                   >
-                                    [Tag Service]
+                                    Tag Service
                                   </button>
                                 )}
                                 <button
                                   type="button"
                                   onClick={() => setMessageText(`Inquiring about "${svc.title}" (₦${Number(svc.price).toLocaleString()}): `)}
-                                  className="text-[10px] text-gray-400 hover:text-black dark:hover:text-white font-mono"
+                                  className="text-[10px] text-gray-500 hover:text-black dark:hover:text-white"
                                   title="Discuss this service in chat"
                                 >
-                                  [Discuss]
+                                  Discuss
                                 </button>
                               </div>
                             )}
@@ -939,7 +939,7 @@ export default function MessagesPage() {
                                 {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </span>
                               {isCurrentUser && (
-                                <span className="font-mono text-[9px]">[SENT]</span>
+                                <span className="text-[9px] text-gray-400">Sent</span>
                               )}
                             </div>
                           </div>
@@ -964,12 +964,12 @@ export default function MessagesPage() {
                     <div key={amendmentItem.id} className="flex justify-center my-3">
                       <div className="w-full max-w-lg rounded-2xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4 space-y-3 shadow-xs">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold text-gray-900 dark:text-gray-100 tracking-wider">
-                            [SCOPE AMENDMENT PROPOSAL]
+                          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                            Scope Amendment Proposal
                           </span>
                           <span
                             className={cn(
-                              'text-[10px] font-mono px-2 py-0.5 rounded font-semibold',
+                              'text-[10px] px-2 py-0.5 rounded-full font-medium',
                               isPending
                                 ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                                 : amendmentItem.is_accepted
@@ -977,7 +977,7 @@ export default function MessagesPage() {
                                 : 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300'
                             )}
                           >
-                            {isPending ? '[PENDING APPROVAL]' : amendmentItem.is_accepted ? '[ACCEPTED]' : '[DECLINED]'}
+                            {isPending ? 'Pending Approval' : amendmentItem.is_accepted ? 'Accepted' : 'Declined'}
                           </span>
                         </div>
 
@@ -1021,18 +1021,18 @@ export default function MessagesPage() {
                               size="sm"
                               onClick={() => decideAmendmentMutation.mutate({ amendmentId: amendmentItem.id, accept: true })}
                               disabled={decideAmendmentMutation.isPending}
-                              className="flex-1 bg-black hover:bg-gray-800 text-white text-xs h-8 font-mono"
+                              className="flex-1 bg-black hover:bg-gray-800 text-white text-xs h-8"
                             >
-                              [ACCEPT AMENDMENT]
+                              Accept Amendment
                             </Button>
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => decideAmendmentMutation.mutate({ amendmentId: amendmentItem.id, accept: false })}
                               disabled={decideAmendmentMutation.isPending}
-                              className="text-xs h-8 font-mono text-red-600 hover:text-red-700"
+                              className="text-xs h-8 text-red-600 hover:text-red-700"
                             >
-                              [DECLINE]
+                              Decline
                             </Button>
                           </div>
                         )}
@@ -1047,8 +1047,8 @@ export default function MessagesPage() {
               {showScopeAmend ? (
                 <div className="border-t border-gray-200 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-900 space-y-3 shrink-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold font-mono text-gray-900 dark:text-gray-100">
-                      [PROPOSE CONTRACT AMENDMENT]
+                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                      Propose Contract Amendment
                     </span>
                     <button
                       type="button"
@@ -1115,9 +1115,9 @@ export default function MessagesPage() {
                         size="sm"
                         onClick={() => scopeAmendMutation.mutate()}
                         disabled={!amendReason.trim() || !amendNewPrice || scopeAmendMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 font-mono"
+                        className="bg-black hover:bg-gray-800 text-white text-xs h-8"
                       >
-                        {scopeAmendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '[SUBMIT PROPOSAL]'}
+                        {scopeAmendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Submit Proposal'}
                       </Button>
                     </div>
                   </div>

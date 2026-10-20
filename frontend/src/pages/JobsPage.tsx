@@ -48,13 +48,15 @@ type Vouch = components['schemas']['VouchOut']
 
 const statusBadge = (status: string) => {
   switch (status) {
-    case 'open': return <Badge className="bg-blue-100 text-blue-800">Open</Badge>
-    case 'assigned': return <Badge className="bg-yellow-100 text-yellow-800">Assigned</Badge>
-    case 'funded': return <Badge className="bg-green-100 text-green-800">Funded</Badge>
-    case 'in_progress': return <Badge className="bg-purple-100 text-purple-800">In Progress</Badge>
-    case 'completed': return <Badge className="bg-black text-white">Completed</Badge>
-    case 'cancelled': return <Badge className="bg-red-100 text-red-800">Canceled</Badge>
-    default: return <Badge>{status}</Badge>
+    case 'open': return <Badge className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 font-medium">Open</Badge>
+    case 'assigned': return <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-medium">Assigned</Badge>
+    case 'funded': return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 font-medium">Funded</Badge>
+    case 'in_progress': return <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">In Progress</Badge>
+    case 'submitted': return <Badge className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 font-semibold">Under Review</Badge>
+    case 'completed': return <Badge className="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium">Completed</Badge>
+    case 'cancelled': return <Badge className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 font-medium">Cancelled</Badge>
+    case 'requested': return <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 font-medium">Requested</Badge>
+    default: return <Badge variant="outline">{status.replace('_', ' ')}</Badge>
   }
 }
 
@@ -70,14 +72,14 @@ function distanceKm(
   return km == null ? null : Math.round(km * 10) / 10
 }
 
-// Status groupings for the "My Jobs" tab. Order matters: requests first, then
-// open postings, then active work, then the archive.
+// Status groupings for the "My Jobs" tab. Active jobs first so funded/in-progress work
+// is always visible without scrolling past dozens of requests.
 const MY_JOB_GROUPS: { key: string; label: string; icon: ReactNode; statuses: string[] }[] = [
-  { key: 'requested', label: 'Service Requests', icon: <Inbox className="w-4 h-4" />, statuses: ['requested'] },
-  { key: 'open', label: 'Open Postings', icon: <Briefcase className="w-4 h-4" />, statuses: ['open'] },
-  { key: 'active', label: 'Active Jobs', icon: <Zap className="w-4 h-4" />, statuses: ['assigned', 'funded', 'in_progress'] },
-  { key: 'completed', label: 'Completed', icon: <CheckCircle className="w-4 h-4" />, statuses: ['completed'] },
-  { key: 'cancelled', label: 'Cancelled', icon: <X className="w-4 h-4" />, statuses: ['cancelled'] },
+  { key: 'active', label: 'Active Jobs', icon: <Zap className="w-4 h-4 text-emerald-500" />, statuses: ['assigned', 'funded', 'in_progress', 'submitted'] },
+  { key: 'requested', label: 'Service Requests', icon: <Inbox className="w-4 h-4 text-blue-500" />, statuses: ['requested'] },
+  { key: 'open', label: 'Open Postings', icon: <Briefcase className="w-4 h-4 text-purple-500" />, statuses: ['open'] },
+  { key: 'completed', label: 'Completed', icon: <CheckCircle className="w-4 h-4 text-zinc-500" />, statuses: ['completed'] },
+  { key: 'cancelled', label: 'Cancelled', icon: <X className="w-4 h-4 text-rose-500" />, statuses: ['cancelled'] },
 ]
 
 // Fetch user info
@@ -217,6 +219,10 @@ export default function JobsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({})
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  }
   // Progressive disclosure: filters and the secondary stats are folded
   // away so the first look at this page is Jobs, not a wall of controls.
   const [showFilters, setShowFilters] = useState(false)
@@ -1046,6 +1052,8 @@ export default function JobsPage() {
                 if (myJobGroupFilter !== 'all' && group.key !== myJobGroupFilter) return null
                 const jobs = processedMyJobs.filter(j => group.statuses.includes(j.status))
                 if (!jobs.length) return null
+                const isGroupExpanded = expandedGroups[group.key] || myJobGroupFilter !== 'all'
+                const displayJobs = isGroupExpanded ? jobs : jobs.slice(0, 4)
                 return (
                   <section key={group.key}>
                     <div className="flex items-center gap-2 mb-3">
@@ -1064,7 +1072,7 @@ export default function JobsPage() {
                         visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
                       }}
                     >
-                      {jobs.map(job => (
+                      {displayJobs.map(job => (
                         <motion.div key={job.id} variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}>
                           <JobCard
                             job={job}
@@ -1097,6 +1105,18 @@ export default function JobsPage() {
                         </motion.div>
                       ))}
                     </motion.div>
+                    {jobs.length > 4 && myJobGroupFilter === 'all' && (
+                      <div className="mt-3 flex justify-center">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleGroup(group.key)}
+                          className="text-xs text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white rounded-full px-4 h-8"
+                        >
+                          {isGroupExpanded ? `Show fewer ${group.label.toLowerCase()}` : `View all ${jobs.length} ${group.label.toLowerCase()} ↓`}
+                        </Button>
+                      </div>
+                    )}
                   </section>
                 )
               })}
@@ -1320,19 +1340,19 @@ export default function JobsPage() {
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{m.title}</span>
                           <span
-                            className={`text-[10px] font-mono px-1.5 py-0.2 rounded ${
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                               m.status === 'released'
-                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300'
                                 : m.status === 'under_review' || m.status === 'submitted'
-                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 font-bold'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 font-semibold'
                                 : m.status === 'funded'
-                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300'
                                 : m.status === 'refunded'
-                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950 dark:text-rose-300'
                                 : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
                             }`}
                           >
-                            [{m.status === 'under_review' ? 'UNDER REVIEW (1H)' : m.status.toUpperCase()}]
+                            {m.status === 'under_review' ? 'Under Review (1h)' : m.status.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                         </div>
                         <p className="font-semibold text-gray-900 dark:text-gray-100">
@@ -1681,18 +1701,19 @@ function JobCard({
             <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
               {isClient ? (
-                <Badge variant="outline" className="text-black border-black font-normal">You are the Client</Badge>
+                <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-normal text-xs">Client</Badge>
               ) : isProvider ? (
-                <Badge variant="outline" className="text-black border-black font-normal">You are the Provider</Badge>
+                <Badge className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-normal text-xs">Provider</Badge>
               ) : null}
               {job.service_listing_id && (
                 <Link
                   to={`/dashboard/services/${job.service_listing_id}`}
-                  className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-black dark:hover:text-white underline"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:underline font-medium"
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 >
-                  <span>Linked Service Listing</span>
-                  <ExternalLink className="w-3 h-3" />
+                  <Briefcase className="w-3 h-3" />
+                  <span>Service Listing</span>
+                  <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-70" />
                 </Link>
               )}
             </div>
