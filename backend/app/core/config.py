@@ -104,6 +104,12 @@ class Settings(BaseSettings):
     # and can DELETE legitimate records — opt-in, OFF by default.
     RUN_STARTUP_CLEANUP: bool = Field(default=False, env="RUN_STARTUP_CLEANUP")
 
+    # ── Self-Healing Engine ───────────────────────────────────────────────────
+    # Periodic system-wide reconciliation and consistency healer.
+    # Runs in-process or as an external cron worker via scripts/run_self_heal.py.
+    SELF_HEALING_ENABLED: bool = Field(default=True, env="SELF_HEALING_ENABLED")
+    SELF_HEALING_INTERVAL_SECONDS: int = Field(default=120, env="SELF_HEALING_INTERVAL_SECONDS")
+
     # ── AI Agent ──────────────────────────────────────────────────────────────
     # Master switch — set to false to disable background agent task runner
     AI_AGENT_ENABLED: bool = Field(default=True, env="AI_AGENT_ENABLED")

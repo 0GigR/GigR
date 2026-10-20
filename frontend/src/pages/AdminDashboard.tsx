@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuthStore } from '@/store/authStore'
-import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save, Users, Wallet, CheckCircle, Gavel, LayoutDashboard, BadgeCheck, Search, ExternalLink } from 'lucide-react'
+import { Shield, UserPlus, Trash2, MessageCircle, ImagePlus, X, Send, Megaphone, Briefcase, Wrench, Save, Users, Wallet, CheckCircle, Gavel, LayoutDashboard, BadgeCheck, Search, ExternalLink, HeartPulse, RefreshCw, Terminal } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -351,6 +351,30 @@ export default function AdminDashboard() {
     setMessageText('')
   }
 
+  // Self-Healing query and mutation
+  const { data: selfHealReport, isLoading: isHealLoading } = useQuery({
+    queryKey: ['admin-self-heal'],
+    queryFn: async () => {
+      const res = await api.get('/admin/self-heal/status')
+      return res.data
+    },
+    enabled: hasPerm('jobs:manage') || isSuperadmin,
+  })
+
+  const runHealMutation = useMutation({
+    mutationFn: async (dryRun: boolean) => {
+      const res = await api.post(`/admin/self-heal/run?dry_run=${dryRun}`)
+      return res.data
+    },
+    onSuccess: (data: any) => {
+      queryClient.setQueryData(['admin-self-heal'], data)
+      toast.success(`Self-healing finished: checked ${data.total_checked}, healed ${data.total_healed}`)
+    },
+    onError: (err: any) => {
+      toast.error(extractError(err, 'Self-healing failed'))
+    },
+  })
+
   // Permission guard
   if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
     return <Navigate to="/dashboard" replace />
@@ -383,6 +407,11 @@ export default function AdminDashboard() {
             <LayoutDashboard className="w-3.5 h-3.5 mr-1.5" /> Overview
           </TabsTrigger>
           {hasPerm('jobs:manage') && <TabsTrigger value="escrows"><Wallet className="w-3.5 h-3.5 mr-1.5" /> Escrows ({adminEscrows?.length || 0})</TabsTrigger>}
+          {hasPerm('jobs:manage') && (
+            <TabsTrigger value="self-heal">
+              <HeartPulse className="w-3.5 h-3.5 mr-1.5" /> Self-Healing
+            </TabsTrigger>
+          )}
           {hasPerm('announce:manage') && <TabsTrigger value="announce">Announce</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="disputes">Open Disputes</TabsTrigger>}
           {hasPerm('disputes:manage') && <TabsTrigger value="resolved">Resolved</TabsTrigger>}
@@ -894,6 +923,140 @@ export default function AdminDashboard() {
                 </Card>
               )
             })}
+          </TabsContent>
+        )}
+
+        {/* Self-Healing & Health Audit */}
+        {hasPerm('jobs:manage') && (
+          <TabsContent value="self-heal" className="mt-6 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border border-border bg-card shadow-sm">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <HeartPulse className="w-5 h-5 text-emerald-600 animate-pulse" />
+                  <h3 className="text-lg font-semibold">Continuous Self-Healing Engine</h3>
+                  {selfHealReport && (
+                    <Badge className={
+                      selfHealReport.overall_status === 'ok'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : selfHealReport.overall_status === 'healed'
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }>
+                      {selfHealReport.overall_status === 'ok'
+                        ? 'System Healthy'
+                        : selfHealReport.overall_status === 'healed'
+                        ? `Healed ${selfHealReport.total_healed} Items`
+                        : 'Review Warning'}
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Periodically audits jobs, staged milestone balances, escrow review timers, disputes, background tasks, and database hygiene.
+                </p>
+                {selfHealReport && (
+                  <p className="text-xs text-muted-foreground pt-1">
+                    Last cycle: <span className="font-medium text-foreground">{new Date(selfHealReport.timestamp).toLocaleString()}</span> ({selfHealReport.duration_ms}ms) · Checked: <span className="font-medium text-foreground">{selfHealReport.total_checked}</span> · Healed: <span className="font-medium text-foreground">{selfHealReport.total_healed}</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => runHealMutation.mutate(true)}
+                  disabled={runHealMutation.isPending || isHealLoading}
+                >
+                  Audit Only (Dry Run)
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => runHealMutation.mutate(false)}
+                  disabled={runHealMutation.isPending || isHealLoading}
+                  className="bg-black text-white hover:bg-gray-800"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${runHealMutation.isPending ? 'animate-spin' : ''}`} />
+                  Run Self-Heal Now
+                </Button>
+              </div>
+            </div>
+
+            {/* Subsystem Health Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {(selfHealReport?.results || [
+                { subsystem: 'jobs_premature_completion', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'jobs_unmarked_completion', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'review_timers', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'disputes_synchronization', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'agent_tasks', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'voice_calls', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'password_reset_tokens', status: 'ok', items_checked: 0, items_healed: 0 },
+                { subsystem: 'vouches', status: 'ok', items_checked: 0, items_healed: 0 },
+              ]).map((sub: any) => {
+                const labelMap: Record<string, string> = {
+                  jobs_premature_completion: 'Milestone Balance Integrity',
+                  jobs_unmarked_completion: 'Complete Job Settlement',
+                  review_timers: '1-Hour Review Timers',
+                  disputes_synchronization: 'Dispute & Job State Sync',
+                  agent_tasks: 'Background Agent Tasks',
+                  voice_calls: 'Voice Webhooks & Calls',
+                  password_reset_tokens: 'Auth Token Cleanup',
+                  vouches: 'Pending cNFT Vouches',
+                }
+                const isHealthy = sub.status === 'ok'
+                const isHealed = sub.status === 'healed'
+                return (
+                  <Card key={sub.subsystem} className="border-border">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium">{labelMap[sub.subsystem] || sub.subsystem}</CardTitle>
+                        <Badge variant="outline" className={
+                          isHealthy
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                            : isHealed
+                            ? 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
+                            : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
+                        }>
+                          {isHealthy ? 'Healthy' : isHealed ? 'Healed' : 'Warning'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="text-xs space-y-1 text-muted-foreground">
+                      <p>Checked: <span className="font-semibold text-foreground">{sub.items_checked}</span></p>
+                      <p>Repaired: <span className="font-semibold text-foreground">{sub.items_healed}</span></p>
+                      {sub.details && sub.details.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-border space-y-1">
+                          {sub.details.map((d: string, idx: number) => (
+                            <p key={idx} className="text-[11px] text-foreground/80 leading-relaxed truncate" title={d}>
+                              · {d}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {/* Standalone Cron Job Portability Guide */}
+            <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                <h4 className="font-semibold text-sm">Standalone Cron & Background Worker Portability</h4>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                By default, Gigr runs self-healing in-process every 120 seconds with zero extra worker cost.
+                When ready to offload to an external Linux crontab, Kubernetes CronJob, or Render background worker, run the standalone script directly:
+              </p>
+              <div className="bg-gray-950 text-gray-100 rounded-xl p-3.5 font-mono text-xs overflow-x-auto space-y-1">
+                <p className="text-gray-400"># Run once on a recurring schedule (e.g. Linux crontab every 2 minutes):</p>
+                <p className="text-emerald-400">cd backend && venv/bin/python scripts/run_self_heal.py --once</p>
+                <p className="text-gray-400 pt-2"># Or run continuously as a dedicated background daemon:</p>
+                <p className="text-emerald-400">cd backend && venv/bin/python scripts/run_self_heal.py --interval 60</p>
+                <p className="text-gray-400 pt-2"># Optional: disable in-process runner on main web server by setting in env:</p>
+                <p className="text-indigo-400">SELF_HEALING_ENABLED=false</p>
+              </div>
+            </div>
           </TabsContent>
         )}
       </Tabs>
