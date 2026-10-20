@@ -658,11 +658,19 @@ async def assign_job_route(
         type="accepted",
     )
 
-    # Background emails to rejected applicants
+    # Background notifications & emails to rejected applicants
     try:
         all_apps = await get_applications_for_job(db, job_id)
         for app in all_apps:
             if app.applicant_id != assign_data.provider_id:
+                await create_notification(
+                    db,
+                    user_id=app.applicant_id,
+                    title="Application Update",
+                    message=f'Another provider was chosen for "{job.title}". Keep browsing other gigs!',
+                    link="/dashboard/jobs",
+                    type="system",
+                )
                 applicant = await get_user_by_id(db, app.applicant_id)
                 if applicant and applicant.email:
                     _send_email_background(
@@ -670,6 +678,7 @@ async def assign_job_route(
                         subject="Job update – you were not selected",
                         html_content=f"<p>Unfortunately, another provider was chosen for the job <strong>{job.title}</strong>. Keep browsing other jobs!</p>"
                     )
+        await db.commit()
     except Exception:
         pass  # non‑critical
 
@@ -1147,6 +1156,15 @@ async def cancel_job_route(
 
     if paypal_escrow.uses_paypal(job):
         await paypal_escrow.refund_to_client(db, job, reason="cancelled_by_client")
+        if job.provider_id:
+            await create_notification(
+                db,
+                user_id=job.provider_id,
+                title="Job Cancelled & Escrow Refunded",
+                message=f'"{job.title}" was cancelled by the client. The escrow was refunded.',
+                link="/dashboard/activity",
+                type="cancelled",
+            )
         await db.commit()
         await db.refresh(job)
         return job
@@ -1203,6 +1221,15 @@ async def cancel_job_route(
         raise HTTPException(status_code=400, detail=detail)
 
     job = await update_job_status(db, job, "cancelled")
+    if job.provider_id:
+        await create_notification(
+            db,
+            user_id=job.provider_id,
+            title="Job Cancelled & Escrow Refunded",
+            message=f'"{job.title}" was cancelled by the client. The escrow was refunded.',
+            link="/dashboard/activity",
+            type="cancelled",
+        )
     await db.commit()
     return (await get_job_by_id(db, job.id)) or job
 

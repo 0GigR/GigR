@@ -8,6 +8,7 @@ from ....crud.scope_amendment import (
     reject_amendment,
 )
 from ....crud.job import get_job_by_id, update_job_status
+from ....crud.notification import create_notification
 from ....models.user import User
 from ....schemas.scope_amendment import (
     ScopeAmendmentCreate,
@@ -66,6 +67,18 @@ async def propose_amendment(
         new_total_price=amendment_in.new_total_price,
         additional_cost=amendment_in.additional_cost,
     )
+
+    target_user_id = job.client_id if current_user.id == job.provider_id else job.provider_id
+    if target_user_id:
+        await create_notification(
+            db,
+            user_id=target_user_id,
+            title="Scope Amendment Proposed",
+            message=f"{current_user.display_name or 'Counterparty'} proposed a scope change for \"{job.title}\".",
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="work",
+        )
+
     await db.commit()
     await db.refresh(amendment)
     return amendment
@@ -91,11 +104,29 @@ async def accept_amendment_route(
 
     if not accept_data.accept:
         await reject_amendment(db, amendment)
+        if job.provider_id:
+            await create_notification(
+                db,
+                user_id=job.provider_id,
+                title="Scope Amendment Declined",
+                message=f"{current_user.display_name or 'The client'} declined the proposed scope amendment for \"{job.title}\".",
+                link=f"/dashboard/messages?jobId={job.id}",
+                type="cancelled",
+            )
         await db.commit()
         return amendment
 
     # Accept flow
     await accept_amendment(db, amendment)
+    if job.provider_id:
+        await create_notification(
+            db,
+            user_id=job.provider_id,
+            title="Scope Amendment Approved",
+            message=f"{current_user.display_name or 'The client'} approved the scope amendment for \"{job.title}\".",
+            link=f"/dashboard/messages?jobId={job.id}",
+            type="accepted",
+        )
 
     # If job was funded, we must cancel the old escrow first
     if job.status in ("funded", "in_progress") and paypal_escrow.uses_paypal(job):

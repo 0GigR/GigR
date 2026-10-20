@@ -5,6 +5,7 @@ from sqlalchemy import select
 from ....crud.vouch import get_vouch_by_id, get_vouches_by_vouchee, create_vouch
 from ....crud.job import get_job_by_id
 from ....crud.user import get_user_by_id
+from ....crud.notification import create_notification
 from ....models.job import Job
 from ....models.vouch import Vouch
 from ....schemas.vouch import VouchCreate, VouchOut
@@ -54,12 +55,28 @@ async def vouch_for_provider(
         vouch = await create_vouch(
             db, job.id, current_user.id, job.provider_id, f"paypal:{ref}", f"paypal:{ref}"
         )
+        await create_notification(
+            db,
+            user_id=job.provider_id,
+            title="New Vouch Received! ⭐",
+            message=f"{current_user.display_name or 'A client'} vouched for you for \"{job.title}\"!",
+            link="/dashboard/profile",
+            type="vouch",
+        )
         await db.commit()
         await db.refresh(vouch)
         return vouch
 
     # Create the vouch record immediately with "pending" status
     vouch = await create_vouch(db, job.id, current_user.id, job.provider_id, "pending", "pending")
+    await create_notification(
+        db,
+        user_id=job.provider_id,
+        title="New Vouch Received! ⭐",
+        message=f"{current_user.display_name or 'A client'} vouched for you for \"{job.title}\"!",
+        link="/dashboard/profile",
+        type="vouch",
+    )
     await db.commit()
     await db.refresh(vouch)
 

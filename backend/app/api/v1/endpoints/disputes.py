@@ -18,9 +18,11 @@ from ....crud.dispute import (
 )
 from ....crud.job import get_job_by_id, update_job_status
 from ....crud.user import get_user_by_id, get_eligible_jurors
+from ....crud.notification import create_notification
 from ....crud.vote import create_vote, get_votes_for_dispute
 from ....crud.jury_panel import create_jury_panel, get_jury_panel, is_juror
 from ....models.user import User
+from ....models.job import Job
 from ....models.vote import VoteOption
 from ....models.dispute import Dispute, DisputeStatus
 from ....schemas.dispute import DisputeCreate, DisputeResolve, DisputeOut
@@ -120,6 +122,61 @@ async def _execute_resolution(
 #     return True
 from .admin import require_perm
 
+async def _notify_dispute_resolved(db: AsyncSession, dispute: Dispute, job: Job, outcome: str):
+    try:
+        from ....crud.message import create_message
+        from ....services.ws_manager import manager
+
+        # In-chat announcement
+        auto = await create_message(
+            db, job.id, job.client_id,
+            f">> ⚖️ Dispute resolved: outcome is {outcome.upper()}. Escrow has been settled."
+        )
+        await manager.broadcast_new_message(auto)
+
+        if outcome == "refund":
+            await create_notification(
+                db, user_id=job.client_id,
+                title="Dispute Resolved: Refunded",
+                message=f'The dispute for "{job.title}" was resolved in your favor. Escrow has been refunded.',
+                link=f"/dashboard/disputes?job={job.id}",
+                type="dispute",
+            )
+            await create_notification(
+                db, user_id=job.provider_id,
+                title="Dispute Resolved",
+                message=f'The dispute for "{job.title}" was resolved in favor of the client.',
+                link=f"/dashboard/disputes?job={job.id}",
+                type="dispute",
+            )
+        elif outcome == "release":
+            await create_notification(
+                db, user_id=job.provider_id,
+                title="Dispute Resolved: Funds Released",
+                message=f'The dispute for "{job.title}" was resolved in your favor. Funds have been released.',
+                link=f"/dashboard/disputes?job={job.id}",
+                type="payment",
+            )
+            await create_notification(
+                db, user_id=job.client_id,
+                title="Dispute Resolved",
+                message=f'The dispute for "{job.title}" was resolved in favor of the provider.',
+                link=f"/dashboard/disputes?job={job.id}",
+                type="dispute",
+            )
+        elif outcome == "split":
+            for uid in (job.client_id, job.provider_id):
+                await create_notification(
+                    db, user_id=uid,
+                    title="Dispute Resolved: Split",
+                    message=f'The dispute for "{job.title}" was resolved with a split settlement.',
+                    link=f"/dashboard/disputes?job={job.id}",
+                    type="payment",
+                )
+    except Exception as e:
+        logger.warning(f"[disputes] Failed to notify resolution: {e}")
+
+
 # Dispute court access is an IAM-granted power (disputes:manage). Superadmin
 # always has it; admins only when the superadmin tags them with the slug.
 verify_dispute_admin = require_perm("disputes:manage")
@@ -211,12 +268,31 @@ async def raise_dispute(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only involved parties can dispute")
     if job.status == "disputed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Dispute already exists")
-    if job.status not in ("funded", "in_progress"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only dispute an active job")
+    if job.status not in ("funded", "in_progress", "submitted"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Can only dispute an active or submitted job")
 
     # Freeze the job
     await update_job_status(db, job, "disputed")
     dispute = await create_dispute(db, job.client_id, job.provider_id, dispute_data, raised_by=current_user.id)
+
+    # In-chat announcement & web push / in-app notification to counterparty
+    from ....crud.message import create_message
+    from ....services.ws_manager import manager
+    auto = await create_message(
+        db, job.id, current_user.id,
+        f">> ⚠️ {current_user.display_name or 'A party'} opened a dispute: \"{dispute_data.reason}\". Escrow has been frozen pending resolution."
+    )
+    await manager.broadcast_new_message(auto)
+
+    other_party_id = job.provider_id if current_user.id == job.client_id else job.client_id
+    await create_notification(
+        db,
+        user_id=other_party_id,
+        title="⚠️ Dispute Opened",
+        message=f"{current_user.display_name or 'The counterparty'} opened a dispute for \"{job.title}\". Escrow has been frozen.",
+        link=f"/dashboard/disputes?job={job.id}",
+        type="dispute",
+    )
     await db.commit()
 
     # ---- AI dispute summary (non-blocking) ----
@@ -309,10 +385,18 @@ async def raise_dispute(
             await create_jury_panel(db, dispute.id, [u.id for u in jurors])
             await db.commit()
 
-            # Notify each juror by email (non‑blocking)
+            # Notify each juror by email and web push / bell notification
             from ....core.config import settings
             frontend_url = settings.FRONTEND_URL.rstrip('/') if settings.FRONTEND_URL else "https://gigrr.vercel.app"
             for juror in jurors:
+                await create_notification(
+                    db,
+                    user_id=juror.id,
+                    title="Selected as Juror ⚖️",
+                    message=f"You've been selected as a community juror for \"{job.title}\". Please review the case and cast your vote.",
+                    link=f"/dashboard/disputes?job={job.id}",
+                    type="dispute",
+                )
                 try:
                     await send_email(
                         to_email=juror.email,
@@ -326,6 +410,7 @@ async def raise_dispute(
                     )
                 except Exception:
                     pass
+            await db.commit()
         else:
             # Not enough eligible jurors — flag for admin
             dispute.resolution = "pending_admin"
@@ -373,6 +458,17 @@ async def withdraw_dispute(
     dispute.status = DisputeStatus.RESOLVED
     dispute.resolution = "withdrawn"
     dispute.resolved_at = datetime.now(timezone.utc)
+
+    # In-app and push notification to the other party
+    other_party_id = dispute.provider_id if current_user.id == dispute.client_id else dispute.client_id
+    await create_notification(
+        db,
+        user_id=other_party_id,
+        title="Dispute Withdrawn",
+        message=f"{current_user.display_name or 'The dispute filer'} withdrew the dispute for \"{job.title}\".",
+        link=f"/dashboard/messages?jobId={job.id}",
+        type="system",
+    )
     await db.commit()
 
     # Notify the other party
@@ -564,6 +660,7 @@ async def tally_votes(
 
     # Mark dispute resolved
     dispute = await resolve_dispute(db, dispute, outcome)
+    await _notify_dispute_resolved(db, dispute, job, outcome)
     await db.commit()
 
     return {
@@ -604,6 +701,8 @@ async def resolve_dispute_route(
     )
 
     dispute = await resolve_dispute(db, dispute, resolution_data.resolution)
+    await _notify_dispute_resolved(db, dispute, job, outcome)
+    await db.commit()
     return dispute
 
 
@@ -653,4 +752,6 @@ async def apply_ai_recommendation(
     outcome = rec["outcome"]
     await _execute_resolution(db, dispute, job, outcome, provider_percent=rec.get("provider_percent"))
     dispute = await resolve_dispute(db, dispute, outcome)
+    await _notify_dispute_resolved(db, dispute, job, outcome)
+    await db.commit()
     return dispute

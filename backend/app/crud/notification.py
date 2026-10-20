@@ -35,6 +35,10 @@ TYPE_PUSH_OPTIONS: dict[str, dict] = {
     "payment": {"requireInteraction": True},   # escrow funded / payment released
     "work": {"requireInteraction": True},      # work submitted, needs review
     "cancelled": {"vibrate": [200, 80, 200]},
+    "dispute": {"requireInteraction": True, "vibrate": [300, 100, 300]},  # urgent dispute action
+    "vouch": {"vibrate": [100, 50, 100, 50, 100]},
+    "request": {"requireInteraction": True},   # direct inquiry or service request
+    "application": {"requireInteraction": True}, # new applicant
 }
 
 # Types that should group/coalesce per conversation instead of stacking.
