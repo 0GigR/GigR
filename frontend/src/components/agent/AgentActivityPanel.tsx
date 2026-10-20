@@ -504,8 +504,8 @@ function TaskThread({ task, onNavigate }: { task: AgentTask; onNavigate: (path: 
               )}
             </button>
             {isActive && (
-              <span className="text-[10px] font-mono text-indigo-500 dark:text-indigo-400 animate-pulse font-medium">
-                [AGENT WORKING...]
+              <span className="text-[10px] text-indigo-500 dark:text-indigo-400 animate-pulse font-medium">
+                Working...
               </span>
             )}
           </div>

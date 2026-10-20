@@ -24,10 +24,35 @@ export interface AgentMapPinItem {
   distanceKm?: number | null
 }
 
+const DISMISSED_TASKS_KEY = 'gigr:dismissed_agent_map_tasks'
+// Overlay expires after 15 minutes of completion so historical tasks do not pollute the map.
+const MAX_OVERLAY_AGE_MS = 15 * 60 * 1000
+
+function getStoredDismissedIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = localStorage.getItem(DISMISSED_TASKS_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    return new Set(Array.isArray(parsed) ? parsed : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function persistDismissedIds(ids: Set<string>) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(DISMISSED_TASKS_KEY, JSON.stringify(Array.from(ids)))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 export function useAgentMapSync() {
   const tasks = useAgentStore((state) => state.tasks)
   const isMapFeatureActive = isFeatureEnabled('mapResults')
-  const [clearedTaskIds, setClearedTaskIds] = useState<Set<string>>(new Set())
+  const [clearedTaskIds, setClearedTaskIds] = useState<Set<string>>(() => getStoredDismissedIds())
 
   // Check if any geo-search task is actively executing
   const activeSearchTask = useMemo<AgentTask | null>(() => {
@@ -43,13 +68,26 @@ export function useAgentMapSync() {
   const isAgentSearching = Boolean(activeSearchTask) && isMapFeatureActive
   const activeSearchQuery = activeSearchTask?.command_text || ''
 
-  // Collect markers from the most recent completed search task
+  // Collect markers from the most recent completed search task (only within the recency window)
   const agentMarkers = useMemo<AgentMapPinItem[]>(() => {
     if (!isMapFeatureActive) return []
 
-    // Look for the most recent completed task that yielded service or job cards with coordinates
+    const now = Date.now()
+
+    // Look for recent completed tasks that yielded service or job cards with coordinates
     for (const task of tasks) {
       if (clearedTaskIds.has(task.id)) continue
+
+      // Only show overlay if the task was completed or created recently (within MAX_OVERLAY_AGE_MS)
+      const taskTimestamp = task.completed_at || task.updated_at || task.created_at
+      if (taskTimestamp) {
+        const ageMs = now - new Date(taskTimestamp).getTime()
+        if (isNaN(ageMs) || ageMs > MAX_OVERLAY_AGE_MS) {
+          continue
+        }
+      } else {
+        continue
+      }
 
       // Check task logs for render_type: service_cards
       for (const logItem of task.logs || []) {
@@ -111,7 +149,11 @@ export function useAgentMapSync() {
 
   const clearAgentPins = useCallback(() => {
     const allTaskIds = new Set(tasks.map((t) => t.id))
-    setClearedTaskIds(allTaskIds)
+    setClearedTaskIds((prev) => {
+      const next = new Set([...prev, ...allTaskIds])
+      persistDismissedIds(next)
+      return next
+    })
   }, [tasks])
 
   return {
