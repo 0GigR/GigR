@@ -33,6 +33,8 @@ import {
   ExternalLink,
   ArrowLeft,
   CheckCircle,
+  ChevronDown,
+  Coins,
 } from 'lucide-react'
 import type { components } from '@/types/api'
 import { useWebSocketMessages } from '@/hooks/useWebSocketMessages'
@@ -158,6 +160,7 @@ export default function MessagesPage() {
   const [contractTitle, setContractTitle] = useState('')
   const [contractPrice, setContractPrice] = useState('')
   const [contractDesc, setContractDesc] = useState('')
+  const [showMilestones, setShowMilestones] = useState(false)
 
   const proposeContractMutation = useMutation({
     mutationFn: async () => {
@@ -579,7 +582,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="h-[calc(100dvh-7.5rem)] md:h-[calc(100vh-5.5rem)] flex flex-col min-h-0 animate-in fade-in duration-200">
+    <div className="h-full md:h-[calc(100vh-5.5rem)] flex flex-col min-h-0 animate-in fade-in duration-200">
       <div className="flex-1 grid lg:grid-cols-12 gap-4 min-h-0">
         {/* Left Sidebar: Contract rooms list */}
         <div
@@ -930,20 +933,43 @@ export default function MessagesPage() {
                 {/* Milestones Manager (contract rooms only) */}
                 {!isDirectMessage && (
                   <div className="pt-1 border-t border-gray-200 dark:border-gray-800">
-                    <MilestonesManager
-                      jobId={selectedJob.id}
-                      jobTitle={selectedJob.title}
-                      jobPrice={parseFloat(selectedJob.price as string || '0')}
-                      jobStatus={selectedJob.status}
-                      isClient={isClient}
-                      isProvider={!isClient}
-                      compact={true}
-                      onUpdated={() => {
-                        queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
-                        queryClient.invalidateQueries({ queryKey: ['jobs'] })
-                        queryClient.invalidateQueries({ queryKey: ['myJobs'] })
-                      }}
-                    />
+                    <div className="flex items-center justify-between py-1 px-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setShowMilestones((v) => !v)}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white transition-colors"
+                      >
+                        <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span>Milestones & Escrow</span>
+                        <ChevronDown className={cn('w-3.5 h-3.5 transition-transform duration-200', showMilestones && 'rotate-180')} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowMilestones((v) => !v)}
+                        className="text-[11px] font-medium text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                      >
+                        {showMilestones ? 'Hide' : 'View / Manage'}
+                      </button>
+                    </div>
+
+                    {showMilestones && (
+                      <div className="pt-1 animate-in fade-in slide-in-from-top-1 duration-150">
+                        <MilestonesManager
+                          jobId={selectedJob.id}
+                          jobTitle={selectedJob.title}
+                          jobPrice={parseFloat(selectedJob.price as string || '0')}
+                          jobStatus={selectedJob.status}
+                          isClient={isClient}
+                          isProvider={!isClient}
+                          compact={true}
+                          onUpdated={() => {
+                            queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
+                            queryClient.invalidateQueries({ queryKey: ['jobs'] })
+                            queryClient.invalidateQueries({ queryKey: ['myJobs'] })
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 

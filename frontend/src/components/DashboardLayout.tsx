@@ -328,15 +328,20 @@ export default function DashboardLayout() {
 
       {/* Main Content Area */}
       {/* pb-24 on mobile keeps general page content clear of the fixed bottom nav;
-          messages page uses pb-14 pt-2 so the chat viewport locks tightly without double-scrolling */}
+          messages page uses pb-14 pt-1 h-[calc(100dvh-3.5rem)] md:h-auto overflow-hidden md:overflow-visible so the chat viewport locks tightly without double-scrolling */}
       <main className={`max-w-7xl mx-auto md:pl-72 relative gigr-page-wash ${
         location.pathname.startsWith('/dashboard/messages')
-          ? 'px-2 pt-2 pb-14 md:px-4 md:pt-4 md:pb-6'
+          ? 'px-1 pt-1 pb-14 md:px-4 md:pt-4 md:pb-6 h-[calc(100dvh-3.5rem)] md:h-auto overflow-hidden md:overflow-visible'
           : 'px-4 pt-6 pb-24 md:pb-6'
       }`}>
         {/* Route transition — CSS-based (tw-animate-css) instead of framer-motion
             so the shell doesn't pull framer-motion into the initial bundle. */}
-        <div key={location.pathname} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div
+          key={location.pathname}
+          className={`animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+            location.pathname.startsWith('/dashboard/messages') ? 'h-full flex flex-col min-h-0' : ''
+          }`}
+        >
           {/* A page-level crash keeps the shell (header, nav) alive, so the user
               can navigate away instead of facing a dead app. */}
           <ErrorBoundary resetKey={location.pathname} label="This page">

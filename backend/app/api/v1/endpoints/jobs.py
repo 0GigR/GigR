@@ -286,22 +286,25 @@ async def direct_inquiry(
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Check for an existing active conversation/job between these two users
+    # Check for an existing active direct conversation between these two users (price == 0)
     from sqlalchemy import select as _select, or_ as _or, and_ as _and
+    from sqlalchemy.orm import selectinload as _selectinload
     existing_result = await db.execute(
         _select(Job)
+        .options(_selectinload(Job.milestones))
         .where(
             _or(
                 _and(Job.client_id == current_user.id, Job.provider_id == target_user_id),
                 _and(Job.client_id == target_user_id, Job.provider_id == current_user.id),
             )
         )
+        .where(Job.price == 0)
         .where(Job.status.notin_(["completed", "cancelled"]))
         .order_by(Job.created_at.desc())
     )
     existing_job = existing_result.scalars().first()
     if existing_job:
-        return existing_job
+        return (await get_job_by_id(db, existing_job.id)) or existing_job
 
     # Create a new inquiry job room
     inquiry_job = Job(
