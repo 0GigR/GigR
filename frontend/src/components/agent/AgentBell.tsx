@@ -48,9 +48,10 @@ export default function AgentBell() {
     return ts !== null && ts > sinceRead
   })
 
+  const MAX_FAILURE_AGE_MS = 60 * 60 * 1000 // 1 hour
   const freshFinishes = tasks.filter((task) => {
     const ts = firstTime(task.completed_at)
-    return ts !== null && ts > sinceRead
+    return ts !== null && ts > sinceRead && (now - ts) < MAX_FAILURE_AGE_MS
   })
   const hasFreshFailure = freshFinishes.some((task) => task.status === 'failed')
 
