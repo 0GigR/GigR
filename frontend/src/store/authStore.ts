@@ -38,11 +38,25 @@ interface AuthState {
   fetchUser: () => Promise<void>
 }
 
+function getInitialUser(): User | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem('gigr:auth_store')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.state?.user || null
+  } catch {
+    return null
+  }
+}
+
+const initialCachedUser = getInitialUser()
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      user: null,
-      isLoading: true,
+      user: initialCachedUser,
+      isLoading: !initialCachedUser,
 
       fetchUser: async () => {
         try {
