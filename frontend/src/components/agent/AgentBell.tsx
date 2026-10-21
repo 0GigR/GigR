@@ -29,21 +29,23 @@ function firstTime(...candidates: (string | null | undefined)[]): number | null 
 export default function AgentBell() {
   const { unreadCount, togglePanel, isPanelOpen, tasks, lastReadAt } = useAgentStore()
   const now = Date.now()
-  const sinceRead = lastReadAt ?? 0
+  const sinceRead = lastReadAt ?? now
 
   const isRunning = tasks.some((task) => {
     if (task.status !== 'queued' && task.status !== 'running') return false
     const ts = firstTime(task.updated_at, task.created_at)
-    return ts === null || now - ts < RUNNING_STALE_MS
+    return ts !== null && now - ts < RUNNING_STALE_MS
   })
 
-  // A dialog only demands attention while it is new. Once the user has opened the
-  // panel it stays actionable in there, but the badge stops nagging.
+  // A dialog only demands attention if an active (queued/running) task is awaiting user action
+  // and has not been viewed yet.
   const hasPendingDialog = tasks.some((task) => {
-    const lastLog = task.logs?.[task.logs.length - 1]
-    if (!lastLog?.data?.action_payload) return false
+    if (task.status !== 'queued' && task.status !== 'running') return false
+    if (!task.logs || task.logs.length === 0) return false
+    const hasAction = task.logs.some((l) => Boolean(l.data?.action_payload))
+    if (!hasAction) return false
     const ts = firstTime(task.updated_at, task.created_at)
-    return ts === null ? false : ts > sinceRead
+    return ts !== null && ts > sinceRead
   })
 
   const freshFinishes = tasks.filter((task) => {

@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useEffect, lazy, Suspense, type ReactNode } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import DashboardLayout from '@/components/DashboardLayout'
@@ -104,6 +104,58 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return children
 }
 
+function SoftRefreshHandler() {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    // Intercept keyboard refresh shortcuts (Ctrl+R, Cmd+R, F5) inside the app
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isR = e.key === 'r' || e.key === 'R'
+      const isRefresh = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && isR)
+      if (isRefresh) {
+        e.preventDefault()
+        // Silently refetch active queries in background without reloading DOM or showing skeletons
+        queryClient.refetchQueries({ type: 'active' })
+      }
+    }
+
+    // Touch pull-to-refresh handler for mobile
+    let touchStartY = 0
+    let isTracking = false
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (window.scrollY <= 0) {
+        touchStartY = e.touches[0].clientY
+        isTracking = true
+      } else {
+        isTracking = false
+      }
+    }
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!isTracking) return
+      isTracking = false
+      const endY = e.changedTouches[0].clientY
+      const distance = endY - touchStartY
+      if (distance > 70 && window.scrollY <= 0) {
+        queryClient.refetchQueries({ type: 'active' })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    window.addEventListener('touchstart', handleTouchStart, { passive: true })
+    window.addEventListener('touchend', handleTouchEnd, { passive: true })
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true })
+      window.removeEventListener('touchstart', handleTouchStart)
+      window.removeEventListener('touchend', handleTouchEnd)
+    }
+  }, [queryClient])
+
+  return null
+}
+
 function App() {
   const { fetchUser, user, isLoading } = useAuthStore()
 
@@ -122,6 +174,7 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
+        <SoftRefreshHandler />
         <BrowserRouter>
           <ToastProvider />
           <Suspense fallback={<PageFallback />}>
