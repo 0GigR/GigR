@@ -345,7 +345,15 @@ export default function DashboardLayout() {
           {/* A page-level crash keeps the shell (header, nav) alive, so the user
               can navigate away instead of facing a dead app. */}
           <ErrorBoundary resetKey={location.pathname} label="This page">
-            <Outlet />
+            <Suspense
+              fallback={
+                <div className="flex-1 flex items-center justify-center py-20 min-h-[250px]">
+                  <div className="h-6 w-6 rounded-full border-2 border-gray-300 border-t-black dark:border-gray-700 dark:border-t-white animate-spin" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
           </ErrorBoundary>
         </div>
       </main>

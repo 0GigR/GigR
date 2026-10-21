@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { useEffect, lazy, Suspense, type ReactNode } from 'react'
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider } from '@/components/ToastProvider'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import DashboardLayout from '@/components/DashboardLayout'
@@ -104,58 +104,6 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return children
 }
 
-function SoftRefreshHandler() {
-  const queryClient = useQueryClient()
-
-  useEffect(() => {
-    // Intercept keyboard refresh shortcuts (Ctrl+R, Cmd+R, F5) inside the app
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isR = e.key === 'r' || e.key === 'R'
-      const isRefresh = e.key === 'F5' || ((e.ctrlKey || e.metaKey) && isR)
-      if (isRefresh) {
-        e.preventDefault()
-        // Silently refetch active queries in background without reloading DOM or showing skeletons
-        queryClient.refetchQueries({ type: 'active' })
-      }
-    }
-
-    // Touch pull-to-refresh handler for mobile
-    let touchStartY = 0
-    let isTracking = false
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (window.scrollY <= 0) {
-        touchStartY = e.touches[0].clientY
-        isTracking = true
-      } else {
-        isTracking = false
-      }
-    }
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      if (!isTracking) return
-      isTracking = false
-      const endY = e.changedTouches[0].clientY
-      const distance = endY - touchStartY
-      if (distance > 70 && window.scrollY <= 0) {
-        queryClient.refetchQueries({ type: 'active' })
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown, { capture: true })
-    window.addEventListener('touchstart', handleTouchStart, { passive: true })
-    window.addEventListener('touchend', handleTouchEnd, { passive: true })
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, { capture: true })
-      window.removeEventListener('touchstart', handleTouchStart)
-      window.removeEventListener('touchend', handleTouchEnd)
-    }
-  }, [queryClient])
-
-  return null
-}
-
 function App() {
   const { fetchUser, user, isLoading } = useAuthStore()
 
@@ -174,47 +122,49 @@ function App() {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <SoftRefreshHandler />
         <BrowserRouter>
           <ToastProvider />
-          <Suspense fallback={<PageFallback />}>
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <DashboardLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<HomePage />} />
-                <Route path="jobs" element={<JobsPage />} />
-                <Route path="services" element={<ServicesPage />} />
-                <Route path="services/:id" element={<ServiceDetailPage />} />
-                <Route path="activity" element={<ActivityPage />} />
-                <Route path="paypal/return" element={<PayPalReturnPage />} />
-                <Route path="payments" element={<PaymentsPage />} />
-                <Route path="messages" element={<MessagesPage />} />
-                <Route path="disputes" element={<DisputesPage />} />
-                <Route path="profile" element={<ProfilePage />} />
-                <Route path="ai-settings" element={<AISettingsPage />} />
-                <Route path="admin" element={<AdminDashboard />} />
-                {/* Public profile inside dashboard for consistent nav */}
-                <Route path="user/:userId" element={<PublicProfilePage />} />
-                <Route path="profile/:userId" element={<PublicProfilePage />} />
-              </Route>
-              {/* Public portfolio routes — open to guests, shared links, and web bots */}
-              <Route path="/profile/:userId" element={<PublicProfilePage />} />
-              <Route path="/user/:userId" element={<PublicProfilePage />} />
-              {/* Catch-all 404 Route — dashboard unknowns bounce home */}
-              <Route path="*" element={<CatchAll />} />
-            </Routes>
-          </Suspense>
+          <Routes>
+            {/* Standalone public routes wrapped in Suspense */}
+            <Route path="/" element={<Suspense fallback={<PageFallback />}><LandingPage /></Suspense>} />
+            <Route path="/login" element={<Suspense fallback={<PageFallback />}><LoginPage /></Suspense>} />
+            <Route path="/register" element={<Suspense fallback={<PageFallback />}><RegisterPage /></Suspense>} />
+            <Route path="/forgot-password" element={<Suspense fallback={<PageFallback />}><ForgotPasswordPage /></Suspense>} />
+            <Route path="/reset-password" element={<Suspense fallback={<PageFallback />}><ResetPasswordPage /></Suspense>} />
+
+            {/* Dashboard routes: DashboardLayout renders immediately and synchronously.
+                It contains its own internal Suspense fallback around the content Outlet,
+                so the Header, Sidebar, and Mobile Bottom Nav never unmount or flicker on refresh. */}
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<HomePage />} />
+              <Route path="jobs" element={<JobsPage />} />
+              <Route path="services" element={<ServicesPage />} />
+              <Route path="services/:id" element={<ServiceDetailPage />} />
+              <Route path="activity" element={<ActivityPage />} />
+              <Route path="paypal/return" element={<PayPalReturnPage />} />
+              <Route path="payments" element={<PaymentsPage />} />
+              <Route path="messages" element={<MessagesPage />} />
+              <Route path="disputes" element={<DisputesPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route path="ai-settings" element={<AISettingsPage />} />
+              <Route path="admin" element={<AdminDashboard />} />
+              <Route path="user/:userId" element={<PublicProfilePage />} />
+              <Route path="profile/:userId" element={<PublicProfilePage />} />
+            </Route>
+
+            {/* Public portfolio routes — open to guests, shared links, and web bots */}
+            <Route path="/profile/:userId" element={<Suspense fallback={<PageFallback />}><PublicProfilePage /></Suspense>} />
+            <Route path="/user/:userId" element={<Suspense fallback={<PageFallback />}><PublicProfilePage /></Suspense>} />
+            {/* Catch-all 404 Route — dashboard unknowns bounce home */}
+            <Route path="*" element={<CatchAll />} />
+          </Routes>
         </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>
