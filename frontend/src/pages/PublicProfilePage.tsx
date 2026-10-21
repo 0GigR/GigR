@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { fmtPrice } from '@/store/currencyStore'
 import { vouchProof, VOUCH_TONE_CLASS } from '@/lib/vouch'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import api, { extractError } from '@/lib/api'
 import { haversineKm } from '@/lib/geo'
@@ -98,6 +98,7 @@ export default function PublicProfilePage() {
   const { userId } = useParams<{ userId: string }>()
   const navigate = useNavigate()
   const { user: currentUser } = useAuthStore()
+  const queryClient = useQueryClient()
 
   const [authOpen, setAuthOpen] = useState(false)
   const [requestingServiceId, setRequestingServiceId] = useState<string | null>(null)
@@ -267,6 +268,7 @@ export default function PublicProfilePage() {
     setContactPending(true)
     try {
       const { data } = await api.post(`/jobs/direct-inquiry/${profile.id}`)
+      await queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
       navigate(`/dashboard/messages?jobId=${data.id}`)
     } catch (err: any) {
       toast.error(extractError(err, 'Failed to open conversation'))
@@ -288,6 +290,7 @@ export default function PublicProfilePage() {
     setRequestingServiceId(service.id)
     try {
       const { data } = await api.post(`/jobs/request-service/${service.id}`)
+      await queryClient.invalidateQueries({ queryKey: ['myJobsForMessages'] })
       toast.success(`Request sent for "${service.title}"!`)
       navigate(`/dashboard/messages?jobId=${data.id}`)
     } catch (err: any) {

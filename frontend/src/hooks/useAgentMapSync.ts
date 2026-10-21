@@ -78,6 +78,9 @@ export function useAgentMapSync() {
     for (const task of tasks) {
       if (clearedTaskIds.has(task.id)) continue
 
+      // Only completed tasks should ever produce search overlay markers on the map
+      if (task.status !== 'completed') continue
+
       // Only show overlay if the task was completed or created recently (within MAX_OVERLAY_AGE_MS)
       const taskTimestamp = task.completed_at || task.updated_at || task.created_at
       if (taskTimestamp) {
