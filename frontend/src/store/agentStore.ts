@@ -215,6 +215,19 @@ const DEFAULT_AI_SETTINGS: AISettings = {
   soundEnabled: false,
 }
 
+function getInitialLastReadAt(): number {
+  if (typeof window === 'undefined') return Date.now()
+  try {
+    const raw = localStorage.getItem('gigr-agent-settings')
+    if (!raw) return Date.now()
+    const parsed = JSON.parse(raw)
+    const val = parsed?.state?.lastReadAt
+    return typeof val === 'number' && val > 0 ? val : Date.now()
+  } catch {
+    return Date.now()
+  }
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useAgentStore = create<AgentState>()(
@@ -222,7 +235,7 @@ export const useAgentStore = create<AgentState>()(
     (set, get) => ({
       tasks: [],
       unreadCount: 0,
-      lastReadAt: null,
+      lastReadAt: getInitialLastReadAt(),
       isPanelOpen: false,
       isPaletteOpen: false,
       isSubmitting: false,
@@ -276,21 +289,23 @@ export const useAgentStore = create<AgentState>()(
           // Never trust the response shape — a non-array here would crash every
           // render of the agent panel (and this polls on EVERY dashboard page).
           const list = Array.isArray(data) ? data : []
+          const now = Date.now()
+          const MAX_UNREAD_AGE_MS = 60 * 60 * 1000 // 1 hour
 
-          set((s) => ({
-            tasks: list,
-            // Unread is DERIVED, never accumulated. A task counts only while it
-            // finished after the last time the user looked. The old code added
-            // to a persisted counter that could outlive the tasks it described,
-            // which is why the badge kept demanding attention for nothing.
-            unreadCount: s.isPanelOpen
-              ? 0
-              : list.filter((task) => {
-                  if (!task.completed_at) return false
-                  const finishedAt = Date.parse(task.completed_at)
-                  return !Number.isNaN(finishedAt) && finishedAt > (s.lastReadAt ?? 0)
-                }).length,
-          }))
+          set((s) => {
+            const cutoff = s.lastReadAt ?? now
+            return {
+              tasks: list,
+              unreadCount: s.isPanelOpen
+                ? 0
+                : list.filter((task) => {
+                    if (!task.completed_at) return false
+                    const finishedAt = Date.parse(task.completed_at)
+                    if (Number.isNaN(finishedAt)) return false
+                    return finishedAt > cutoff && (now - finishedAt) < MAX_UNREAD_AGE_MS
+                  }).length,
+            }
+          })
         } catch (err) {
           // Silently fail — user might not be logged in
         }
