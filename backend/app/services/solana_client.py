@@ -5,11 +5,22 @@ Fixes applied:
   - AsyncClient timeout=60 to survive slow/cold Helius RPC starts.
   - Retry wrapper (3 attempts, 2 s back-off) on every RPC call.
   - All Context account keys use snake_case (AnchorPy3 requirement).
+
+Tatum RPC gateway (FEATURE_TATUM_RPC, off by default):
+  - When the flag is on, the client is built against TATUM_SOLANA_RPC_URL and
+    the network's Tatum key travels in the ``x-api-key`` request header, never
+    in the URL and never in a log line.
+  - The Tatum attempt is a short read-only probe (TATUM_RPC_TIMEOUT_SECONDS,
+    3-5 s). If it fails or times out, the client falls back once to
+    SOLANA_RPC_URL and logs that it did. Writes are never retried here: the
+    probe is a read, and the escrow instructions stay single-attempt.
+  - With the flag off, the client is constructed exactly as before.
 """
 import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import Optional
 
 import httpx
@@ -23,12 +34,33 @@ from solders.system_program import ID as SYSTEM_PROGRAM_ID
 from anchorpy import Context, Idl, Program, Provider, Wallet
 
 from ..core.config import settings
+from ..core.resilience import Boundary, failure_fallback
 
 logger = logging.getLogger(__name__)
+
+TATUM_SOLANA_DEPENDENCY = "tatum-solana-rpc"
+
+# Today's timeout for the RPC the escrow program talks to. Kept for the primary
+# client and for the client that a successful Tatum probe replaces, so a slow
+# but healthy endpoint is not cut off mid-transaction.
+_RPC_TIMEOUT_SECONDS = 60
 
 _program: Optional[Program] = None
 _client: Optional[AsyncClient] = None
 _payer: Optional[Keypair] = None
+
+
+@dataclass(frozen=True)
+class RpcConnection:
+    """The RPC client one operation should use, and where it points.
+
+    ``is_tatum`` records which endpoint answered the probe, so the caller logs
+    the endpoint it actually uses instead of always naming the primary one.
+    """
+
+    client: AsyncClient
+    endpoint: str
+    is_tatum: bool
 
 
 def reset_program_singleton() -> None:
@@ -36,6 +68,120 @@ def reset_program_singleton() -> None:
     global _program, _client
     _program = None
     _client = None
+
+
+def _redact(secret: str, text: str) -> str:
+    """Remove ``secret`` from outbound error text before it can be logged.
+
+    A dependency's exception may echo request metadata. The API key must never
+    reach a log line or an error message, so it is filtered by value as well as
+    by never being placed in a URL.
+    """
+    if secret and text and secret in text:
+        return text.replace(secret, "[redacted]")
+    return text
+
+
+class TatumProbeError(RuntimeError):
+    """A probe failure whose message is already safe to log.
+
+    The boundary reports the reason of a failed call to its metric sink, which
+    is a log line. Converting the dependency's exception here means the sink
+    only ever sees the redacted message.
+    """
+
+
+def _solana_boundary() -> Boundary:
+    """The boundary for the Tatum Solana attempt, built in the composition root."""
+    from ..core.container import tatum_solana_boundary
+
+    return tatum_solana_boundary
+
+
+def _tatum_client(timeout: float) -> AsyncClient:
+    """A client for the Tatum gateway with the key in the header, never the URL."""
+    return AsyncClient(
+        settings.TATUM_SOLANA_RPC_URL,
+        timeout=timeout,
+        extra_headers={"x-api-key": settings.tatum_solana_api_key},
+    )
+
+
+async def open_rpc_client(
+    operation: str, boundary: Optional[Boundary] = None
+) -> RpcConnection:
+    """Return the RPC client for ``operation``, failing over from Tatum once.
+
+    With FEATURE_TATUM_RPC off this is exactly the previous behaviour: a client
+    for ``settings.SOLANA_RPC_URL`` with a 60 second timeout. With it on, a
+    short read-only probe decides the endpoint: Tatum if it answers inside
+    ``TATUM_RPC_TIMEOUT_SECONDS``, the primary RPC otherwise. The probe is a
+    read, so failing over never repeats a write.
+    """
+    if not settings.tatum_solana_enabled:
+        return RpcConnection(
+            client=AsyncClient(
+                settings.SOLANA_RPC_URL, timeout=_RPC_TIMEOUT_SECONDS
+            ),
+            endpoint=settings.SOLANA_RPC_URL,
+            is_tatum=False,
+        )
+
+    api_key = settings.tatum_solana_api_key
+    probe = _tatum_client(settings.TATUM_RPC_TIMEOUT_SECONDS)
+
+    async def probe_call() -> int:
+        try:
+            return (await probe.get_slot()).value
+        except Exception as exc:  # noqa: BLE001 - report a redacted reason to the boundary
+            raise TatumProbeError(
+                _redact(api_key, f"{type(exc).__name__}: {exc}")
+            ) from None
+
+    try:
+        outcome = await (boundary or _solana_boundary()).call(
+            probe_call,
+            failure_fallback(TATUM_SOLANA_DEPENDENCY, "tatum_solana_unavailable"),
+            idempotent=True,
+        )
+    except Exception as exc:  # noqa: BLE001 - the boundary must never break a chain call
+        outcome = None
+        fallback_reason = f"{type(exc).__name__}: {_redact(api_key, str(exc))}"
+    else:
+        fallback_reason = outcome.error or "probe failed"
+    finally:
+        try:
+            await probe.close()
+        except Exception as exc:  # noqa: BLE001 - a failed close must not fail the chain call
+            logger.debug(
+                "[solana_client] probe client close failed for %s: %s",
+                operation,
+                type(exc).__name__,
+            )
+
+    if outcome is not None and outcome.ok:
+        logger.info(
+            "[solana_client] using the Tatum Solana gateway for %s (network=%s)",
+            operation,
+            settings.TATUM_SOLANA_NETWORK,
+        )
+        return RpcConnection(
+            client=_tatum_client(_RPC_TIMEOUT_SECONDS),
+            endpoint=settings.TATUM_SOLANA_RPC_URL,
+            is_tatum=True,
+        )
+
+    logger.warning(
+        "[solana_client] Tatum Solana gateway unavailable for %s (%s); "
+        "fell back to SOLANA_RPC_URL",
+        operation,
+        _redact(api_key, fallback_reason),
+    )
+    return RpcConnection(
+        client=AsyncClient(settings.SOLANA_RPC_URL, timeout=_RPC_TIMEOUT_SECONDS),
+        endpoint=settings.SOLANA_RPC_URL,
+        is_tatum=False,
+    )
 
 TOKEN_PROGRAM = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
 ATA_PROGRAM   = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
@@ -58,7 +204,7 @@ async def ensure_ata_exists(payer_kp: Keypair, owner: Pubkey, mint: Pubkey) -> P
     ata = get_associated_token_address(owner, mint)
 
     # Check existence
-    rpc_client = AsyncClient(settings.SOLANA_RPC_URL, timeout=60)
+    rpc_client = (await open_rpc_client("ensure_ata_exists")).client
     try:
         info = await rpc_client.get_account_info(ata)
         if info.value is not None:
@@ -107,7 +253,8 @@ async def _get_program() -> Program:
     global _program, _client
     if _program is None:
         # timeout=60 so Helius cold-starts don't time out mid-request 
-        _client = AsyncClient(settings.SOLANA_RPC_URL, timeout=60)
+        connection = await open_rpc_client("load_program")
+        _client = connection.client
         # idl_dict = json.loads(r"""{"version":"0.1.0","name":"baros_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
         idl_dict = json.loads(r"""{"version":"0.1.0","name":"gigr_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"platform","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
         # idl_path = os.path.join(os.path.dirname(__file__), "baros_program.json")
@@ -134,7 +281,7 @@ async def _get_program() -> Program:
             TxOpts(skip_preflight=False, preflight_commitment=Confirmed),
         )
         _program = Program(idl, Pubkey.from_string(settings.GIGR_PROGRAM_ID), provider)
-        logger.info(f"[solana_client] Program loaded (embedded IDL). RPC={settings.SOLANA_RPC_URL}")
+        logger.info("[solana_client] Program loaded (embedded IDL). RPC=%s", connection.endpoint)
     return _program
 
 

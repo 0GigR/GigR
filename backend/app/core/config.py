@@ -345,6 +345,123 @@ class Settings(BaseSettings):
     FEATURE_AGENT_COMMAND_PALETTE: bool = Field(
         default=True, env="FEATURE_AGENT_COMMAND_PALETTE"
     )
+    # Walrus Memory backend for the agent's long-term memory. Default OFF: an
+    # unset environment keeps users.ai_settings["memory"] as the only store and
+    # the agent behaves exactly as before. Added 2026-10-25; remove once Walrus
+    # Memory has been the default for a full release cycle with no rollback.
+    FEATURE_AGENT_WALRUS_MEMORY: bool = Field(
+        default=False, env="FEATURE_AGENT_WALRUS_MEMORY"
+    )
+    # Walrus Memory credentials (free relayer, https://memory.walrus.xyz).
+    # All optional: with either credential missing the gateway is unavailable
+    # and the JSONB memory is used, so the app boots with none of them set.
+    MEMWAL_PRIVATE_KEY: str = Field(default="", env="MEMWAL_PRIVATE_KEY")
+    MEMWAL_ACCOUNT_ID: str = Field(default="", env="MEMWAL_ACCOUNT_ID")
+    MEMWAL_SERVER_URL: str = Field(
+        default="https://relayer.memory.walrus.xyz", env="MEMWAL_SERVER_URL"
+    )
+    # Prefix of every Walrus namespace. The default is the prefix the memory
+    # backend has always used, so namespaces already written keep resolving.
+    # Changing it starts a new namespace: old memories are not migrated.
+    MEMWAL_NAMESPACE_PREFIX: str = Field(
+        default="gigr-user", env="MEMWAL_NAMESPACE_PREFIX"
+    )
+
+    @field_validator("MEMWAL_NAMESPACE_PREFIX")
+    @classmethod
+    def _normalise_memwal_namespace_prefix(cls, v: str) -> str:
+        """Absorb a blank or padded prefix instead of writing malformed namespaces."""
+        cleaned = (v or "").strip()
+        return cleaned or "gigr-user"
+
+    # Tatum (RPC gateway for the Solana and Sui chains)
+    # Both features are OFF by default. With the flags off, no Tatum URL, key
+    # or header is read and every existing chain call is unchanged.
+    #
+    # The network selects the key: TATUM_API_KEY_MAINNET is used only by a
+    # mainnet network, TATUM_API_KEY_TESTNET by every other network. The app
+    # runs on Solana devnet, so TATUM_SOLANA_NETWORK defaults to "devnet" and
+    # pairs with the testnet key. This pairing is explicitly configured, never
+    # guessed from the URL.
+    FEATURE_TATUM_RPC: bool = Field(default=False, env="FEATURE_TATUM_RPC")
+    FEATURE_TATUM_SUI: bool = Field(default=False, env="FEATURE_TATUM_SUI")
+    # Documented Tatum gateway endpoints (empty means "not configured"):
+    #   Solana devnet   https://solana-devnet.gateway.tatum.io
+    #   Solana mainnet  https://solana-mainnet.gateway.tatum.io
+    #   Sui testnet     https://sui-testnet.gateway.tatum.io
+    #   Sui mainnet     https://sui-mainnet.gateway.tatum.io
+    TATUM_SOLANA_RPC_URL: str = Field(default="", env="TATUM_SOLANA_RPC_URL")
+    TATUM_SUI_RPC_URL: str = Field(default="", env="TATUM_SUI_RPC_URL")
+    TATUM_API_KEY_TESTNET: str = Field(default="", env="TATUM_API_KEY_TESTNET")
+    TATUM_API_KEY_MAINNET: str = Field(default="", env="TATUM_API_KEY_MAINNET")
+    TATUM_SOLANA_NETWORK: str = Field(default="devnet", env="TATUM_SOLANA_NETWORK")
+    TATUM_SUI_NETWORK: str = Field(default="testnet", env="TATUM_SUI_NETWORK")
+    # Short timeout for the Tatum attempt before falling back to the primary
+    # Solana RPC. Kept inside the 3-5 second band on purpose: a Tatum gateway
+    # that has not answered within that window is treated as unavailable.
+    TATUM_RPC_TIMEOUT_SECONDS: float = Field(
+        default=4.0, env="TATUM_RPC_TIMEOUT_SECONDS"
+    )
+
+    @field_validator("TATUM_SOLANA_NETWORK")
+    @classmethod
+    def _normalise_tatum_solana_network(cls, v: str) -> str:
+        cleaned = (v or "").strip().lower()
+        if cleaned not in ("devnet", "mainnet"):
+            raise ValueError("TATUM_SOLANA_NETWORK must be 'devnet' or 'mainnet'")
+        return cleaned
+
+    @field_validator("TATUM_SUI_NETWORK")
+    @classmethod
+    def _normalise_tatum_sui_network(cls, v: str) -> str:
+        cleaned = (v or "").strip().lower()
+        if cleaned not in ("devnet", "testnet", "mainnet"):
+            raise ValueError("TATUM_SUI_NETWORK must be 'devnet', 'testnet' or 'mainnet'")
+        return cleaned
+
+    @field_validator("TATUM_RPC_TIMEOUT_SECONDS")
+    @classmethod
+    def _validate_tatum_rpc_timeout(cls, v: float) -> float:
+        """Keep the Tatum attempt inside the short window it was designed for.
+
+        A longer timeout would let an unhealthy Tatum gateway delay every chain
+        call for as long as the primary RPC it was meant to replace.
+        """
+        if not (3.0 <= float(v) <= 5.0):
+            raise ValueError("TATUM_RPC_TIMEOUT_SECONDS must be between 3 and 5 seconds")
+        return float(v)
+
+    @property
+    def tatum_solana_api_key(self) -> str:
+        """The Tatum key paired with the configured Solana network."""
+        if self.TATUM_SOLANA_NETWORK == "mainnet":
+            return self.TATUM_API_KEY_MAINNET
+        return self.TATUM_API_KEY_TESTNET
+
+    @property
+    def tatum_sui_api_key(self) -> str:
+        """The Tatum key paired with the configured Sui network."""
+        if self.TATUM_SUI_NETWORK == "mainnet":
+            return self.TATUM_API_KEY_MAINNET
+        return self.TATUM_API_KEY_TESTNET
+
+    @property
+    def tatum_solana_enabled(self) -> bool:
+        """True only when the flag is on and a URL and its network's key exist."""
+        return bool(
+            self.FEATURE_TATUM_RPC
+            and self.TATUM_SOLANA_RPC_URL
+            and self.tatum_solana_api_key
+        )
+
+    @property
+    def tatum_sui_enabled(self) -> bool:
+        """True only when the flag is on and a URL and its network's key exist."""
+        return bool(
+            self.FEATURE_TATUM_SUI
+            and self.TATUM_SUI_RPC_URL
+            and self.tatum_sui_api_key
+        )
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

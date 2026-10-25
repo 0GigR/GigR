@@ -1,0 +1,227 @@
+"""Unit tests for the Walrus Memory gateway.
+
+No database and no network: the SDK client is replaced by a fake that implements
+the same three async methods the gateway uses. The SDK's own shapes are covered
+by the optional test at the bottom, which only runs when memwal is installed.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import types
+
+import pytest
+
+from app.core.errors import DependencyUnavailableError
+from app.core.gateways.walrus_memory_gateway import WalrusMemoryGateway
+from app.core.resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
+
+PRIVATE_KEY = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+ACCOUNT_ID = "0xaccount"
+
+
+def make_boundary(timeout: float = 1.0, attempts: int = 1, threshold: int = 5) -> Boundary:
+    return Boundary(
+        ResiliencePolicy(
+            dependency="walrus-memory",
+            timeout_seconds=timeout,
+            failure_threshold=threshold,
+            reset_timeout_seconds=60.0,
+            max_attempts=attempts,
+            max_concurrency=2,
+        ),
+        StructuredLogMetricSink("walrus-memory-test"),
+    )
+
+
+class FakeSdk:
+    """The subset of the memwal client the gateway calls."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+        self.remember_result = types.SimpleNamespace(job_id="job-42", status="pending")
+        self.recall_result = types.SimpleNamespace(
+            results=[
+                types.SimpleNamespace(blob_id="b1", text="first", distance=0.1),
+                types.SimpleNamespace(blob_id="b2", text="second", distance=0.2),
+            ],
+            total=2,
+        )
+        self.namespaces_result = types.SimpleNamespace(
+            namespaces=[
+                types.SimpleNamespace(name="gigr-user-1", memory_count=2),
+                types.SimpleNamespace(name="gigr-user-2", memory_count=1),
+            ]
+        )
+        self.remember_calls: list[dict] = []
+        self.recall_calls: list[dict] = []
+
+    async def remember(self, text, namespace=None, idempotency_key=None):
+        self.calls.append(("remember", text, namespace, idempotency_key))
+        self.remember_calls.append(
+            {"text": text, "namespace": namespace, "idempotency_key": idempotency_key}
+        )
+        return self.remember_result
+
+    async def recall(self, query, limit=10, namespace=None, max_distance=None):
+        self.calls.append(("recall", query, limit, namespace))
+        self.recall_calls.append({"query": query, "limit": limit, "namespace": namespace})
+        return self.recall_result
+
+    async def list_namespaces(self, cursor=None, limit=None):
+        self.calls.append(("list_namespaces",))
+        return self.namespaces_result
+
+
+class RaisingSdk:
+    """A client whose every method fails, as a relayer outage would."""
+
+    def __init__(self, exc: BaseException | None = None) -> None:
+        self.exc = exc or RuntimeError("relayer unreachable")
+        self.calls = 0
+
+    async def remember(self, text, namespace=None, idempotency_key=None):
+        self.calls += 1
+        raise self.exc
+
+    async def recall(self, query, limit=10, namespace=None, max_distance=None):
+        self.calls += 1
+        raise self.exc
+
+    async def list_namespaces(self, cursor=None, limit=None):
+        self.calls += 1
+        raise self.exc
+
+
+class SlowSdk(FakeSdk):
+    async def recall(self, query, limit=10, namespace=None, max_distance=None):
+        await asyncio.sleep(5)
+        return await super().recall(query, limit, namespace, max_distance)
+
+
+def make_gateway(client, boundary: Boundary | None = None) -> WalrusMemoryGateway:
+    return WalrusMemoryGateway(
+        boundary=boundary or make_boundary(),
+        private_key=PRIVATE_KEY,
+        account_id=ACCOUNT_ID,
+        server_url="https://relayer.memory.walrus.xyz",
+        client=client,
+    )
+
+
+async def test_remember_returns_job_id_and_forwards_idempotency_key():
+    sdk = FakeSdk()
+    job_id = await make_gateway(sdk).remember(
+        "last_search: \"plumber\"", "gigr-user-7", idempotency_key="idem-1"
+    )
+
+    assert job_id == "job-42"
+    assert sdk.remember_calls == [
+        {
+            "text": "last_search: \"plumber\"",
+            "namespace": "gigr-user-7",
+            "idempotency_key": "idem-1",
+        }
+    ]
+
+
+async def test_recall_returns_memory_texts_in_order():
+    sdk = FakeSdk()
+    texts = await make_gateway(sdk).recall("leaking tap", "gigr-user-7", 5)
+
+    assert texts == ("first", "second")
+    assert sdk.recall_calls == [
+        {"query": "leaking tap", "limit": 5, "namespace": "gigr-user-7"}
+    ]
+
+
+async def test_list_namespaces_returns_names():
+    sdk = FakeSdk()
+    names = await make_gateway(sdk).list_namespaces()
+
+    assert names == ("gigr-user-1", "gigr-user-2")
+
+
+async def test_recall_timeout_raises_dependency_unavailable_and_stops_waiting():
+    gateway = make_gateway(SlowSdk(), make_boundary(timeout=0.05))
+
+    started = asyncio.get_running_loop().time()
+    with pytest.raises(DependencyUnavailableError) as caught:
+        await gateway.recall("leaking tap", "gigr-user-7", 5)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert "walrus-memory" in str(caught.value)
+    assert elapsed < 1.0
+
+
+async def test_breaker_opens_after_threshold_and_stops_calling_the_sdk():
+    sdk = RaisingSdk()
+    gateway = make_gateway(sdk, make_boundary(timeout=0.5, threshold=2))
+
+    for _ in range(2):
+        with pytest.raises(DependencyUnavailableError):
+            await gateway.recall("query", "gigr-user-7", 5)
+    assert sdk.calls == 2
+
+    # Open now: the caller still gets a typed failure, and the SDK is not hit.
+    with pytest.raises(DependencyUnavailableError):
+        await gateway.recall("query", "gigr-user-7", 5)
+    assert sdk.calls == 2
+
+
+async def test_a_failing_write_is_never_retried():
+    sdk = RaisingSdk()
+    gateway = make_gateway(sdk, make_boundary(timeout=0.5, attempts=3))
+
+    with pytest.raises(DependencyUnavailableError):
+        await gateway.remember("last_search: \"plumber\"", "gigr-user-7")
+
+    assert sdk.calls == 1
+
+
+async def test_gateway_repr_and_failure_logs_never_contain_the_private_key(caplog):
+    caplog.set_level(logging.DEBUG)
+
+    gateway = make_gateway(RaisingSdk(), make_boundary(timeout=0.5))
+    assert PRIVATE_KEY not in repr(gateway)
+    assert PRIVATE_KEY not in str(gateway)
+
+    with pytest.raises(DependencyUnavailableError) as caught:
+        await gateway.recall("query", "gigr-user-7", 5)
+
+    assert PRIVATE_KEY not in str(caught.value)
+    assert PRIVATE_KEY not in caplog.text
+
+
+async def test_gateway_without_credentials_refuses_without_calling_the_sdk():
+    sdk = FakeSdk()
+    gateway = WalrusMemoryGateway(
+        boundary=make_boundary(),
+        private_key="",
+        account_id="",
+        server_url="https://relayer.memory.walrus.xyz",
+        client=sdk,
+    )
+
+    assert gateway.configured is False
+    with pytest.raises(DependencyUnavailableError):
+        await gateway.remember("text", "gigr-user-7")
+    assert sdk.calls == []
+
+
+async def test_gateway_round_trips_through_the_installed_sdk_mock():
+    """Proves the three methods match the real memwal API, not just our fake."""
+    memwal = pytest.importorskip("memwal")
+    client = memwal.MemWalMock.create(namespace="gigr-user-9")
+    gateway = make_gateway(client)
+
+    job_id = await gateway.remember(
+        "last_search: \"plumber\"", "gigr-user-9", idempotency_key="idem-9"
+    )
+    assert isinstance(job_id, str) and job_id
+
+    texts = await gateway.recall("plumber", "gigr-user-9", 5)
+    assert texts == ('last_search: "plumber"',)
+
+    assert (await gateway.list_namespaces()) == ("gigr-user-9",)

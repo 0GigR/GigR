@@ -34,8 +34,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ....core.config import settings
+from ....core.container import (
+    build_agent_memory_service,
+    build_memory_verification_service,
+)
 from ....core.database import async_session
 from ....core.dependencies import get_db, get_current_user, require_ai_enabled
+from ....core.errors import RecordNotFoundError
 from ....crud.service import search_services_by_text
 from ....crud.message import create_message
 from ....models.user import User
@@ -55,6 +60,7 @@ from ....services.agent_session import (
     get_session_history,
     record_session_turn,
 )
+from ....services.agent_memory_service import MemoryContext
 
 router = APIRouter()
 
@@ -458,28 +464,26 @@ async def _log(db: AsyncSession, task_id: uuid.UUID, level: str, message: str, d
         await db.flush()
 
 
-async def _load_memory(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, Any]:
-    """Load the agent memory stored in user.ai_settings['memory']."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        return {}
-    return (user.ai_settings or {}).get("memory", {})
+async def _load_memory(
+    db: AsyncSession, user_id: uuid.UUID, query: Optional[str] = None
+) -> MemoryContext:
+    """Load the memory the agent injects into a task, and where it came from.
+
+    Delegates to AgentMemoryService, which picks the backend from
+    FEATURE_AGENT_WALRUS_MEMORY and never raises on a Walrus failure.
+    """
+    return await build_agent_memory_service(db).load(user_id, query=query)
 
 
-async def _save_memory(db: AsyncSession, user_id: uuid.UUID, updates: Dict[str, Any]) -> None:
-    """Merge updates into user.ai_settings['memory'] and persist."""
-    from sqlalchemy import update as sa_update
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if not user:
-        return
-    settings_now = dict(user.ai_settings or {})
-    memory = dict(settings_now.get("memory", {}))
-    memory.update(updates)
-    settings_now["memory"] = memory
-    await db.execute(sa_update(User).where(User.id == user_id).values(ai_settings=settings_now))
-    # flush only — caller commits
+async def _save_memory(
+    db: AsyncSession, user_id: uuid.UUID, updates: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Merge updates into the user's agent memory and persist them.
+
+    Raises RecordNotFoundError when the user does not exist, because a save that
+    did not happen must never be reported as success.
+    """
+    return await build_agent_memory_service(db).save(user_id, updates)
 
 
 async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceListing) -> str:
@@ -2194,8 +2198,13 @@ async def _execute_task(task_id: str):
             # Wrap entire task execution in try-except so an unhandled exception
             # never leaves a task indefinitely stuck in 'running'.
             try:
-                # Load user's memory context and inject into params
-                memory = await _load_memory(db, task.user_id)
+                # Load the user's memory context and inject it into params. With
+                # Walrus Memory on, the query is the task's own command, so only
+                # the memories relevant to it are injected.
+                recall = await _load_memory(db, task.user_id, query=task.command_text)
+                memory = recall.entries
+                if recall.semantic:
+                    await _log(db, task.id, "info", recall.recall_log_line)
                 if memory and task.params is not None:
                     task.params = {**task.params, "_memory": memory}
                 elif memory:
@@ -3271,9 +3280,15 @@ async def update_memory_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update agent memory keys."""
-    await _save_memory(db, current_user.id, memory_patch)
-    await db.commit()
-    updated = await _load_memory(db, current_user.id)
+    try:
+        updated = await build_agent_memory_service(db).save(
+            current_user.id, memory_patch
+        )
+    except RecordNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="We could not find your account. Sign in again to continue.",
+        )
     return {"status": "ok", "memory": updated}
 
 
@@ -3284,16 +3299,29 @@ async def forget_memory_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Forget a specific agent memory key."""
-    from sqlalchemy import update as sa_update
-    result = await db.execute(select(User).where(User.id == current_user.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    settings_now = dict(user.ai_settings or {})
-    memory = dict(settings_now.get("memory", {}))
-    if key in memory:
-        del memory[key]
-    settings_now["memory"] = memory
-    await db.execute(sa_update(User).where(User.id == current_user.id).values(ai_settings=settings_now))
-    await db.commit()
+    try:
+        memory = await build_agent_memory_service(db).forget(current_user.id, key)
+    except RecordNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="We could not find your account. Sign in again to continue.",
+        )
     return {"status": "ok", "forgotten": key, "memory": memory}
+
+
+@router.get("/ai/memory/verification")
+async def verify_memory_reference_endpoint(
+    reference: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Advisory, read-only Sui verification of one Walrus memory reference.
+
+    This never changes a memory and never raises when Sui or Tatum is
+    unavailable: an unavailable check answers with ``verified`` false and a
+    reason, so the client shows no badge. Memory reads and writes never call
+    it, which is what keeps Sui from affecting them.
+    """
+    result = await build_memory_verification_service().verify_reference(
+        current_user.id, reference
+    )
+    return result.as_response()
