@@ -37,6 +37,7 @@ import {
   Gavel,
   User,
   Bot,
+  Brain,
   Sun,
   Moon,
   LogOut,
@@ -151,6 +152,7 @@ export default function DashboardLayout() {
   const secondaryNav: NavItem[] = [
     ...(isPayPal ? [{ to: '/dashboard/payments', icon: Receipt, label: 'Payments' }] : []),
     ...(hasDisputes ? [{ to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' }] : []),
+    ...(aiEnabled ? [{ to: '/dashboard/memory', icon: Brain, label: 'Memory' }] : []),
     ...(aiEnabled ? [{ to: '/dashboard/ai-settings', icon: Bot, label: 'AI Settings' }] : []),
     ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),
   ]

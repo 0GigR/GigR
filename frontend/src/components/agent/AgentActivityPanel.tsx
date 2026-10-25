@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState, useCallback, lazy, Suspense } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { X, Zap, Loader2, Settings, Send, Trash2, ChevronRight, ChevronDown, Check, Wrench, Sparkles, Wallet, Mic } from 'lucide-react'
+import { X, Zap, Loader2, Settings, Brain, Send, Trash2, ChevronRight, ChevronDown, Check, Wrench, Sparkles, Wallet, Mic } from 'lucide-react'
 import { toast } from 'sonner'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAgentStore, AgentTask, AgentLog } from '@/store/agentStore'
@@ -300,6 +300,11 @@ export default function AgentActivityPanel() {
                 <Trash2 className="w-4 h-4" />
               </Button>
             )}
+            <Link to="/dashboard/memory" onClick={closePanel}>
+              <Button variant="ghost" size="icon" title="What Gigr remembers" className="h-8 w-8">
+                <Brain className="w-4 h-4 text-gray-500" />
+              </Button>
+            </Link>
             <Link to="/dashboard/ai-settings" onClick={closePanel}>
               <Button variant="ghost" size="icon" title="AI Settings" className="h-8 w-8">
                 <Settings className="w-4 h-4 text-gray-500" />

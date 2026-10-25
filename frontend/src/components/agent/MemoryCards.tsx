@@ -11,7 +11,8 @@
  */
 
 import React, { useState, useEffect } from 'react'
-import { Brain, MapPin, DollarSign, Tag, Search, Trash2, Edit3, Check, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Brain, MapPin, DollarSign, Tag, Search, Trash2, Edit3, Check, X, ArrowRight } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { Button } from '@/components/ui/button'
 
@@ -233,6 +234,16 @@ export default function MemoryCards() {
           onForget={handleForget}
           onUpdate={handleUpdate}
         />
+      </div>
+
+      <div className="pt-1">
+        <Link
+          to="/dashboard/memory"
+          className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 dark:text-violet-400 hover:underline"
+        >
+          See everything Gigr remembers
+          <ArrowRight className="w-3 h-3" />
+        </Link>
       </div>
     </div>
   )
