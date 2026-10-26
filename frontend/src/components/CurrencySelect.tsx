@@ -24,7 +24,7 @@ export function CurrencySelect() {
           toast.error('Could not load exchange rates — staying in Naira.')
         }
       }}
-      className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs font-medium text-gray-700 outline-none transition-colors hover:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+      className="h-9 rounded-lg border border-gray-300 bg-white px-2 text-xs font-medium text-gray-700 outline-none transition-colors hover:border-gray-400 dark:hover:border-border dark:border-border dark:bg-card dark:text-foreground"
     >
       {CURRENCIES.map((c) => (
         <option key={c.code} value={c.code}>

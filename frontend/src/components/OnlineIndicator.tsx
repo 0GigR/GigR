@@ -17,11 +17,11 @@ export default function OnlineIndicator({ lastSeenAt, showLabel = false, classNa
   return (
     <span className={`inline-flex items-center gap-1 ${className}`}>
       <span
-        className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : 'bg-gray-300'}`}
+        className={`w-2 h-2 rounded-full shrink-0 ${online ? 'bg-green-500' : 'bg-gray-300 dark:bg-secondary'}`}
         title={online ? 'Online' : lastSeenAt ? `Last seen ${formatDistanceToNow(new Date(lastSeenAt), { addSuffix: true })}` : 'Offline'}
       />
       {showLabel && (
-        <span className="text-xs text-gray-500">
+        <span className="text-xs text-gray-500 dark:text-muted-foreground">
           {online ? 'Online' : lastSeenAt ? `Last seen ${formatDistanceToNow(new Date(lastSeenAt), { addSuffix: true })}` : 'Offline'}
         </span>
       )}

@@ -56,10 +56,10 @@ export default function CallReminderPrompt() {
           transition={{ type: 'spring', stiffness: 320, damping: 28 }}
           className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 sm:max-w-sm"
         >
-          <div className="relative bg-white dark:bg-gray-900 border border-violet-200 dark:border-violet-900/60 rounded-2xl shadow-xl p-4 pr-9">
+          <div className="relative bg-white dark:bg-card border border-violet-200 dark:border-violet-900/60 rounded-2xl shadow-xl p-4 pr-9">
             <button
               onClick={dismiss}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 dark:hover:text-foreground"
               aria-label="Dismiss"
             >
               <X className="w-4 h-4" />
@@ -69,10 +69,10 @@ export default function CallReminderPrompt() {
                 <PhoneCall className="w-5 h-5 text-violet-600 dark:text-violet-300" />
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                <p className="text-sm font-semibold text-gray-900 dark:text-foreground">
                   Want a call when I’m done?
                 </p>
-                <p className="text-sm text-gray-500 leading-snug">
+                <p className="text-sm text-gray-500 dark:text-muted-foreground leading-snug">
                   Let your AI assistant phone you once it finishes processing — finds an item,
                   wraps up a negotiation, and more.
                 </p>

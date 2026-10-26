@@ -95,9 +95,9 @@ export default function AgentResultMap({
   const initialCenter: [number, number] = coordinates[0] || [6.5244, 3.3792] // Lagos fallback coordinates
 
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-md my-2 bg-gray-100 dark:bg-gray-900">
+    <div className="relative w-full rounded-2xl overflow-hidden border border-gray-200 dark:border-border shadow-md my-2 bg-gray-100 dark:bg-card">
       {/* Header Badge */}
-      <div className="absolute top-2.5 left-2.5 z-[1000] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-950/85 text-white backdrop-blur-md border border-white/10 text-xs shadow-sm">
+      <div className="absolute top-2.5 left-2.5 z-[1000] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-950/85 dark:bg-background/85 text-white backdrop-blur-md border border-white/10 text-xs shadow-sm">
         <MapPin className="w-3.5 h-3.5 text-violet-400" />
         <span className="font-medium text-[11px] tracking-wide">
           {geoItems.length} Map Result{geoItems.length > 1 ? 's' : ''}
@@ -108,7 +108,7 @@ export default function AgentResultMap({
         <button
           type="button"
           onClick={onNavigateToMap}
-          className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-950/85 hover:bg-gray-900 text-white backdrop-blur-md border border-white/10 text-[11px] font-medium transition-colors shadow-sm"
+          className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gray-950/85 dark:bg-background/85 hover:bg-gray-900 dark:hover:bg-card text-white backdrop-blur-md border border-white/10 text-[11px] font-medium transition-colors shadow-sm"
           title="Open full interactive map"
         >
           <span>Full Map</span>
@@ -146,9 +146,9 @@ export default function AgentResultMap({
             return (
               <Marker key={geoItem.id} position={pointPosition} icon={pinIcon}>
                 <Popup className="agent-map-popup">
-                  <div className="p-1 min-w-[170px] text-gray-900">
+                  <div className="p-1 min-w-[170px] text-gray-900 dark:text-foreground">
                     {entityName && entityUserId && (
-                      <div className="flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-100">
+                      <div className="flex items-center gap-1.5 mb-1.5 pb-1 border-b border-gray-100 dark:border-border">
                         {entityAvatar ? (
                           <img
                             src={entityAvatar}
@@ -156,13 +156,13 @@ export default function AgentResultMap({
                             className="w-5 h-5 rounded-full object-cover shrink-0"
                           />
                         ) : (
-                          <span className="w-5 h-5 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          <span className="w-5 h-5 rounded-full bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-400 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {entityName.slice(0, 1).toUpperCase()}
                           </span>
                         )}
                         <Link
                           to={`/dashboard/user/${entityUserId}`}
-                          className="text-[11px] font-medium text-gray-800 hover:text-violet-600 truncate underline-offset-2 hover:underline"
+                          className="text-[11px] font-medium text-gray-800 dark:text-foreground hover:text-violet-600 dark:hover:text-violet-400 truncate underline-offset-2 hover:underline"
                         >
                           {entityName}
                         </Link>
@@ -171,14 +171,14 @@ export default function AgentResultMap({
                     <p className="font-semibold text-xs leading-tight mb-0.5 truncate">
                       {geoItem.title}
                     </p>
-                    <p className="text-xs font-bold text-violet-700 mb-1.5">
+                    <p className="text-xs font-bold text-violet-700 dark:text-violet-400 mb-1.5">
                       {geoItem.price_display || (geoItem.price ? `₦${Number(geoItem.price).toLocaleString()}` : 'Negotiable')}
                     </p>
                     {geoItem.distance_km != null && (
-                      <p className="text-[10px] text-gray-500 mb-2">
+                      <p className="text-[10px] text-gray-500 dark:text-muted-foreground mb-2">
                         {geoItem.distance_km.toFixed(1)} km away
                         {geoItem.outside_radius && (
-                          <span className="ml-1 text-amber-600 font-semibold">[Outside radius]</span>
+                          <span className="ml-1 text-amber-600 dark:text-amber-400 font-semibold">[Outside radius]</span>
                         )}
                       </p>
                     )}
@@ -192,7 +192,7 @@ export default function AgentResultMap({
                         }}
                         className={`w-full px-2 py-1 text-[11px] font-medium rounded transition-colors text-center ${
                           isSelected
-                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            ? 'bg-gray-300 dark:bg-secondary text-gray-500 dark:text-muted-foreground cursor-not-allowed'
                             : 'bg-violet-600 hover:bg-violet-700 text-white'
                         }`}
                       >

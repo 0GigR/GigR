@@ -223,7 +223,7 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-black dark:text-white">
+    <div className="min-h-screen bg-white dark:bg-background text-black dark:text-white">
       <Suspense fallback={null}>
         {aiEnabled && <VoiceAssistant />}
         {aiEnabled && <AgentActivityPanel />}
@@ -235,7 +235,7 @@ export default function DashboardLayout() {
         <GlobalItemModal />
       </Suspense>
       {/* Top Bar */}
-      <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+      <header className="sticky top-0 z-50 border-b border-gray-200 dark:border-border bg-white dark:bg-background">
         <div className="flex items-center justify-between px-4 py-3 max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
             {/* An installed iOS PWA has no system back gesture or button, so
@@ -281,7 +281,7 @@ export default function DashboardLayout() {
             <span className="hidden sm:inline opacity-80">for a better, faster experience.</span>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={handleInstallClick} className="bg-white text-indigo-600 px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+            <button onClick={handleInstallClick} className="bg-white dark:bg-card text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded font-medium hover:bg-gray-100 dark:hover:bg-muted transition-colors">
               Install
             </button>
             <button onClick={() => setDeferredPrompt(null)} className="opacity-70 hover:opacity-100">
@@ -318,7 +318,7 @@ export default function DashboardLayout() {
               // unregister+reload approach left the update pending → banner stuck).
               setNeedRefresh(false)
               updateServiceWorker(true)
-            }} className="bg-background text-primary px-3 py-1 rounded font-medium hover:bg-gray-100 transition-colors">
+            }} className="bg-background text-primary px-3 py-1 rounded font-medium hover:bg-gray-100 dark:hover:bg-muted transition-colors">
               Reload to Update
             </button>
             <button onClick={() => setNeedRefresh(false)} className="opacity-70 hover:opacity-100">
@@ -350,7 +350,7 @@ export default function DashboardLayout() {
             <Suspense
               fallback={
                 <div className="flex-1 flex items-center justify-center py-20 min-h-[250px]">
-                  <div className="h-6 w-6 rounded-full border-2 border-gray-300 border-t-black dark:border-gray-700 dark:border-t-white animate-spin" />
+                  <div className="h-6 w-6 rounded-full border-2 border-gray-300 border-t-black dark:border-border dark:border-t-white animate-spin" />
                 </div>
               }
             >
@@ -361,7 +361,7 @@ export default function DashboardLayout() {
       </main>
 
       {/* Bottom Navigation (mobile) */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 md:hidden z-50">
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-border bg-white dark:bg-background md:hidden z-50">
         <div className="flex justify-around py-2">
           {bottomNav.map((item) => (
             <NavLink
@@ -372,7 +372,7 @@ export default function DashboardLayout() {
                 `flex flex-col items-center px-2 py-1 rounded-lg text-xs ${
                   isActive
                     ? 'text-black dark:text-white font-semibold'
-                    : 'text-gray-500 dark:text-gray-400'
+                    : 'text-gray-500 dark:text-muted-foreground'
                 }`
               }
             >
@@ -387,7 +387,7 @@ export default function DashboardLayout() {
           ))}
           <button
             onClick={() => setShowMore(true)}
-            className="flex flex-col items-center px-2 py-1 rounded-lg text-xs text-gray-500 dark:text-gray-400"
+            className="flex flex-col items-center px-2 py-1 rounded-lg text-xs text-gray-500 dark:text-muted-foreground"
           >
             <MoreHorizontal className="h-5 w-5 mb-0.5" />
             More
@@ -396,7 +396,7 @@ export default function DashboardLayout() {
       </nav>
 
       {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-14 md:left-0 md:bottom-0 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 p-4 z-40">
+      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:top-14 md:left-0 md:bottom-0 border-r border-gray-200 dark:border-border bg-white dark:bg-background p-4 z-40">
         <nav className="flex flex-col gap-1">
           {primaryNav.map((item) => (
             <NavLink
@@ -406,8 +406,8 @@ export default function DashboardLayout() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
-                    ? 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                    ? 'bg-gray-100 dark:bg-muted text-black dark:text-white'
+                    : 'text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted'
                 }`
               }
             >
@@ -421,7 +421,7 @@ export default function DashboardLayout() {
 
           {secondaryNav.length > 0 && (
             <>
-              <div className="mt-4 mb-1 px-4 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-600">
+              <div className="mt-4 mb-1 px-4 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-muted-foreground/80">
                 More
               </div>
               {secondaryNav.map((item) => (
@@ -432,8 +432,8 @@ export default function DashboardLayout() {
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                       isActive
-                        ? 'bg-gray-100 dark:bg-gray-800 text-black dark:text-white'
-                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        ? 'bg-gray-100 dark:bg-muted text-black dark:text-white'
+                        : 'text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted'
                     }`
                   }
                 >
@@ -452,7 +452,7 @@ export default function DashboardLayout() {
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowMore(false)} />
           {/* Sheet */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-gray-950 rounded-t-2xl p-4 animate-in slide-in-from-bottom duration-300">
+          <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-background rounded-t-2xl p-4 animate-in slide-in-from-bottom duration-300">
             <div className="flex justify-between items-center mb-4">
               <h2 className="font-semibold text-lg">More</h2>
               <button onClick={() => setShowMore(false)} className="p-1">
@@ -468,7 +468,7 @@ export default function DashboardLayout() {
                   onClick={() => setShowMore(false)}
                   className={({ isActive }) =>
                     `flex flex-col items-center gap-1 p-2 rounded-lg ${
-                      isActive ? 'bg-gray-100 dark:bg-gray-800' : ''
+                      isActive ? 'bg-gray-100 dark:bg-muted' : ''
                     }`
                   }
                 >

@@ -45,7 +45,7 @@ export default function GoogleSignInButton({ onToken, onError, label = 'Continue
       type="button"
       disabled={disabled || loading}
       onClick={() => { setLoading(true); login() }}
-      className="w-full flex items-center justify-center gap-3 h-12 rounded-xl border border-gray-300 bg-white text-gray-800 font-semibold text-base shadow-sm hover:bg-gray-50 active:scale-[.99] transition disabled:opacity-60"
+      className="w-full flex items-center justify-center gap-3 h-12 rounded-xl border border-gray-300 dark:border-border bg-white dark:bg-card text-gray-800 dark:text-foreground font-semibold text-base shadow-sm hover:bg-gray-50 dark:hover:bg-background active:scale-[.99] transition disabled:opacity-60"
     >
       {/* Official Google G mark (inline SVG — no network dependency) */}
       <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">

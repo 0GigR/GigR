@@ -49,14 +49,14 @@ type Vouch = components['schemas']['VouchOut']
 
 const statusBadge = (status: string) => {
   switch (status) {
-    case 'open': return <Badge className="bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/60 dark:text-blue-300 font-medium">Open</Badge>
-    case 'assigned': return <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 font-medium">Assigned</Badge>
-    case 'funded': return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 font-medium">Funded</Badge>
-    case 'in_progress': return <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">In Progress</Badge>
-    case 'submitted': return <Badge className="bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 font-semibold">Under Review</Badge>
-    case 'completed': return <Badge className="bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium">Completed</Badge>
-    case 'cancelled': return <Badge className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/60 dark:text-rose-300 font-medium">Cancelled</Badge>
-    case 'requested': return <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/60 dark:text-sky-300 font-medium">Requested</Badge>
+    case 'open': return <Badge className="bg-blue-50 text-blue-700 border-blue-200 dark:border-blue-800 dark:bg-blue-950/60 dark:text-blue-300 font-medium">Open</Badge>
+    case 'assigned': return <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-medium">Assigned</Badge>
+    case 'funded': return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 font-medium">Funded</Badge>
+    case 'in_progress': return <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium">In Progress</Badge>
+    case 'submitted': return <Badge className="bg-amber-50 text-amber-700 border-amber-300 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-semibold">Under Review</Badge>
+    case 'completed': return <Badge className="bg-zinc-900 text-white dark:bg-secondary dark:text-zinc-900 font-medium">Completed</Badge>
+    case 'cancelled': return <Badge className="bg-rose-50 text-rose-700 border-rose-200 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300 font-medium">Cancelled</Badge>
+    case 'requested': return <Badge className="bg-sky-50 text-sky-700 border-sky-200 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-300 font-medium">Requested</Badge>
     default: return <Badge variant="outline">{status.replace('_', ' ')}</Badge>
   }
 }
@@ -79,7 +79,7 @@ const MY_JOB_GROUPS: { key: string; label: string; icon: ReactNode; statuses: st
   { key: 'active', label: 'Active Jobs', icon: <Zap className="w-4 h-4 text-emerald-500" />, statuses: ['assigned', 'funded', 'in_progress', 'submitted'] },
   { key: 'requested', label: 'Service Requests', icon: <Inbox className="w-4 h-4 text-blue-500" />, statuses: ['requested'] },
   { key: 'open', label: 'Open Postings', icon: <Briefcase className="w-4 h-4 text-purple-500" />, statuses: ['open'] },
-  { key: 'completed', label: 'Completed', icon: <CheckCircle className="w-4 h-4 text-zinc-500" />, statuses: ['completed'] },
+  { key: 'completed', label: 'Completed', icon: <CheckCircle className="w-4 h-4 text-zinc-500 dark:text-muted-foreground" />, statuses: ['completed'] },
   { key: 'cancelled', label: 'Cancelled', icon: <X className="w-4 h-4 text-rose-500" />, statuses: ['cancelled'] },
 ]
 
@@ -813,12 +813,12 @@ export default function JobsPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Jobs</h1>
-          <p className="text-gray-500">Find work or get things done</p>
+          <p className="text-gray-500 dark:text-muted-foreground">Find work or get things done</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {(activeTab === 'open' || activeTab === 'mine') && (
             <div className="relative flex-1 sm:flex-none">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-muted-foreground" />
               <Input
                 placeholder={activeTab === 'open' ? 'Search jobs...' : 'Search my jobs...'}
                 value={searchQuery}
@@ -832,7 +832,7 @@ export default function JobsPage() {
               variant="outline"
               onClick={() => setShowFilters((value) => !value)}
               aria-expanded={showFilters}
-              className="border-gray-200 dark:border-gray-700"
+              className="border-gray-200 dark:border-border"
             >
               <SlidersHorizontal className="w-4 h-4 mr-2" />
               Filters
@@ -890,16 +890,16 @@ export default function JobsPage() {
       )}
 
       {/* Two figures that matter while browsing; the rest stay one tap away. */}
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+      <div className="rounded-2xl border border-gray-100 dark:border-border bg-white dark:bg-card p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 sm:gap-10">
             <div>
               <p className="text-2xl font-bold leading-none">{openJobs.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Open jobs</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Open jobs</p>
             </div>
             <div>
               <p className="text-2xl font-bold leading-none">{nearbyCount}</p>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">
                 Near you{geo.latitude ? ` (${mapRadius} km)` : ''}
               </p>
             </div>
@@ -908,23 +908,23 @@ export default function JobsPage() {
             type="button"
             onClick={() => setShowAllStats((value) => !value)}
             aria-expanded={showAllStats}
-            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+            className="shrink-0 text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white inline-flex items-center gap-1"
           >
             {showAllStats ? 'Less' : 'More stats'}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
           </button>
         </div>
         {showAllStats && (
-          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-border animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <Send className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{appliedJobIds.size}</span>
-              <span className="text-xs text-gray-500">You applied</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">You applied</span>
             </div>
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{activeWithYou}</span>
-              <span className="text-xs text-gray-500">Active with you</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Active with you</span>
             </div>
           </div>
         )}
@@ -992,7 +992,7 @@ export default function JobsPage() {
                 </motion.div>
               ))
             ) : (
-              <div className="col-span-2 text-center py-12 text-gray-500">No open jobs nearby.</div>
+              <div className="col-span-2 text-center py-12 text-gray-500 dark:text-muted-foreground">No open jobs nearby.</div>
             )}
           </motion.div>
           {hasMoreOpenJobs && (
@@ -1016,7 +1016,7 @@ export default function JobsPage() {
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                   myJobGroupFilter === 'all'
                     ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
-                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    : 'bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary'
                 }`}
               >
                 All ({processedMyJobs.length})
@@ -1033,7 +1033,7 @@ export default function JobsPage() {
                     className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                       isSelected
                         ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        : 'bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary'
                     }`}
                   >
                     {group.label} ({count})
@@ -1058,11 +1058,11 @@ export default function JobsPage() {
                 return (
                   <section key={group.key}>
                     <div className="flex items-center gap-2 mb-3">
-                      <span className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex items-center justify-center">
+                      <span className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground flex items-center justify-center">
                         {group.icon}
                       </span>
-                      <h2 className="font-semibold text-gray-800 dark:text-gray-100">{group.label}</h2>
-                      <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 rounded-full px-2 py-0.5 font-medium">{jobs.length}</span>
+                      <h2 className="font-semibold text-gray-800 dark:text-foreground">{group.label}</h2>
+                      <span className="text-xs bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground rounded-full px-2 py-0.5 font-medium">{jobs.length}</span>
                     </div>
                     <motion.div
                       className="grid gap-4 md:grid-cols-2"
@@ -1112,7 +1112,7 @@ export default function JobsPage() {
                           variant="outline"
                           size="sm"
                           onClick={() => toggleGroup(group.key)}
-                          className="text-xs text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white rounded-full px-4 h-8"
+                          className="text-xs text-gray-700 dark:text-muted-foreground hover:text-black dark:hover:text-white rounded-full px-4 h-8"
                         >
                           {isGroupExpanded ? `Show fewer ${group.label.toLowerCase()}` : `View all ${jobs.length} ${group.label.toLowerCase()} ↓`}
                         </Button>
@@ -1123,7 +1123,7 @@ export default function JobsPage() {
               })}
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">No jobs yet.</div>
+            <div className="text-center py-12 text-gray-500 dark:text-muted-foreground">No jobs yet.</div>
           )}
         </TabsContent>
 
@@ -1138,7 +1138,7 @@ export default function JobsPage() {
               onRadiusChange={setMapRadius}
             />
           ) : (
-            <div className="text-center py-16 text-gray-500 border border-dashed rounded-xl">
+            <div className="text-center py-16 text-gray-500 dark:text-muted-foreground border border-dashed rounded-xl">
               <Map className="w-10 h-10 mx-auto mb-3 text-gray-300" />
               <p className="font-medium">Location access needed</p>
               <p className="text-sm mt-1">Allow location access in your browser to see jobs on the map.</p>
@@ -1168,9 +1168,9 @@ export default function JobsPage() {
             {/* Live NGN → USD (USDC on Solana) conversion hint (only when entering in Naira; the
                 PriceInput already shows the ₦ equivalent in other currencies) */}
             {displayCode === 'NGN' && ngnRate && formData.price && parseFloat(formData.price) > 0 && (
-              <p className="text-xs text-gray-500 -mt-2">
+              <p className="text-xs text-gray-500 dark:text-muted-foreground -mt-2">
                 {fmtPrice(parseFloat(formData.price))} ≈{' '}
-                <span className="font-medium text-green-700">
+                <span className="font-medium text-green-700 dark:text-green-400">
                   ${(parseFloat(formData.price) / ngnRate).toFixed(2)} {isPayPal ? 'USD via PayPal' : 'USDC'}
                 </span>
                 {' '}(rate: ₦{ngnRate.toFixed(0)}/USD)
@@ -1195,7 +1195,7 @@ export default function JobsPage() {
               {imagePreview ? (
                 <div className="relative w-32 h-32">
                   <img src={imagePreview} className="rounded-lg object-cover w-full h-full" />
-                  <X className="absolute top-1 right-1 h-4 w-4 bg-white rounded-full cursor-pointer" onClick={() => { setImageFile(null); setImagePreview(null) }} />
+                  <X className="absolute top-1 right-1 h-4 w-4 bg-white dark:bg-card rounded-full cursor-pointer" onClick={() => { setImageFile(null); setImagePreview(null) }} />
                 </div>
               ) : (
                 <Button variant="outline" onClick={() => fileRef.current?.click()} className="w-full">
@@ -1261,20 +1261,20 @@ export default function JobsPage() {
           </DialogHeader>
           {/* Show job details */}
           {contractRoomJob && (
-            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="bg-gray-50 dark:bg-background rounded-lg p-3 text-sm space-y-1">
               <p>Status: {statusBadge(contractRoomJob.status)}</p>
               <p>Price: {fmtPrice(parseFloat(contractRoomJob.price as string))}</p>
-              {contractRoomJob.escrow_address && !contractRoomJob.escrow_address.startsWith('paypal:') && <p className="text-xs text-green-600">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
+              {contractRoomJob.escrow_address && !contractRoomJob.escrow_address.startsWith('paypal:') && <p className="text-xs text-green-600 dark:text-green-400">Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...</p>}
               <PaymentTimeline jobId={contractRoomJob.id} />
               {contractRoomJob.image_url && <img src={contractRoomJob.image_url} className="rounded-lg w-20 h-20 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc(contractRoomJob.image_url!)} />}
             </div>
           )}
 
           {/* Milestone Escrows Section — staged payments; each milestone is its own escrow on either rail */}
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60 p-3 space-y-2 mt-2">
+          <div className="rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-card/60 p-3 space-y-2 mt-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Shield className="w-4 h-4 text-gray-800 dark:text-gray-200" />
+                <Shield className="w-4 h-4 text-gray-800 dark:text-foreground" />
                 <span className="font-semibold text-xs tracking-wide">
                   {isPayPal ? 'Milestone Payments (Staged Escrow)' : 'Milestone Escrows (Staged Payments)'}
                 </span>
@@ -1282,7 +1282,7 @@ export default function JobsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs px-2 border-gray-200 dark:border-gray-700"
+                className="h-7 text-xs px-2 border-gray-200 dark:border-border"
                 onClick={() => setShowAddMilestone(!showAddMilestone)}
               >
                 {showAddMilestone ? 'Cancel' : '+ Add Milestone'}
@@ -1291,12 +1291,12 @@ export default function JobsPage() {
 
             {/* Add Milestone Form */}
             {showAddMilestone && (
-              <div className="p-2.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 space-y-2">
+              <div className="p-2.5 rounded-lg border border-dashed border-gray-300 dark:border-border bg-gray-50/70 dark:bg-muted/40 space-y-2">
                 <Input
                   placeholder="Milestone title (e.g. Deposit & Materials, Phase 1)"
                   value={newMilestoneTitle}
                   onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                  className="h-8 text-xs bg-white dark:bg-gray-800"
+                  className="h-8 text-xs bg-white dark:bg-muted"
                 />
                 <PriceInput
                   placeholder="Milestone Amount"
@@ -1307,7 +1307,7 @@ export default function JobsPage() {
                   placeholder="Description / deliverables (optional)"
                   value={newMilestoneDesc}
                   onChange={(e) => setNewMilestoneDesc(e.target.value)}
-                  className="h-8 text-xs bg-white dark:bg-gray-800"
+                  className="h-8 text-xs bg-white dark:bg-muted"
                 />
                 <Button
                   size="sm"
@@ -1335,31 +1335,31 @@ export default function JobsPage() {
                   return (
                     <div
                       key={m.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-xs"
+                      className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-muted border border-gray-100 dark:border-border text-xs"
                     >
                       <div className="space-y-0.5 max-w-[55%]">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{m.title}</span>
+                          <span className="font-medium text-gray-900 dark:text-foreground truncate">{m.title}</span>
                           <span
                             className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                               m.status === 'released'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                 : m.status === 'under_review' || m.status === 'submitted'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 font-semibold'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-300 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold'
                                 : m.status === 'funded'
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950 dark:text-blue-300'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300'
                                 : m.status === 'refunded'
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950 dark:text-rose-300'
-                                : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                                ? 'bg-rose-50 text-rose-700 border border-rose-200 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                                : 'bg-gray-100 text-gray-700 dark:bg-secondary dark:text-muted-foreground'
                             }`}
                           >
                             {m.status === 'under_review' ? 'Under Review (1h)' : m.status.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}
                           </span>
                         </div>
-                        <p className="font-semibold text-gray-900 dark:text-gray-100">
+                        <p className="font-semibold text-gray-900 dark:text-foreground">
                           {fmtPrice(parseFloat(m.amount))}
                           {isPayPal && m.paypal_amount != null && (
-                            <span className="ml-1.5 font-normal text-[10px] text-gray-500">
+                            <span className="ml-1.5 font-normal text-[10px] text-gray-500 dark:text-muted-foreground">
                               · ${Number(m.paypal_amount).toFixed(2)} via PayPal
                             </span>
                           )}
@@ -1407,7 +1407,7 @@ export default function JobsPage() {
                             {(m.status === 'under_review' || m.status === 'submitted') && (
                               <Link
                                 to={`/dashboard/disputes?job=${contractRoomJobId}`}
-                                className="h-7 text-xs border border-red-300 text-red-600 hover:bg-red-50 px-2 py-1 rounded font-mono inline-flex items-center"
+                                className="h-7 text-xs border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 px-2 py-1 rounded font-mono inline-flex items-center"
                               >
                                 Dispute
                               </Link>
@@ -1420,10 +1420,10 @@ export default function JobsPage() {
                           </span>
                         )}
                         {m.status === 'released' && (
-                          <span className="text-[11px] text-emerald-600 font-medium font-mono">[RELEASED ✓]</span>
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium font-mono">[RELEASED ✓]</span>
                         )}
                         {m.status === 'refunded' && (
-                          <span className="text-[11px] text-amber-600 font-medium font-mono">[REFUNDED]</span>
+                          <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium font-mono">[REFUNDED]</span>
                         )}
                       </div>
                     </div>
@@ -1436,8 +1436,8 @@ export default function JobsPage() {
           </div>
           {/* Pending Amendments */}
           {contractAmendments?.filter(a => a.is_accepted === null).map((amend) => (
-            <div key={amend.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm space-y-2 mt-2">
-              <p className="font-bold text-yellow-800">Scope Amendment Proposed</p>
+            <div key={amend.id} className="bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm space-y-2 mt-2">
+              <p className="font-bold text-yellow-800 dark:text-yellow-400">Scope Amendment Proposed</p>
               <p><strong>Reason:</strong> {amend.reason}</p>
               <p><strong>New Price:</strong> {fmtPrice(parseFloat(amend.new_total_price as string))}</p>
               {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc((amend as any).image_url)} />}
@@ -1464,7 +1464,7 @@ export default function JobsPage() {
                 </div>
               )}
               {contractRoomJob?.provider_id === user?.id && (
-                <p className="text-xs text-yellow-600">Waiting for client to accept...</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">Waiting for client to accept...</p>
               )}
             </div>
           ))}
@@ -1472,7 +1472,7 @@ export default function JobsPage() {
           <div className="flex-1 overflow-y-auto space-y-2 py-2">
             {contractMessages?.map(msg => (
               <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
+                <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 dark:bg-muted text-black dark:text-foreground'}`}>
                   {msg.image_url && (
                     <img src={msg.image_url} className="rounded-lg max-h-40 object-cover mb-2 cursor-pointer" onClick={() => setLightboxSrc(msg.image_url!)} />
                   )}
@@ -1488,7 +1488,7 @@ export default function JobsPage() {
               {messageImagePreview && (
                 <div className="relative w-16 h-16">
                   <img src={messageImagePreview} className="rounded-lg object-cover w-full h-full" />
-                  <X className="absolute -top-2 -right-2 h-4 w-4 bg-white text-black border border-gray-300 rounded-full cursor-pointer" onClick={() => { setMessageImageFile(null); setMessageImagePreview(null) }} />
+                  <X className="absolute -top-2 -right-2 h-4 w-4 bg-white dark:bg-card text-black dark:text-foreground border border-gray-300 dark:border-border rounded-full cursor-pointer" onClick={() => { setMessageImageFile(null); setMessageImagePreview(null) }} />
                 </div>
               )}
               <div className="flex gap-2 items-center">
@@ -1552,7 +1552,7 @@ export default function JobsPage() {
                   onClick={() => setLightboxSrc(detailJob.image_url!)}
                 />
               )}
-              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap">
+              <p className="text-sm text-gray-700 dark:text-muted-foreground leading-relaxed whitespace-pre-wrap">
                 {detailJob.description}
               </p>
               <div className="flex flex-wrap items-center justify-between gap-3 text-sm py-2.5 border-y border-border">
@@ -1594,7 +1594,7 @@ export default function JobsPage() {
                 </Button>
                 <Button
                   size="sm"
-                  className="bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black"
+                  className="bg-black text-white hover:bg-gray-800 dark:hover:bg-muted dark:bg-white dark:text-black"
                   onClick={() => {
                     const j = detailJob
                     setDetailJob(null)
@@ -1757,7 +1757,7 @@ function JobCard({
             <CardTitle className="text-lg cursor-pointer hover:underline" onClick={() => onDetail(job)}>{job.title}</CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
               {isClient ? (
-                <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-normal text-xs">You are the client</Badge>
+                <Badge className="bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground border border-gray-200 dark:border-border font-normal text-xs">You are the client</Badge>
               ) : isProvider ? (
                 <Badge className="bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-normal text-xs">You are the worker</Badge>
               ) : null}
@@ -1777,11 +1777,11 @@ function JobCard({
           {statusBadge(job.status)}
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-gray-600">
+      <CardContent className="text-sm text-gray-600 dark:text-muted-foreground">
         <div>
           <p className={`mb-1 ${!showFullDesc ? 'line-clamp-2' : ''}`}>{job.description}</p>
           {job.description && job.description.length > 100 && (
-            <button className="text-xs text-blue-600 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
+            <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
               {showFullDesc ? 'See less' : 'See more'}
             </button>
           )}
@@ -1813,27 +1813,27 @@ function JobCard({
               <span className="text-xs text-gray-400">({fmtPrice(Number(job.min_price))}–{fmtPrice(Number(job.max_price))})</span>
             )}
           </div>
-          {job.escrow_address && <span className="text-xs bg-green-100 text-green-700 px-2 rounded">Escrowed</span>}
+          {job.escrow_address && <span className="text-xs bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 px-2 rounded">Escrowed</span>}
         </div>
         {/* Indicators */}
         <div className="flex items-center gap-2 mt-2 flex-wrap">
           {isHot && (
-            <span className="inline-flex items-center gap-1 text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="inline-flex items-center gap-1 text-xs bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 px-2 py-0.5 rounded-full font-medium">
               <Flame className="w-3 h-3" /> Hot
             </span>
           )}
           {appCount !== undefined && (
-            <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground px-2 py-0.5 rounded-full">
               <UserPlus className="w-3 h-3" /> {appCount} application{appCount !== 1 ? 's' : ''}
             </span>
           )}
           {categoryName && (
-            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800 px-2 py-0.5 rounded-full">
               {categoryName}
             </span>
           )}
           {distanceKm != null && (
-            <span className="inline-flex items-center gap-1 text-xs bg-gray-50 text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">
+            <span className="inline-flex items-center gap-1 text-xs bg-gray-50 dark:bg-background text-gray-600 dark:text-muted-foreground border border-gray-200 dark:border-border px-2 py-0.5 rounded-full">
               <MapPin className="w-3 h-3" /> {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm} km`} away
             </span>
           )}
@@ -1864,14 +1864,14 @@ function JobCard({
           </Button>
         )}
         {job.status === 'open' && !isClient && (
-          <Button size="sm" onClick={() => onApply(job)} disabled={applyPending} className={hasApplied ? "bg-white text-black border border-black hover:bg-gray-100 disabled:opacity-60" : "bg-black text-white disabled:opacity-60"}>
+          <Button size="sm" onClick={() => onApply(job)} disabled={applyPending} className={hasApplied ? "bg-white dark:bg-card text-black dark:text-foreground border border-black dark:border-foreground hover:bg-gray-100 dark:hover:bg-muted disabled:opacity-60" : "bg-black text-white disabled:opacity-60"}>
             {applyPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : hasApplied ? <Edit2 className="w-3 h-3 mr-1" /> : <Send className="w-3 h-3 mr-1" />}
             {hasApplied ? 'Edit Application' : applyPending ? 'Sending...' : 'Apply'}
           </Button>
         )}
         {job.status === 'open' && isClient && (
           <>
-            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+            <Button size="sm" variant="outline" className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => onCancel(job.id, job.title)}>
               Cancel
             </Button>
             <Button size="sm" variant="outline" onClick={() => setShowAssign(!showAssign)}>
@@ -1881,7 +1881,7 @@ function JobCard({
               <div className="w-full mt-2 space-y-2">
                 {appsLoading ? <Skeleton className="h-12 w-full" /> : applicants?.length ? (
                   applicants.map(app => (
-                    <div key={app.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                    <div key={app.id} className="flex items-center justify-between bg-gray-50 dark:bg-background rounded-lg p-3">
                       <div className="flex items-center gap-3">
                         <UserChip
                           userId={app.applicant_id}
@@ -1890,13 +1890,13 @@ function JobCard({
                         />
                         <div>
                           {app.applicant_vouch_count !== undefined && (
-                            <p className="text-xs text-gray-500">{app.applicant_vouch_count} vouch{app.applicant_vouch_count !== 1 ? 'es' : ''}</p>
+                            <p className="text-xs text-gray-500 dark:text-muted-foreground">{app.applicant_vouch_count} vouch{app.applicant_vouch_count !== 1 ? 'es' : ''}</p>
                           )}
                           {app.message && (
                             <div className="mt-1">
-                              <p className={`text-xs text-gray-600 whitespace-pre-wrap ${!expandedApps.has(app.id) ? 'line-clamp-2' : ''}`}>{app.message}</p>
+                              <p className={`text-xs text-gray-600 dark:text-muted-foreground whitespace-pre-wrap ${!expandedApps.has(app.id) ? 'line-clamp-2' : ''}`}>{app.message}</p>
                               {app.message.length > 80 && (
-                                <button className="text-[10px] text-blue-600 hover:underline" onClick={() => toggleAppMessage(app.id)}>
+                                <button className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline" onClick={() => toggleAppMessage(app.id)}>
                                   {expandedApps.has(app.id) ? 'See less' : 'See more'}
                                 </button>
                               )}
@@ -1906,7 +1906,7 @@ function JobCard({
                         </div>
                         {app.portfolio_url && (
                           <div className="ml-2">
-                            <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center text-xs">
+                            <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline flex items-center text-xs">
                               <ExternalLink className="w-3 h-3 mr-0.5" /> Portfolio
                             </a>
                           </div>
@@ -1923,7 +1923,7 @@ function JobCard({
                     </div>
                   ))
                 ) : (
-                  <p className="text-xs text-gray-500">No applicants yet.</p>
+                  <p className="text-xs text-gray-500 dark:text-muted-foreground">No applicants yet.</p>
                 )}
               </div>
             )}
@@ -1931,7 +1931,7 @@ function JobCard({
         )}
         {job.status === 'assigned' && isClient && (
           <>
-            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+            <Button size="sm" variant="outline" className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => onCancel(job.id, job.title)}>
               Cancel
             </Button>
             <Button size="sm" onClick={() => onFund(job.id)} disabled={fundPending} className="bg-green-600 text-white">
@@ -1946,7 +1946,7 @@ function JobCard({
               size="sm"
               onClick={() => onRelease(job.id)}
               disabled={releasePending}
-              className={job.status === 'submitted' ? "bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs" : "bg-black hover:bg-gray-800 text-white font-mono text-xs"}
+              className={job.status === 'submitted' ? "bg-emerald-600 hover:bg-emerald-700 text-white font-mono text-xs" : "bg-black hover:bg-gray-800 dark:hover:bg-muted text-white font-mono text-xs"}
             >
               {releasePending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
               {releasePending ? 'Releasing...' : job.status === 'submitted' ? 'Approve & Release' : 'Release Funds'}
@@ -1955,7 +1955,7 @@ function JobCard({
               size="sm"
               variant="outline"
               onClick={() => onDetail(job)}
-              className="text-xs border-gray-200 dark:border-gray-700 font-medium"
+              className="text-xs border-gray-200 dark:border-border font-medium"
             >
               <Shield className="w-3 h-3 mr-1" /> Milestones & Escrow
             </Button>
@@ -1964,7 +1964,7 @@ function JobCard({
                 size="sm"
                 variant="outline"
                 onClick={() => navigate(`/dashboard/disputes?job=${job.id}`)}
-                className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 font-mono text-xs"
+                className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 font-mono text-xs"
               >
                 Dispute
               </Button>
@@ -1988,7 +1988,7 @@ function JobCard({
           </Button>
         )}
         {job.status === 'assigned' && isProvider && (
-          <Button size="sm" variant="outline" className="border-black text-black hover:bg-black hover:text-white" onClick={() => onContractRoom(job)}>
+          <Button size="sm" variant="outline" className="border-black dark:border-foreground text-black dark:text-foreground hover:bg-black hover:text-white" onClick={() => onContractRoom(job)}>
             <Play className="w-3 h-3 mr-1" /> Start Working
           </Button>
         )}
@@ -1998,7 +1998,7 @@ function JobCard({
             variant="outline"
             onClick={() => onSubmitWork(job.id)}
             disabled={submitWorkPending}
-            className="border-black text-black hover:bg-black hover:text-white font-mono text-xs"
+            className="border-black dark:border-foreground text-black dark:text-foreground hover:bg-black hover:text-white font-mono text-xs"
           >
             {submitWorkPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <CheckCircle className="w-3 h-3 mr-1" />}
             {submitWorkPending ? 'Delivering...' : 'Deliver Project (1h Review)'}
@@ -2006,7 +2006,7 @@ function JobCard({
         )}
         {job.status === 'requested' && isProvider && (
           <>
-            <Button size="sm" variant="outline" className="border-red-300 text-red-600 hover:bg-red-50" onClick={() => onCancel(job.id, job.title)}>
+            <Button size="sm" variant="outline" className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40" onClick={() => onCancel(job.id, job.title)}>
               Decline
             </Button>
             <Button size="sm" onClick={() => onAccept(job.id)} disabled={acceptPending} className="bg-green-600 text-white">
@@ -2021,7 +2021,7 @@ function JobCard({
           <Button
             size="sm"
             variant="outline"
-            className="border-red-300 text-red-600 hover:bg-red-50 ml-auto"
+            className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 ml-auto"
             onClick={() => onDelete?.(job.id, job.title)}
           >
             <Trash2 className="w-3 h-3 mr-1" /> Delete

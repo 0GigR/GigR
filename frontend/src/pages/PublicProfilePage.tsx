@@ -311,7 +311,7 @@ export default function PublicProfilePage() {
 
   if (!profile) {
     return (
-      <div className="text-center py-16 text-gray-500 max-w-3xl mx-auto px-4">
+      <div className="text-center py-16 text-gray-500 dark:text-muted-foreground max-w-3xl mx-auto px-4">
         <p className="text-lg font-medium">User not found.</p>
         <p className="text-xs text-gray-400 mt-1">The profile link may be invalid or no longer active.</p>
         <Button variant="outline" size="sm" onClick={() => navigate('/')} className="mt-4 text-xs">
@@ -340,12 +340,12 @@ export default function PublicProfilePage() {
     >
       {/* Public Header Bar for Guests */}
       {!currentUser ? (
-        <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm">
+        <div className="flex items-center justify-between py-3 px-4 rounded-2xl bg-white dark:bg-card border border-gray-100 dark:border-border shadow-sm">
           <Link to="/" className="flex items-center gap-2 group">
             <span className="font-bold text-lg tracking-tight group-hover:opacity-80 transition-opacity">
               Gigr
             </span>
-            <span className="text-xs text-gray-400 border-l border-gray-200 dark:border-gray-700 pl-2">
+            <span className="text-xs text-gray-400 border-l border-gray-200 dark:border-border pl-2">
               Portfolio
             </span>
           </Link>
@@ -364,10 +364,10 @@ export default function PublicProfilePage() {
       )}
 
       {/* Hero card */}
-      <Card className="overflow-hidden border-gray-200 dark:border-gray-800">
+      <Card className="overflow-hidden border-gray-200 dark:border-border">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row items-start gap-5">
-            <Avatar className="h-24 w-24 shrink-0 ring-4 ring-white dark:ring-gray-800 shadow-lg">
+            <Avatar className="h-24 w-24 shrink-0 ring-4 ring-white dark:ring-border shadow-lg">
               <AvatarImage src={profile.profile_image_url || undefined} />
               <AvatarFallback className="text-3xl bg-black text-white dark:bg-white dark:text-black font-semibold">
                 {initials}
@@ -377,24 +377,24 @@ export default function PublicProfilePage() {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold truncate">{profile.display_name}</h1>
                 {(profile.username || profile.handle) && (
-                  <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+                  <span className="text-xs font-mono text-gray-500 dark:text-muted-foreground">
                     @{profile.username || profile.handle}
                   </span>
                 )}
                 {profile.is_verified && (
-                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 text-xs font-medium">
+                  <Badge className="bg-gray-100 dark:bg-muted text-gray-900 dark:text-foreground border-gray-200 dark:border-border text-xs font-medium">
                     <ShieldCheck className="w-3 h-3 mr-1" />
                     Verified
                   </Badge>
                 )}
                 {!!profile.vouches_received_count && profile.vouches_received_count > 0 && (
-                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 text-xs font-medium">
+                  <Badge className="bg-gray-100 dark:bg-muted text-gray-900 dark:text-foreground border-gray-200 dark:border-border text-xs font-medium">
                     <BadgeCheck className="w-3 h-3 mr-1" />
                     {profile.vouches_received_count} vouch{profile.vouches_received_count !== 1 ? 'es' : ''}
                   </Badge>
                 )}
                 {profile.role === 'admin' || profile.role === 'superadmin' ? (
-                  <Badge className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-700 text-xs">
+                  <Badge className="bg-gray-100 dark:bg-muted text-gray-800 dark:text-foreground border-gray-200 dark:border-border text-xs">
                     Admin
                   </Badge>
                 ) : null}
@@ -407,19 +407,19 @@ export default function PublicProfilePage() {
 
               {/* Distance */}
               {distanceKm !== null && (
-                <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-600 dark:text-gray-400">
-                  <Navigation className="w-3.5 h-3.5 text-gray-700 dark:text-gray-300" />
+                <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-600 dark:text-muted-foreground">
+                  <Navigation className="w-3.5 h-3.5 text-gray-700 dark:text-muted-foreground" />
                   <span>~{distanceKm < 1 ? '<1' : distanceKm.toFixed(1)} km from you</span>
                 </div>
               )}
               {profile.location_lat != null && distanceKm == null && (
-                <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-500">
+                <div className="flex items-center gap-1.5 mt-1.5 text-sm text-gray-500 dark:text-muted-foreground">
                   <MapPin className="w-3.5 h-3.5" />
                   <span>Location shared</span>
                 </div>
               )}
 
-              <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-500">
+              <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-500 dark:text-muted-foreground">
                 <Calendar className="w-3.5 h-3.5" />
                 Joined{' '}
                 {new Date(profile.created_at).toLocaleDateString('en-US', {
@@ -429,7 +429,7 @@ export default function PublicProfilePage() {
               </div>
 
               {profile.bio && (
-                <p className="mt-3 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                <p className="mt-3 text-sm text-gray-700 dark:text-muted-foreground leading-relaxed">
                   {profile.bio}
                 </p>
               )}
@@ -439,7 +439,7 @@ export default function PublicProfilePage() {
                   {profile.skills.map((skillName) => (
                     <span
                       key={skillName}
-                      className="bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700"
+                      className="bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground text-xs px-2.5 py-1 rounded-full border border-gray-200 dark:border-border"
                     >
                       {skillName}
                     </span>
@@ -450,12 +450,12 @@ export default function PublicProfilePage() {
           </div>
 
           {/* Action buttons (Share Portfolio, Message) */}
-          <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-gray-100 dark:border-gray-800 sm:justify-end">
+          <div className="flex flex-wrap items-center gap-2 mt-5 pt-4 border-t border-gray-100 dark:border-border sm:justify-end">
             <Button
               variant="outline"
               size="sm"
               onClick={handleShare}
-              className="h-8 text-xs border-gray-200 dark:border-gray-700"
+              className="h-8 text-xs border-gray-200 dark:border-border"
             >
               <Share2 className="w-3.5 h-3.5 mr-1.5" />
               Share Portfolio
@@ -473,7 +473,7 @@ export default function PublicProfilePage() {
             ) : (
               <Link
                 to="/dashboard/profile"
-                className="text-xs text-gray-500 hover:text-black dark:hover:text-white underline ml-2"
+                className="text-xs text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white underline ml-2"
               >
                 Edit your profile
               </Link>
@@ -481,16 +481,16 @@ export default function PublicProfilePage() {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-4 gap-3 mt-5 text-center border-t border-gray-100 dark:border-gray-800 pt-4">
+          <div className="grid grid-cols-4 gap-3 mt-5 text-center border-t border-gray-100 dark:border-border pt-4">
             <div>
               <p className="text-xl font-bold">{vouches?.length || 0}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Vouches</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">Vouches</p>
             </div>
             <div>
               <p className="text-xl font-bold">
                 {services?.filter((item) => item.is_active).length || 0}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">Services</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">Services</p>
             </div>
             <div>
               {profile.avg_rating ? (
@@ -499,26 +499,26 @@ export default function PublicProfilePage() {
                     {profile.avg_rating.toFixed(1)}
                     <Star className="w-4 h-4" fill="currentColor" />
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">
                     {profile.rating_count} review{profile.rating_count !== 1 ? 's' : ''}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className="text-xl font-bold text-gray-300 dark:text-gray-600">—</p>
-                  <p className="text-xs text-gray-500 mt-0.5">No reviews</p>
+                  <p className="text-xl font-bold text-gray-300 dark:text-muted-foreground/80">—</p>
+                  <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">No reviews</p>
                 </>
               )}
             </div>
             <div>
               <p className="text-xl font-bold flex justify-center">
                 {profile.is_verified ? (
-                  <Check className="w-5 h-5 text-green-600" />
+                  <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
                 ) : (
-                  <span className="text-gray-300 dark:text-gray-600">—</span>
+                  <span className="text-gray-300 dark:text-muted-foreground/80">—</span>
                 )}
               </p>
-              <p className="text-xs text-gray-500 mt-0.5">Verified</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">Verified</p>
             </div>
           </div>
         </CardContent>
@@ -526,7 +526,7 @@ export default function PublicProfilePage() {
 
       {/* Services Section */}
       {services && services.length > 0 && (
-        <Card className="border-gray-200 dark:border-gray-800">
+        <Card className="border-gray-200 dark:border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Briefcase className="w-4 h-4" /> Offered Services ({services.length})
@@ -539,11 +539,11 @@ export default function PublicProfilePage() {
                 .map((serviceItem) => (
                   <div
                     key={serviceItem.id}
-                    className="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-3.5 border border-gray-100 dark:border-gray-700/60 flex flex-col justify-between space-y-3"
+                    className="bg-gray-50 dark:bg-muted/60 rounded-xl p-3.5 border border-gray-100 dark:border-border/60 flex flex-col justify-between space-y-3"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                        <p className="font-medium text-sm text-gray-900 dark:text-foreground">
                           {serviceItem.title}
                         </p>
                         <span className="text-xs font-mono font-semibold text-black dark:text-white shrink-0">
@@ -551,7 +551,7 @@ export default function PublicProfilePage() {
                         </span>
                       </div>
                       {serviceItem.description && (
-                        <p className="text-xs text-gray-500 mt-1 line-clamp-2">
+                        <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1 line-clamp-2">
                           {serviceItem.description}
                         </p>
                       )}
@@ -575,7 +575,7 @@ export default function PublicProfilePage() {
 
       {/* Ratings & Reviews */}
       {ratings && ratings.length > 0 && (
-        <Card className="border-gray-200 dark:border-gray-800">
+        <Card className="border-gray-200 dark:border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Star className="w-4 h-4 text-amber-500" fill="currentColor" /> Ratings & Reviews
@@ -589,20 +589,20 @@ export default function PublicProfilePage() {
                 count: ratings.filter((item) => item.score === starValue).length,
               }))
               return (
-                <div className="flex gap-6 items-center mb-4 pb-4 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex gap-6 items-center mb-4 pb-4 border-b border-gray-100 dark:border-border">
                   <div className="text-center shrink-0">
                     <p className="text-4xl font-bold text-amber-500">{reviewScoreAvg.toFixed(1)}</p>
                     <Stars value={reviewScoreAvg} className="w-4 h-4" />
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">
                       {ratings.length} review{ratings.length !== 1 ? 's' : ''}
                     </p>
                   </div>
                   <div className="flex-1 space-y-1">
                     {scoreDistribution.map(({ starValue, count }) => (
                       <div key={starValue} className="flex items-center gap-2 text-xs">
-                        <span className="w-3 text-gray-500">{starValue}</span>
+                        <span className="w-3 text-gray-500 dark:text-muted-foreground">{starValue}</span>
                         <Star className="w-3 h-3 text-amber-400" fill="currentColor" />
-                        <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div className="flex-1 h-1.5 bg-gray-100 dark:bg-muted rounded-full overflow-hidden">
                           <div
                             className="h-full bg-amber-400 rounded-full"
                             style={{ width: `${(count / ratings.length) * 100}%` }}
@@ -621,7 +621,7 @@ export default function PublicProfilePage() {
               {ratings.map((reviewItem) => (
                 <div
                   key={reviewItem.id}
-                  className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-100 dark:border-gray-700/60"
+                  className="bg-gray-50 dark:bg-muted/50 rounded-xl p-3 border border-gray-100 dark:border-border/60"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Link
@@ -635,7 +635,7 @@ export default function PublicProfilePage() {
                           className="w-7 h-7 rounded-full object-cover shrink-0"
                         />
                       ) : (
-                        <span className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[10px] font-medium text-gray-600 dark:text-gray-300 shrink-0">
+                        <span className="w-7 h-7 rounded-full bg-gray-200 dark:bg-secondary flex items-center justify-center text-[10px] font-medium text-gray-600 dark:text-muted-foreground shrink-0">
                           {(reviewItem.rater_name || '?').slice(0, 2).toUpperCase()}
                         </span>
                       )}
@@ -651,12 +651,12 @@ export default function PublicProfilePage() {
                     </span>
                   </div>
                   {reviewItem.job_title && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      for <span className="font-medium text-gray-700 dark:text-gray-300">{reviewItem.job_title}</span>
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground mt-2">
+                      for <span className="font-medium text-gray-700 dark:text-muted-foreground">{reviewItem.job_title}</span>
                     </p>
                   )}
                   {reviewItem.comment && (
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{reviewItem.comment}</p>
+                    <p className="text-sm text-gray-600 dark:text-muted-foreground mt-1">{reviewItem.comment}</p>
                   )}
                 </div>
               ))}
@@ -666,7 +666,7 @@ export default function PublicProfilePage() {
       )}
 
       {/* Vouches */}
-      <Card className="border-gray-200 dark:border-gray-800">
+      <Card className="border-gray-200 dark:border-border">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Star className="w-4 h-4 text-yellow-500" /> Vouches ({vouches?.length || 0})
@@ -678,7 +678,7 @@ export default function PublicProfilePage() {
               {vouches.map((vouchItem) => (
                 <div
                   key={vouchItem.id}
-                  className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 border border-gray-100 dark:border-gray-700/60"
+                  className="flex items-center justify-between bg-gray-50 dark:bg-muted/50 rounded-xl p-3 border border-gray-100 dark:border-border/60"
                 >
                   <div className="text-sm min-w-0">
                     <Link
@@ -687,13 +687,13 @@ export default function PublicProfilePage() {
                     >
                       <VoucherName voucherId={vouchItem.voucher_id} />
                     </Link>
-                    <span className="text-gray-500"> vouched for </span>
+                    <span className="text-gray-500 dark:text-muted-foreground"> vouched for </span>
                     {(vouchItem as any).job_title ? (
-                      <span className="font-medium text-gray-800 dark:text-gray-200">
+                      <span className="font-medium text-gray-800 dark:text-foreground">
                         {(vouchItem as any).job_title}
                       </span>
                     ) : (
-                      <span className="text-gray-500">completed work</span>
+                      <span className="text-gray-500 dark:text-muted-foreground">completed work</span>
                     )}
                     {vouchItem.cnf_nft_id && (
                       <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full border ${VOUCH_TONE_CLASS[vouchProof(vouchItem.cnf_nft_id).tone]}`}>
@@ -708,16 +708,16 @@ export default function PublicProfilePage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">No vouches yet.</p>
+            <p className="text-sm text-gray-500 dark:text-muted-foreground">No vouches yet.</p>
           )}
         </CardContent>
       </Card>
 
       {/* Guest Footer Call to Action */}
       {!currentUser && (
-        <div className="p-6 rounded-2xl bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-center space-y-2 mt-8">
+        <div className="p-6 rounded-2xl bg-gray-50 dark:bg-card border border-gray-100 dark:border-border text-center space-y-2 mt-8">
           <p className="font-semibold text-sm">Need local services or looking to get hired?</p>
-          <p className="text-xs text-gray-500 max-w-md mx-auto">
+          <p className="text-xs text-gray-500 dark:text-muted-foreground max-w-md mx-auto">
             Gigr connects you with trusted neighbors. Smart-contract escrow protects every job until work is verified.
           </p>
           <div className="pt-2">

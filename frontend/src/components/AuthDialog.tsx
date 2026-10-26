@@ -141,13 +141,13 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(val) => { if (!isGoogleLoading && !isSubmitting) onOpenChange(val) }}>
-      <DialogContent className={`sm:max-w-md bg-white dark:bg-gray-900 text-foreground transition-opacity duration-300 max-h-[90vh] overflow-y-auto ${isGoogleLoading ? 'opacity-50 pointer-events-none' : ''}`}>
+      <DialogContent className={`sm:max-w-md bg-white dark:bg-card text-foreground transition-opacity duration-300 max-h-[90vh] overflow-y-auto ${isGoogleLoading ? 'opacity-50 pointer-events-none' : ''}`}>
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
             <Logo className="w-6 h-6" />
             <DialogTitle className="text-xl font-bold">Gigr</DialogTitle>
           </div>
-          <DialogDescription className="text-gray-500 text-xs">
+          <DialogDescription className="text-gray-500 dark:text-muted-foreground text-xs">
             Sign in or create an account to post jobs, find services, or chat with providers.
           </DialogDescription>
         </DialogHeader>
@@ -186,7 +186,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                 <button
                   type="button"
                   onClick={() => setShowLoginPassword(!showLoginPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                   aria-label={showLoginPassword ? 'Hide password' : 'Show password'}
                 >
                   {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -213,7 +213,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
               <Button
                 type="submit"
                 disabled={isSubmitting || isGoogleLoading || !loginIdentifier.trim() || !loginPassword}
-                className="w-full bg-black text-white hover:bg-gray-800 font-semibold"
+                className="w-full bg-black text-white hover:bg-gray-800 dark:hover:bg-muted font-semibold"
               >
                 {isSubmitting ? 'Signing in…' : 'Sign In'}
               </Button>
@@ -260,7 +260,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                 <button
                   type="button"
                   onClick={() => setShowRegisterPassword(!showRegisterPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                   aria-label={showRegisterPassword ? 'Hide password' : 'Show password'}
                 >
                   {showRegisterPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -280,7 +280,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                 <button
                   type="button"
                   onClick={() => setShowRegisterConfirmPassword(!showRegisterConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                   aria-label={showRegisterConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
                   {showRegisterConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -306,8 +306,8 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
                   />
                 </div>
                 {registerPhone && (
-                  <p className="text-[10px] text-gray-500 font-mono pl-1">
-                    Format: <span className="font-medium text-gray-700 dark:text-gray-300">{formattedRegisterPhone || 'Invalid'}</span>
+                  <p className="text-[10px] text-gray-500 dark:text-muted-foreground font-mono pl-1">
+                    Format: <span className="font-medium text-gray-700 dark:text-muted-foreground">{formattedRegisterPhone || 'Invalid'}</span>
                   </p>
                 )}
               </div>
@@ -322,7 +322,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
               <Button
                 type="submit"
                 disabled={isSubmitting || isGoogleLoading || registerPassword.length < 6 || registerPassword !== registerConfirmPassword}
-                className="w-full bg-black text-white hover:bg-gray-800 font-semibold"
+                className="w-full bg-black text-white hover:bg-gray-800 dark:hover:bg-muted font-semibold"
               >
                 {isSubmitting ? 'Creating Account…' : 'Create Account'}
               </Button>
@@ -330,7 +330,7 @@ export default function AuthDialog({ open, onOpenChange }: AuthDialogProps) {
           </TabsContent>
         </Tabs>
 
-        <div className="mt-3 border-t border-gray-100 dark:border-gray-800 pt-3 flex justify-center w-full px-2">
+        <div className="mt-3 border-t border-gray-100 dark:border-border pt-3 flex justify-center w-full px-2">
           <GoogleSignInButton onToken={handleGoogleSuccess} onError={(msg) => setError(msg)} />
         </div>
       </DialogContent>

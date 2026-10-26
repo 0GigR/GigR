@@ -33,7 +33,7 @@ export function FundWalletButton({ walletAddress }: Props) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md bg-white text-black">
+        <DialogContent className="sm:max-w-md bg-white dark:bg-card text-black dark:text-foreground">
           <DialogHeader>
             <DialogTitle>Fund Your Wallet (Devnet)</DialogTitle>
             <DialogDescription>
@@ -41,13 +41,13 @@ export function FundWalletButton({ walletAddress }: Props) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="bg-gray-50 rounded-lg p-3">
+            <div className="bg-gray-50 dark:bg-background rounded-lg p-3">
               <p className="text-sm font-medium mb-2">Your wallet address:</p>
-              <code className="text-xs break-all bg-gray-100 p-2 rounded block">{walletAddress}</code>
+              <code className="text-xs break-all bg-gray-100 dark:bg-muted p-2 rounded block">{walletAddress}</code>
             </div>
-            <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
+            <ol className="text-sm text-gray-600 dark:text-muted-foreground space-y-2 list-decimal list-inside">
               <li>Copy the wallet address above</li>
-              <li>Go to <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">faucet.circle.com</a></li>
+              <li>Go to <a href="https://faucet.circle.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline">faucet.circle.com</a></li>
               <li>Select "Solana Devnet"</li>
               <li>Paste your wallet address</li>
               <li>Select "USDC" and request tokens</li>

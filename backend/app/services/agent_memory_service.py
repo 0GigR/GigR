@@ -54,6 +54,21 @@ MEMORY_RECALL_LIMIT = 5
 MEMORY_TEXT_LIMIT = 2000
 MEMORY_MIRROR_MAX_KEYS = 10
 
+# How many stored sentences a read-only review asks the relayer for. A recall is
+# query-driven, so this bounds one answer; it never claims the namespace holds
+# nothing else. It is one relayer call per page view, inside the account's
+# minute budget.
+MEMORY_REVIEW_LIMIT = 50
+
+# The query a review sends when the caller supplies none. A recall ranks by
+# similarity to this text, so it names the subjects the fact writer stores
+# rather than a single question: the page shows every kind of fact, not only the
+# ones matching one topic.
+MEMORY_REVIEW_QUERY = (
+    "this user's preferences, jobs, services, providers, prices, locations, "
+    "payments and past activity"
+)
+
 
 @dataclass(frozen=True)
 class MemoryContext:
@@ -110,6 +125,29 @@ class MemoryContext:
         """
         noun = "memory" if self.count == 1 else "memories"
         return f"Searching memory: Recalled {self.count} {noun} from {self.source_label}"
+
+
+@dataclass(frozen=True)
+class RecalledFacts:
+    """The sentences one read-only review found, and why a review found none.
+
+    ``source`` names the store that answered: ``"walrus"`` only when the relayer
+    answered the recall, ``"none"`` otherwise. ``reason`` is ``"ok"`` when the
+    relayer answered, or a stable code the client maps to a sentence:
+    ``"feature_disabled"``, ``"not_configured"``, ``"relayer_unavailable"``.
+
+    ``facts`` holds the stored texts verbatim, in the order the relayer ranked
+    them. Nothing is parsed out of them and nothing is invented: a page that
+    shows these lines shows exactly what the store returned.
+    """
+
+    facts: tuple[str, ...] = ()
+    source: str = "none"
+    reason: str = "ok"
+
+    @property
+    def count(self) -> int:
+        return len(self.facts)
 
 
 def _memory_text(key: str, value: Any) -> str:
@@ -311,6 +349,53 @@ class AgentMemoryService:
             source="json",
             semantic=False,
         )
+
+    async def review_facts(
+        self, user_id: UUID, query: Optional[str] = None
+    ) -> RecalledFacts:
+        """Read the sentences Walrus Memory holds for one user. Changes nothing.
+
+        A recall is query-driven, so ``query`` selects what is read and the
+        module's broad review query is used when it is blank. The answer is
+        bounded by :data:`MEMORY_REVIEW_LIMIT`; a caller must never present it as
+        a total.
+
+        Every unavailable state is a typed answer, not an exception: with the
+        flag off the review is ``feature_disabled``, with no usable gateway it is
+        ``not_configured``, and a relayer that fails or times out is
+        ``relayer_unavailable``. The page can then degrade calmly, and a relayer
+        outage cannot turn a read into a 500.
+
+        Exact duplicate texts collapse, because the relayer is append-only.
+        Blank texts are dropped: an empty line is not a memory.
+        """
+        if not agent_feature_enabled(FLAG_NAME):
+            return RecalledFacts(reason="feature_disabled")
+        if self._gateway is None or not self._gateway.configured:
+            return RecalledFacts(reason="not_configured")
+        recall_query = (query or "").strip() or MEMORY_REVIEW_QUERY
+        try:
+            memories = await self._gateway.recall(
+                recall_query, memory_namespace(user_id), MEMORY_REVIEW_LIMIT
+            )
+            # The extraction is inside the guard as well: a gateway that answers
+            # with something other than recalled entries is a dependency failure,
+            # not a reason to fail the page.
+            facts = tuple(
+                memory.text.strip()
+                for memory in _deduplicate_recalled(memories)
+                if memory.text.strip()
+            )
+        except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+            logger.warning(
+                "[agent-memory] review recall failed for user_id=%s "
+                "(operation=review): %s: %s",
+                user_id,
+                type(exc).__name__,
+                exc,
+            )
+            return RecalledFacts(reason="relayer_unavailable")
+        return RecalledFacts(facts=facts, source="walrus", reason="ok")
 
     async def save(self, user_id: UUID, updates: Dict[str, Any]) -> Dict[str, Any]:
         """Merge ``updates`` into the memory and return the merged memory.

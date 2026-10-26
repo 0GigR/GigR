@@ -46,16 +46,16 @@ export default function PayPalReturnPage() {
     <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
       {state === 'working' && (
         <>
-          <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
+          <Loader2 className="h-10 w-10 animate-spin text-blue-600 dark:text-blue-400" />
           <h1 className="text-xl font-semibold">Securing your payment in escrow…</h1>
-          <p className="text-sm text-gray-500">Confirming with PayPal. This takes a few seconds.</p>
+          <p className="text-sm text-gray-500 dark:text-muted-foreground">Confirming with PayPal. This takes a few seconds.</p>
         </>
       )}
       {state === 'done' && (
         <>
-          <CheckCircle2 className="h-10 w-10 text-green-600" />
+          <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
           <h1 className="text-xl font-semibold">Escrow funded</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-muted-foreground">
             Your payment is held safely. The provider can start work — you release it (the whole job, or each milestone) when you're happy.
           </p>
         </>
@@ -64,7 +64,7 @@ export default function PayPalReturnPage() {
         <>
           <AlertTriangle className="h-10 w-10 text-amber-500" />
           <h1 className="text-xl font-semibold">Payment not confirmed</h1>
-          <p className="text-sm text-gray-600">{message}</p>
+          <p className="text-sm text-gray-600 dark:text-muted-foreground">{message}</p>
           <Button onClick={() => navigate('/dashboard/activity', { replace: true })}>Back to my jobs</Button>
         </>
       )}

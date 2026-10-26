@@ -100,10 +100,10 @@ function CounterpartyAvatar({ userId, size = 'md' }: { userId?: string | null; s
         <img
           src={counterpartyUser.profile_image_url}
           alt={counterpartyUser.display_name || 'User'}
-          className={`${dim} rounded-full object-cover ring-1 ring-gray-200 dark:ring-gray-700`}
+          className={`${dim} rounded-full object-cover ring-1 ring-gray-200 dark:ring-border`}
         />
       ) : (
-        <span className={`${dim} rounded-full bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-200 flex items-center justify-center font-bold ring-1 ring-gray-300 dark:ring-gray-700`}>
+        <span className={`${dim} rounded-full bg-gray-200 dark:bg-muted text-gray-800 dark:text-foreground flex items-center justify-center font-bold ring-1 ring-gray-300 dark:ring-border`}>
           {initials}
         </span>
       )}
@@ -573,11 +573,11 @@ export default function MessagesPage() {
       case 'submitted':
         return <span className={`${base} bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800 font-semibold`}>Under Review</span>
       case 'completed':
-        return <span className={`${base} bg-zinc-900 text-white border-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-200`}>Completed</span>
+        return <span className={`${base} bg-zinc-900 text-white border-zinc-800 dark:bg-secondary dark:text-zinc-900 dark:border-border`}>Completed</span>
       case 'cancelled':
         return <span className={`${base} bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800`}>Cancelled</span>
       default:
-        return <span className={`${base} bg-gray-50 text-gray-700 border-gray-200`}>{jobStatus}</span>
+        return <span className={`${base} bg-gray-50 dark:bg-background text-gray-700 dark:text-muted-foreground border-gray-200 dark:border-border`}>{jobStatus}</span>
     }
   }
 
@@ -587,17 +587,17 @@ export default function MessagesPage() {
         {/* Left Sidebar: Contract rooms list */}
         <div
           className={cn(
-            'lg:col-span-4 flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden shadow-xs h-full min-h-0',
+            'lg:col-span-4 flex flex-col rounded-2xl border border-gray-200 dark:border-border bg-white dark:bg-card overflow-hidden shadow-xs h-full min-h-0',
             selectedJob ? 'hidden lg:flex' : 'flex'
           )}
         >
           {/* Search & filter toolbar */}
-          <div className="p-3 border-b border-gray-100 dark:border-gray-800 space-y-2 shrink-0">
+          <div className="p-3 border-b border-gray-100 dark:border-border space-y-2 shrink-0">
             <div className="flex items-center justify-between">
-              <h1 className="text-base font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-base font-bold text-gray-900 dark:text-foreground">
                 Messages
               </h1>
-              <span className="text-[10px] font-mono text-gray-500">
+              <span className="text-[10px] font-mono text-gray-500 dark:text-muted-foreground">
                 {activeJobs.length} rooms
               </span>
             </div>
@@ -608,7 +608,7 @@ export default function MessagesPage() {
                 placeholder="Search rooms..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 h-8 text-xs rounded-xl bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                className="w-full pl-8 pr-3 h-8 text-xs rounded-xl bg-gray-50 dark:bg-background border border-gray-200 dark:border-border text-gray-900 dark:text-foreground placeholder-gray-400 dark:placeholder:text-muted-foreground/80 focus:outline-none focus:ring-1 focus:ring-gray-400 dark:focus:ring-border"
               />
             </div>
             <div className="flex gap-1">
@@ -621,7 +621,7 @@ export default function MessagesPage() {
                     'flex-1 py-1 text-[11px] font-medium rounded-lg capitalize transition-colors truncate',
                     statusFilter === mode
                       ? 'bg-black text-white dark:bg-white dark:text-black font-semibold'
-                      : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                      : 'text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted'
                   )}
                 >
                   {mode === 'direct' ? 'Direct' : mode}
@@ -661,8 +661,8 @@ export default function MessagesPage() {
                     className={cn(
                       'w-full text-left rounded-xl p-3 flex gap-3 items-center transition-all duration-150',
                       isSelected
-                        ? 'bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 shadow-xs'
-                        : 'border border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                        ? 'bg-gray-100 dark:bg-muted border border-gray-300 dark:border-border shadow-xs'
+                        : 'border border-transparent hover:bg-gray-50 dark:hover:bg-muted/60'
                     )}
                   >
                     {/* Counterparty actual avatar */}
@@ -670,7 +670,7 @@ export default function MessagesPage() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-1">
-                        <p className={cn('text-xs truncate', unreadCount > 0 ? 'font-bold text-gray-900 dark:text-gray-100' : 'font-medium text-gray-800 dark:text-gray-200')}>
+                        <p className={cn('text-xs truncate', unreadCount > 0 ? 'font-bold text-gray-900 dark:text-foreground' : 'font-medium text-gray-800 dark:text-foreground')}>
                           <CounterpartyLabel userId={otherPartyId} fallback={job.title} />
                         </p>
                         {currentMeta?.lastCreatedAt && (
@@ -680,7 +680,7 @@ export default function MessagesPage() {
                         )}
                       </div>
 
-                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                      <p className="text-[11px] text-gray-500 dark:text-muted-foreground truncate mt-0.5">
                         {isJobDM && job.title === 'Direct Message Inquiry' ? 'Direct Message' : job.title}
                       </p>
 
@@ -690,7 +690,7 @@ export default function MessagesPage() {
                             Direct Chat
                           </span>
                         ) : (
-                          <span className="text-[11px] font-mono font-semibold text-gray-900 dark:text-gray-100">
+                          <span className="text-[11px] font-mono font-semibold text-gray-900 dark:text-foreground">
                             ₦{Number(job.price).toLocaleString()}
                           </span>
                         )}
@@ -720,33 +720,33 @@ export default function MessagesPage() {
         {/* Right Area: Active Contract Room & Chat */}
         <div
           className={cn(
-            'lg:col-span-8 flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden shadow-xs h-full min-h-0',
+            'lg:col-span-8 flex flex-col rounded-2xl border border-gray-200 dark:border-border bg-white dark:bg-card overflow-hidden shadow-xs h-full min-h-0',
             selectedJob ? 'flex' : 'hidden lg:flex'
           )}
         >
           {!selectedJob ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 text-gray-500 flex items-center justify-center mb-3">
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-muted text-gray-500 dark:text-muted-foreground flex items-center justify-center mb-3">
                 <MessageCircle className="w-8 h-8" />
               </div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-foreground">
                 No Contract Room Selected
               </h2>
-              <p className="text-xs text-gray-500 max-w-sm mt-1">
+              <p className="text-xs text-gray-500 dark:text-muted-foreground max-w-sm mt-1">
                 Choose a conversation from the left to enter the chat room, check payment details, or message the other person.
               </p>
             </div>
           ) : (
             <>
               {/* Executive Contract Room Header */}
-              <div className="border-b border-gray-200 dark:border-gray-800 p-2.5 sm:p-3.5 bg-gray-50/70 dark:bg-gray-950/70 shrink-0 space-y-2">
+              <div className="border-b border-gray-200 dark:border-border p-2.5 sm:p-3.5 bg-gray-50/70 dark:bg-background/70 shrink-0 space-y-2">
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     {/* Back button for mobile navigation */}
                     <button
                       type="button"
                       onClick={() => setSelectedJob(null)}
-                      className="lg:hidden p-1.5 -ml-1 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800 rounded-lg flex items-center gap-1 text-xs font-semibold shrink-0"
+                      className="lg:hidden p-1.5 -ml-1 text-gray-600 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-muted rounded-lg flex items-center gap-1 text-xs font-semibold shrink-0"
                       aria-label="Back to conversations list"
                     >
                       <ArrowLeft className="w-4 h-4" />
@@ -758,7 +758,7 @@ export default function MessagesPage() {
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h2 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-gray-100 truncate">
+                        <h2 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-foreground truncate">
                           <CounterpartyLabel userId={counterpartyId} fallback="User" />
                         </h2>
                         {isDirectMessage ? (
@@ -766,19 +766,19 @@ export default function MessagesPage() {
                             Direct Message
                           </span>
                         ) : (
-                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 shrink-0">
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground shrink-0">
                             {isClient ? 'Worker' : 'Client'}
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] sm:text-xs text-gray-500 truncate mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-gray-500 dark:text-muted-foreground truncate mt-0.5">
                         {isDirectMessage ? (
                           <span>Direct Inquiry · Chat freely</span>
                         ) : (
                           <>
                             <span className="truncate">{selectedJob.title}</span>
                             <span className="mx-1">·</span>
-                            <span className="font-semibold text-gray-900 dark:text-gray-100 font-mono">
+                            <span className="font-semibold text-gray-900 dark:text-foreground font-mono">
                               ₦{Number(selectedJob.price).toLocaleString()}
                             </span>
                             <span className="mx-1">·</span>
@@ -802,7 +802,7 @@ export default function MessagesPage() {
                           setContractDesc('')
                           setShowCreateContract(true)
                         }}
-                        className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs font-medium"
+                        className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs font-medium"
                       >
                         <Briefcase className="w-3.5 h-3.5 sm:mr-1" />
                         <span className="hidden sm:inline">Create Contract</span>
@@ -816,7 +816,7 @@ export default function MessagesPage() {
                             size="sm"
                             onClick={() => submitWorkMutation.mutate(selectedJob.id)}
                             disabled={submitWorkMutation.isPending}
-                            className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                            className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
                           >
                             {submitWorkMutation.isPending ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" />
@@ -849,7 +849,7 @@ export default function MessagesPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => navigate(`/dashboard/disputes?job=${selectedJob.id}`)}
-                              className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                              className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
                             >
                               Dispute
                             </Button>
@@ -862,7 +862,7 @@ export default function MessagesPage() {
                             size="sm"
                             onClick={() => fundEscrowMutation.mutate(selectedJob.id)}
                             disabled={fundEscrowMutation.isPending}
-                            className="bg-black hover:bg-gray-800 text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
+                            className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs h-8 px-2.5 sm:px-3 rounded-xl shadow-xs"
                           >
                             {fundEscrowMutation.isPending ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin sm:mr-1" />
@@ -882,7 +882,7 @@ export default function MessagesPage() {
 
                 {/* Sub-bar: Escrow status & quick links (for contract rooms only) */}
                 {!isDirectMessage && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-200 dark:border-gray-800 text-xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-200 dark:border-border text-xs">
                     <div className="flex items-center gap-2">
                       {selectedJob.status === 'funded' ? (
                         <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
@@ -897,7 +897,7 @@ export default function MessagesPage() {
                           Under Review · 1h Auto-Release Window
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                        <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 dark:text-muted-foreground">
                           Pending Escrow Funding
                         </span>
                       )}
@@ -913,7 +913,7 @@ export default function MessagesPage() {
                       <button
                         type="button"
                         onClick={() => navigate(`/dashboard/jobs?jobId=${selectedJob.id}`)}
-                        className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
+                        className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-muted-foreground hover:text-black dark:hover:text-white"
                       >
                         View Gig <ExternalLink className="w-3 h-3" />
                       </button>
@@ -921,7 +921,7 @@ export default function MessagesPage() {
                         <button
                           type="button"
                           onClick={() => setShowScopeAmend(!showScopeAmend)}
-                          className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white"
+                          className="inline-flex items-center gap-1 text-[11px] text-gray-700 dark:text-muted-foreground hover:text-black dark:hover:text-white"
                         >
                           Propose Amendment
                         </button>
@@ -932,12 +932,12 @@ export default function MessagesPage() {
 
                 {/* Milestones Manager (contract rooms only) */}
                 {!isDirectMessage && (
-                  <div className="pt-1 border-t border-gray-200 dark:border-gray-800">
+                  <div className="pt-1 border-t border-gray-200 dark:border-border">
                     <div className="flex items-center justify-between py-1 px-0.5">
                       <button
                         type="button"
                         onClick={() => setShowMilestones((v) => !v)}
-                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-800 dark:text-gray-200 hover:text-black dark:hover:text-white transition-colors"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-800 dark:text-foreground hover:text-black dark:hover:text-white transition-colors"
                       >
                         <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span>Milestones & Escrow</span>
@@ -946,7 +946,7 @@ export default function MessagesPage() {
                       <button
                         type="button"
                         onClick={() => setShowMilestones((v) => !v)}
-                        className="text-[11px] font-medium text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+                        className="text-[11px] font-medium text-gray-500 dark:text-muted-foreground hover:text-gray-900 dark:hover:text-foreground transition-colors"
                       >
                         {showMilestones ? 'Hide' : 'View / Manage'}
                       </button>
@@ -975,9 +975,9 @@ export default function MessagesPage() {
 
                 {/* Available Provider Services Strip */}
                 {providerServices && providerServices.length > 0 && (
-                  <div className="pt-2 border-t border-gray-200 dark:border-gray-800">
+                  <div className="pt-2 border-t border-gray-200 dark:border-border">
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                      <span className="text-[10px] text-gray-500 uppercase tracking-wider shrink-0 font-medium">
+                      <span className="text-[10px] text-gray-500 dark:text-muted-foreground uppercase tracking-wider shrink-0 font-medium">
                         Services:
                       </span>
                       {providerServices.map((svc: any) => {
@@ -989,7 +989,7 @@ export default function MessagesPage() {
                               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs shrink-0 transition-all',
                               isCurrentService
                                 ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white font-medium'
-                                : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 hover:border-gray-400'
+                                : 'bg-white dark:bg-muted border-gray-200 dark:border-border text-gray-800 dark:text-foreground hover:border-gray-400 dark:hover:border-border'
                             )}
                           >
                             <span className="truncate max-w-[140px] font-medium">{svc.title}</span>
@@ -1032,7 +1032,7 @@ export default function MessagesPage() {
                                     setMessageText(`Inquiring about "${svc.title}" (₦${Number(svc.price).toLocaleString()}): `)
                                     textareaRef.current?.focus()
                                   }}
-                                  className="text-[10px] text-gray-500 hover:text-black dark:hover:text-white"
+                                  className="text-[10px] text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white"
                                   title="Discuss this service in chat"
                                 >
                                   Discuss
@@ -1048,7 +1048,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Chat Message Stream */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-gray-950 min-h-0">
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white dark:bg-background min-h-0">
                 {msgsLoading ? (
                   <div className="space-y-3">
                     <Skeleton className="h-14 w-2/3 ml-auto rounded-2xl" />
@@ -1088,7 +1088,7 @@ export default function MessagesPage() {
                               'px-4 py-2.5 text-xs sm:text-sm shadow-xs break-words',
                               isCurrentUser
                                 ? 'bg-black text-white dark:bg-white dark:text-black rounded-2xl rounded-br-sm'
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-sm'
+                                : 'bg-gray-100 dark:bg-muted text-gray-900 dark:text-foreground border border-gray-200 dark:border-border rounded-2xl rounded-bl-sm'
                             )}
                           >
                             <ChatMessageContent
@@ -1124,9 +1124,9 @@ export default function MessagesPage() {
 
                   return (
                     <div key={amendmentItem.id} className="flex justify-center my-3">
-                      <div className="w-full max-w-lg rounded-2xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-4 space-y-3 shadow-xs">
+                      <div className="w-full max-w-lg rounded-2xl border border-gray-300 dark:border-border bg-gray-50 dark:bg-card p-4 space-y-3 shadow-xs">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                          <span className="text-xs font-semibold text-gray-900 dark:text-foreground">
                             Scope Amendment Proposal
                           </span>
                           <span
@@ -1143,22 +1143,22 @@ export default function MessagesPage() {
                           </span>
                         </div>
 
-                        <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                        <p className="text-xs text-gray-700 dark:text-muted-foreground leading-relaxed">
                           {amendmentItem.reason}
                         </p>
 
-                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs">
+                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-muted border border-gray-200 dark:border-border text-xs">
                           <div>
                             <span className="text-[10px] text-gray-400 block font-mono">Current Price</span>
-                            <span className="font-mono font-semibold text-gray-800 dark:text-gray-200">
+                            <span className="font-mono font-semibold text-gray-800 dark:text-foreground">
                               ₦{currentJobPrice.toLocaleString()}
                             </span>
                           </div>
                           <div className="text-right">
                             <span className="text-[10px] text-gray-400 block font-mono">Proposed Price</span>
-                            <span className="font-mono font-bold text-gray-900 dark:text-gray-100">
+                            <span className="font-mono font-bold text-gray-900 dark:text-foreground">
                               ₦{proposedPrice.toLocaleString()}
-                              <span className="text-[10px] text-gray-500 ml-1">
+                              <span className="text-[10px] text-gray-500 dark:text-muted-foreground ml-1">
                                 ({priceDifference >= 0 ? `+₦${priceDifference.toLocaleString()}` : `-₦${Math.abs(priceDifference).toLocaleString()}`})
                               </span>
                             </span>
@@ -1171,19 +1171,19 @@ export default function MessagesPage() {
                             <img
                               src={amendmentItem.image_url}
                               alt="Amendment proof"
-                              className="w-20 h-20 rounded-xl object-cover cursor-pointer ring-1 ring-gray-200 dark:ring-gray-700 hover:opacity-90"
+                              className="w-20 h-20 rounded-xl object-cover cursor-pointer ring-1 ring-gray-200 dark:ring-border hover:opacity-90"
                               onClick={() => setLightboxSrc(amendmentItem.image_url)}
                             />
                           </div>
                         )}
 
                         {isPending && isClient && (
-                          <div className="flex gap-2 pt-1 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex gap-2 pt-1 border-t border-gray-200 dark:border-border">
                             <Button
                               size="sm"
                               onClick={() => decideAmendmentMutation.mutate({ amendmentId: amendmentItem.id, accept: true })}
                               disabled={decideAmendmentMutation.isPending}
-                              className="flex-1 bg-black hover:bg-gray-800 text-white text-xs h-8"
+                              className="flex-1 bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs h-8"
                             >
                               Accept Amendment
                             </Button>
@@ -1192,7 +1192,7 @@ export default function MessagesPage() {
                               variant="outline"
                               onClick={() => decideAmendmentMutation.mutate({ amendmentId: amendmentItem.id, accept: false })}
                               disabled={decideAmendmentMutation.isPending}
-                              className="text-xs h-8 text-red-600 hover:text-red-700"
+                              className="text-xs h-8 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-400"
                             >
                               Decline
                             </Button>
@@ -1207,15 +1207,15 @@ export default function MessagesPage() {
 
               {/* Bottom Input Area */}
               {showScopeAmend ? (
-                <div className="border-t border-gray-200 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-900 space-y-3 shrink-0">
+                <div className="border-t border-gray-200 dark:border-border p-4 bg-gray-50 dark:bg-card space-y-3 shrink-0">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">
+                    <span className="text-xs font-semibold text-gray-900 dark:text-foreground">
                       Propose Contract Amendment
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowScopeAmend(false)}
-                      className="text-gray-400 hover:text-gray-600"
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -1224,7 +1224,7 @@ export default function MessagesPage() {
                     placeholder="Specify the reason for modifying the scope or price..."
                     value={amendReason}
                     onChange={(e) => setAmendReason(e.target.value)}
-                    className="text-xs rounded-xl bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                    className="text-xs rounded-xl bg-white dark:bg-background border-gray-200 dark:border-border"
                   />
                   <PriceInput
                     placeholder="New total contract price (₦)"
@@ -1260,7 +1260,7 @@ export default function MessagesPage() {
                         <img
                           src={amendImagePreview}
                           alt=""
-                          className="w-8 h-8 rounded-md object-cover ring-1 ring-gray-300"
+                          className="w-8 h-8 rounded-md object-cover ring-1 ring-gray-300 dark:ring-border"
                         />
                       )}
                     </div>
@@ -1277,7 +1277,7 @@ export default function MessagesPage() {
                         size="sm"
                         onClick={() => scopeAmendMutation.mutate()}
                         disabled={!amendReason.trim() || !amendNewPrice || scopeAmendMutation.isPending}
-                        className="bg-black hover:bg-gray-800 text-white text-xs h-8"
+                        className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs h-8"
                       >
                         {scopeAmendMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Submit Proposal'}
                       </Button>
@@ -1285,8 +1285,8 @@ export default function MessagesPage() {
                   </div>
                 </div>
               ) : imagePreview ? (
-                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 p-2.5 sm:p-3 flex gap-2 items-center bg-white dark:bg-gray-950 shrink-0">
-                  <img src={imagePreview} alt="Preview" className="w-12 h-12 rounded-xl object-cover shrink-0 ring-1 ring-gray-300" />
+                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-border p-2.5 sm:p-3 flex gap-2 items-center bg-white dark:bg-background shrink-0">
+                  <img src={imagePreview} alt="Preview" className="w-12 h-12 rounded-xl object-cover shrink-0 ring-1 ring-gray-300 dark:ring-border" />
                   <textarea
                     ref={textareaRef}
                     rows={1}
@@ -1303,25 +1303,25 @@ export default function MessagesPage() {
                         handleSendMessage()
                       }
                     }}
-                    className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                    className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-card border border-gray-200 dark:border-border p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-foreground placeholder-gray-400 dark:placeholder:text-muted-foreground/80"
                     autoFocus
                   />
                   <Button
                     size="sm"
                     onClick={handleSendMessage}
                     disabled={isSending}
-                    className="bg-black hover:bg-gray-800 text-white h-9 px-3 rounded-xl shrink-0"
+                    className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white h-9 px-3 rounded-xl shrink-0"
                   >
                     {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={removeImage} className="h-9 w-9 p-0 rounded-xl shrink-0">
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-gray-500 dark:text-muted-foreground" />
                   </Button>
                 </div>
               ) : (
-                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shrink-0">
+                <div className="sticky bottom-0 z-20 border-t border-gray-200 dark:border-border bg-white dark:bg-background shrink-0">
                   {messageText.toLowerCase().includes('@gigidy') && (
-                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-card border-b border-gray-200 dark:border-border flex items-center gap-1.5 overflow-x-auto text-[11px]">
                       <span className="font-semibold text-indigo-600 dark:text-indigo-400 shrink-0">Gigidy AI:</span>
                       <button
                         type="button"
@@ -1329,7 +1329,7 @@ export default function MessagesPage() {
                           setMessageText('@gigidy request service ')
                           textareaRef.current?.focus()
                         }}
-                        className="px-2 py-0.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white shrink-0"
+                        className="px-2 py-0.5 rounded-full bg-white dark:bg-muted border border-gray-200 dark:border-border hover:border-black dark:hover:border-white shrink-0"
                       >
                         request [service]
                       </button>
@@ -1339,7 +1339,7 @@ export default function MessagesPage() {
                           setMessageText('@gigidy propose contract at ')
                           textareaRef.current?.focus()
                         }}
-                        className="px-2 py-0.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-black dark:hover:border-white shrink-0"
+                        className="px-2 py-0.5 rounded-full bg-white dark:bg-muted border border-gray-200 dark:border-border hover:border-black dark:hover:border-white shrink-0"
                       >
                         propose contract
                       </button>
@@ -1362,12 +1362,12 @@ export default function MessagesPage() {
                         setContractDesc('')
                         setShowCreateContract(true)
                       }}
-                      className="p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0"
+                      className="p-2 rounded-xl text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-muted transition-colors shrink-0"
                       title="Propose Contract & Escrow"
                     >
                       <Briefcase className="w-5 h-5" />
                     </button>
-                    <label className="cursor-pointer p-2 rounded-xl text-gray-500 hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0">
+                    <label className="cursor-pointer p-2 rounded-xl text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white hover:bg-gray-100 dark:hover:bg-muted transition-colors shrink-0">
                       <ImagePlus className="w-5 h-5" />
                       <input
                         type="file"
@@ -1392,13 +1392,13 @@ export default function MessagesPage() {
                           handleSendMessage()
                         }
                       }}
-                      className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                      className="flex-1 text-xs rounded-xl bg-gray-50 dark:bg-card border border-gray-200 dark:border-border p-2.5 resize-none outline-none max-h-32 text-gray-900 dark:text-foreground placeholder-gray-400 dark:placeholder:text-muted-foreground/80"
                     />
                     <Button
                       size="sm"
                       onClick={handleSendMessage}
                       disabled={!messageText.trim() || isSending}
-                      className="bg-black hover:bg-gray-800 text-white h-9 px-3 rounded-xl disabled:opacity-40 shrink-0"
+                      className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white h-9 px-3 rounded-xl disabled:opacity-40 shrink-0"
                       title="Send message"
                     >
                       {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -1417,19 +1417,19 @@ export default function MessagesPage() {
 
       {/* Turn Direct Message into Contract Dialog */}
       <Dialog open={showCreateContract} onOpenChange={setShowCreateContract}>
-        <DialogContent className="max-w-md p-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-xl">
+        <DialogContent className="max-w-md p-6 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <DialogTitle className="text-base font-bold text-gray-900 dark:text-foreground flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Turn Chat into Agreed Contract
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-xs text-gray-500 leading-relaxed">
+            <p className="text-xs text-gray-500 dark:text-muted-foreground leading-relaxed">
               Set the agreed title and total price for this contract. Once created, you can fund escrow or set up payment milestones.
             </p>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <label className="text-xs font-semibold text-gray-700 dark:text-muted-foreground">
                 Job / Contract Title
               </label>
               <Input
@@ -1440,7 +1440,7 @@ export default function MessagesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <label className="text-xs font-semibold text-gray-700 dark:text-muted-foreground">
                 Agreed Price (₦)
               </label>
               <Input
@@ -1453,7 +1453,7 @@ export default function MessagesPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+              <label className="text-xs font-semibold text-gray-700 dark:text-muted-foreground">
                 Contract Details / Scope (Optional)
               </label>
               <Textarea
@@ -1478,7 +1478,7 @@ export default function MessagesPage() {
               size="sm"
               onClick={() => proposeContractMutation.mutate()}
               disabled={!contractTitle.trim() || !contractPrice || Number(contractPrice) <= 0 || proposeContractMutation.isPending}
-              className="bg-black hover:bg-gray-800 text-white text-xs rounded-xl font-semibold px-4"
+              className="bg-black hover:bg-gray-800 dark:hover:bg-muted text-white text-xs rounded-xl font-semibold px-4"
             >
               {proposeContractMutation.isPending ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />

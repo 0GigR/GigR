@@ -38,7 +38,7 @@ const TYPE_META: Record<string, { icon: LucideIcon; color: string; label: string
   work:        { icon: ClipboardCheck, color: 'text-amber-600 dark:text-amber-400',   label: 'Work' },
   cancelled:   { icon: XCircle,        color: 'text-red-500 dark:text-red-400',       label: 'Cancelled' },
   agent:       { icon: Bot,            color: 'text-cyan-600 dark:text-cyan-400',     label: 'Agent' },
-  system:      { icon: Bell,           color: 'text-gray-500 dark:text-gray-400',     label: 'System' },
+  system:      { icon: Bell,           color: 'text-gray-500 dark:text-muted-foreground',     label: 'System' },
 }
 
 function getTypeMeta(type?: string) {
@@ -227,7 +227,7 @@ export default function NotificationBell() {
   const renderPushBanner = () => {
     if (pushState === 'granted') {
       return (
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-green-50 dark:bg-green-900/20 flex items-center justify-between gap-2 text-xs text-green-700 dark:text-green-400 shrink-0">
+        <div className="p-3 border-t border-gray-100 dark:border-border bg-green-50 dark:bg-green-900/20 flex items-center justify-between gap-2 text-xs text-green-700 dark:text-green-400 shrink-0">
           <span className="inline-flex items-center gap-2">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Push notifications are enabled
@@ -245,7 +245,7 @@ export default function NotificationBell() {
     }
     if (pushState === 'disconnected') {
       return (
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-amber-50 dark:bg-amber-900/20 flex items-center justify-between gap-2 text-xs text-amber-700 dark:text-amber-300 shrink-0">
+        <div className="p-3 border-t border-gray-100 dark:border-border bg-amber-50 dark:bg-amber-900/20 flex items-center justify-between gap-2 text-xs text-amber-700 dark:text-amber-300 shrink-0">
           <span className="inline-flex items-center gap-2">
             <BellOff className="w-3.5 h-3.5 shrink-0" />
             Permission on, but not connected
@@ -262,7 +262,7 @@ export default function NotificationBell() {
     }
     if (pushState === 'denied') {
       return (
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-red-50 dark:bg-red-900/20 shrink-0">
+        <div className="p-3 border-t border-gray-100 dark:border-border bg-red-50 dark:bg-red-900/20 shrink-0">
           <div className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400 justify-center">
             <BellOff className="w-3.5 h-3.5 shrink-0" />
             Notifications blocked. Enable in browser/device settings.
@@ -272,7 +272,7 @@ export default function NotificationBell() {
     }
     if (pushState === 'ios-browser') {
       return (
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-900/20 shrink-0">
+        <div className="p-3 border-t border-gray-100 dark:border-border bg-blue-50 dark:bg-blue-900/20 shrink-0">
           <div className="flex items-start gap-2 text-xs text-blue-700 dark:text-blue-300">
             <Smartphone className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <span>
@@ -291,11 +291,11 @@ export default function NotificationBell() {
     }
     // default — not yet asked
     return (
-      <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-center shrink-0">
+      <div className="p-3 border-t border-gray-100 dark:border-border bg-gray-50 dark:bg-card/50 text-center shrink-0">
         <button
           onClick={handleSubscribe}
           disabled={subscribing}
-          className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-400 font-medium disabled:opacity-60"
         >
           {subscribing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
           {subscribing ? 'Enabling...' : 'Enable Push Notifications'}
@@ -331,13 +331,13 @@ export default function NotificationBell() {
           {/* 100dvh (not h-full/100vh): on mobile, 100vh is taller than the
               visible viewport while the browser chrome is showing, which hid
               the push-enable footer behind the bottom nav / browser UI. */}
-          <div className="fixed top-0 right-0 h-[100dvh] w-full max-w-sm bg-white dark:bg-gray-950 border-l border-gray-200 dark:border-gray-800 shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300 pb-[env(safe-area-inset-bottom)]">
-            <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-gray-800 shrink-0">
+          <div className="fixed top-0 right-0 h-[100dvh] w-full max-w-sm bg-white dark:bg-background border-l border-gray-200 dark:border-border shadow-2xl z-[9999] flex flex-col animate-in slide-in-from-right duration-300 pb-[env(safe-area-inset-bottom)]">
+            <div className="flex justify-between items-center p-4 border-b border-gray-100 dark:border-border shrink-0">
               <h3 className="font-semibold text-lg">Notifications</h3>
               <div className="flex items-center gap-3">
                 {unreadCount > 0 && (
                   <button
-                    className="text-xs text-blue-600 hover:underline font-medium"
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium"
                     onClick={() => markAllReadMutation.mutate()}
                     disabled={markAllReadMutation.isPending}
                   >
@@ -351,7 +351,7 @@ export default function NotificationBell() {
             </div>
             
             {/* Filter tabs */}
-            <div className="flex gap-1 px-3 py-2 border-b border-gray-100 dark:border-gray-800 overflow-x-auto shrink-0">
+            <div className="flex gap-1 px-3 py-2 border-b border-gray-100 dark:border-border overflow-x-auto shrink-0">
               {Object.keys(FILTER_LABELS).map(key => (
                 <button
                   key={key}
@@ -359,7 +359,7 @@ export default function NotificationBell() {
                   className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
                     filter === key
                       ? 'bg-black text-white dark:bg-white dark:text-black'
-                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      : 'bg-gray-100 text-gray-600 dark:bg-muted dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary'
                   }`}
                 >
                   {FILTER_LABELS[key]}
@@ -370,19 +370,19 @@ export default function NotificationBell() {
 
             <div className="flex-1 overflow-y-auto">
               {filtered.length === 0 ? (
-                <div className="p-8 text-center text-sm text-gray-500 flex flex-col items-center justify-center h-full">
+                <div className="p-8 text-center text-sm text-gray-500 dark:text-muted-foreground flex flex-col items-center justify-center h-full">
                   <Bell className="w-12 h-12 text-gray-200 dark:text-gray-800 mb-3" />
                   <p>{filter === 'all' ? 'No notifications yet.' : 'Nothing here yet.'}</p>
                 </div>
               ) : (
-                <div className="flex flex-col divide-y divide-gray-50 dark:divide-gray-800/50">
+                <div className="flex flex-col divide-y divide-gray-50 dark:divide-border/50">
                   {filtered.map(n => {
                     const meta = getTypeMeta(n.type)
                     const TypeIcon = meta.icon
                     return (
                       <div
                         key={n.id}
-                        className={`p-4 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-900/50 ${
+                        className={`p-4 text-sm transition-colors hover:bg-gray-50 dark:hover:bg-card/50 ${
                           n.is_read ? 'bg-transparent opacity-80' : 'bg-blue-50/50 dark:bg-blue-900/10'
                         }`}
                       >
@@ -400,7 +400,7 @@ export default function NotificationBell() {
                               {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" />}
                             </span>
                           </p>
-                          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed pl-6">
+                          <p className="text-gray-600 dark:text-muted-foreground text-sm leading-relaxed pl-6">
                             {n.message}
                           </p>
                           <p className="text-xs text-gray-400 mt-2 font-medium pl-6">

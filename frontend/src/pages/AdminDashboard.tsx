@@ -387,7 +387,7 @@ export default function AdminDashboard() {
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Shield className="w-7 h-7" /> Admin Dashboard
           </h1>
-          <p className="text-gray-500">Manage disputes, escrows, moderation, and administrators.</p>
+          <p className="text-gray-500 dark:text-muted-foreground">Manage disputes, escrows, moderation, and administrators.</p>
         </div>
         <div>
           {isSuperadmin ? (
@@ -395,7 +395,7 @@ export default function AdminDashboard() {
               Superadmin · Root Access
             </Badge>
           ) : (
-            <Badge className="bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700 text-xs px-3 py-1 font-medium">
+            <Badge className="bg-gray-100 text-gray-700 dark:bg-muted dark:text-muted-foreground border border-gray-200 dark:border-border text-xs px-3 py-1 font-medium">
               Admin · Restricted Access
             </Badge>
           )}
@@ -429,19 +429,19 @@ export default function AdminDashboard() {
               { icon: <Wrench className="w-4 h-4" />, label: 'Active services', value: stats?.active_services, color: 'bg-emerald-600' },
               { icon: <Gavel className="w-4 h-4" />, label: 'Open disputes', value: stats?.open_disputes, color: 'bg-amber-600' },
               { icon: <Wallet className="w-4 h-4" />, label: 'In escrow', value: stats ? `₦${Number(stats.escrow_in_flight).toLocaleString()}` : undefined, color: 'bg-violet-600' },
-              { icon: <CheckCircle className="w-4 h-4" />, label: 'Completed jobs', value: stats?.completed_jobs, color: 'bg-gray-800' },
+              { icon: <CheckCircle className="w-4 h-4" />, label: 'Completed jobs', value: stats?.completed_jobs, color: 'bg-gray-800 dark:bg-muted' },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-3 shadow-sm">
                 <div className={`w-10 h-10 rounded-lg ${s.color} text-white flex items-center justify-center shrink-0`}>{s.icon}</div>
                 <div className="min-w-0">
-                  <p className="text-xs text-gray-500">{s.label}</p>
+                  <p className="text-xs text-gray-500 dark:text-muted-foreground">{s.label}</p>
                   <p className="text-xl font-bold leading-tight">{s.value ?? '—'}</p>
                 </div>
               </div>
             ))}
           </div>
-          <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-600">
-            <p className="font-medium text-gray-800 mb-1">Your powers</p>
+          <div className="mt-6 rounded-xl border border-dashed border-gray-200 dark:border-border bg-gray-50/60 dark:bg-background/60 p-4 text-sm text-gray-600 dark:text-muted-foreground">
+            <p className="font-medium text-gray-800 dark:text-foreground mb-1">Your powers</p>
             {isSuperadmin ? (
               <p>Superadmin — everything on this dashboard is unlocked.</p>
             ) : (user?.permissions || []).length ? (
@@ -460,14 +460,14 @@ export default function AdminDashboard() {
                 <CardTitle className="text-base flex items-center gap-2">
                   <Wallet className="w-4 h-4" /> Live Active Escrows ({adminEscrows?.length || 0})
                 </CardTitle>
-                <span className="text-xs text-gray-500 font-mono">
+                <span className="text-xs text-gray-500 dark:text-muted-foreground font-mono">
                   Real-time cross-rail funds in flight
                 </span>
               </div>
             </CardHeader>
             <CardContent>
               {adminEscrows && adminEscrows.length > 0 ? (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                <div className="divide-y divide-gray-100 dark:divide-border">
                   {adminEscrows.map((esc: any) => (
                     <div key={esc.job_id} className="py-3 flex flex-wrap items-center justify-between gap-3 text-sm">
                       <div className="space-y-1 min-w-[200px]">
@@ -478,12 +478,12 @@ export default function AdminDashboard() {
                           <Badge variant="outline" className="font-mono text-[10px] uppercase">
                             {esc.status}
                           </Badge>
-                          <Badge variant="outline" className={esc.rail === 'paypal' ? 'border-blue-400 text-blue-600 font-mono text-[10px]' : 'border-purple-400 text-purple-600 font-mono text-[10px]'}>
+                          <Badge variant="outline" className={esc.rail === 'paypal' ? 'border-blue-400 text-blue-600 dark:text-blue-400 font-mono text-[10px]' : 'border-purple-400 text-purple-600 dark:text-purple-400 font-mono text-[10px]'}>
                             {esc.rail === 'paypal' ? 'PayPal' : 'Solana'}
                           </Badge>
                         </div>
-                        <p className="text-xs text-gray-500">
-                          Client: <span className="font-medium text-gray-700 dark:text-gray-300">{esc.client_name}</span> · Provider: <span className="font-medium text-gray-700 dark:text-gray-300">{esc.provider_name}</span>
+                        <p className="text-xs text-gray-500 dark:text-muted-foreground">
+                          Client: <span className="font-medium text-gray-700 dark:text-muted-foreground">{esc.client_name}</span> · Provider: <span className="font-medium text-gray-700 dark:text-muted-foreground">{esc.provider_name}</span>
                         </p>
                       </div>
 
@@ -499,7 +499,7 @@ export default function AdminDashboard() {
 
                         <Link
                           to={`/dashboard/messages?jobId=${esc.job_id}`}
-                          className="px-2.5 py-1 text-xs border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 font-mono flex items-center gap-1"
+                          className="px-2.5 py-1 text-xs border border-gray-200 dark:border-border rounded-lg hover:bg-gray-100 dark:hover:bg-muted font-mono flex items-center gap-1"
                         >
                           Contract Room <ExternalLink className="w-3 h-3" />
                         </Link>
@@ -508,7 +508,7 @@ export default function AdminDashboard() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-gray-500 py-4 text-center">No active escrows currently in flight.</p>
+                <p className="text-sm text-gray-500 dark:text-muted-foreground py-4 text-center">No active escrows currently in flight.</p>
               )}
             </CardContent>
           </Card>
@@ -517,13 +517,13 @@ export default function AdminDashboard() {
         <TabsContent value="disputes" className="mt-6">
           {isLoading ? <Skeleton className="h-24 w-full" /> : 
           (disputes as any[])?.filter(d => d.status === 'open').map((d: any) => (
-            <Card key={d.id} className="bg-white border border-gray-100 mb-2">
+            <Card key={d.id} className="bg-white dark:bg-card border border-gray-100 dark:border-border mb-2">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex justify-between">
                   <span>{d.job_title || 'Untitled'} — {d.status}</span>
                   <Badge>{d.status}</Badge>
                 </CardTitle>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-muted-foreground">
                   Client: {d.client_name} | Provider: {d.provider_name}
                 </p>
               </CardHeader>
@@ -565,27 +565,27 @@ export default function AdminDashboard() {
         <TabsContent value="resolved" className="mt-6">
           {isLoading ? <Skeleton className="h-24 w-full" /> : 
           (disputes as any[])?.filter(d => d.status !== 'open').map((d: any) => (
-            <Card key={d.id} className="bg-white border border-gray-100 mb-2 opacity-70">
+            <Card key={d.id} className="bg-white dark:bg-card border border-gray-100 dark:border-border mb-2 opacity-70">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base flex justify-between">
                   <span>{d.job_title || 'Untitled job'}</span>
                   <Badge variant="secondary">{d.resolution || d.status}</Badge>
                 </CardTitle>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark:text-muted-foreground">
                   Client:{' '}
-                  <Link to={`/profile/${d.client_id}`} className="text-blue-600 hover:underline">
+                  <Link to={`/profile/${d.client_id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                     {d.client_name || 'Unknown'}
                   </Link>
                   {' | '}
                   Provider:{' '}
-                  <Link to={`/profile/${d.provider_id}`} className="text-blue-600 hover:underline">
+                  <Link to={`/profile/${d.provider_id}`} className="text-blue-600 dark:text-blue-400 hover:underline">
                   {/* <Link to={`/dashboard/profile/${d.provider_id}`} className="text-blue-600 hover:underline"> */}
                     {d.provider_name || 'Unknown'}
                   </Link>
                 </p>
               </CardHeader>
               <CardContent className="text-sm">
-                <p className="text-gray-600"><strong>Reason:</strong> {d.reason}</p>
+                <p className="text-gray-600 dark:text-muted-foreground"><strong>Reason:</strong> {d.reason}</p>
               </CardContent>
             </Card>
           ))}
@@ -593,7 +593,7 @@ export default function AdminDashboard() {
         
         <TabsContent value="moderation" className="mt-6">
           {!isSuperadmin && !(user?.permissions || []).some((p) => p.endsWith(':manage')) && (
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-gray-500 dark:text-muted-foreground mb-4">
               No powers granted yet. Ask the superadmin to tag you with the abilities you need.
             </p>
           )}
@@ -641,7 +641,7 @@ export default function AdminDashboard() {
                     <div className="relative h-14 w-24">
                       <img src={announceImagePreview} className="rounded-lg object-cover w-full h-full" />
                       <X
-                        className="absolute -top-2 -right-2 h-4 w-4 bg-white text-black border border-gray-300 rounded-full cursor-pointer"
+                        className="absolute -top-2 -right-2 h-4 w-4 bg-white dark:bg-card text-black dark:text-foreground border border-gray-300 dark:border-border rounded-full cursor-pointer"
                         onClick={() => { setAnnounceImageFile(null); setAnnounceImagePreview(null) }}
                       />
                     </div>
@@ -656,21 +656,21 @@ export default function AdminDashboard() {
 
                 {/* Recipient filter */}
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-xs font-medium text-gray-500">Send to:</span>
+                  <span className="text-xs font-medium text-gray-500 dark:text-muted-foreground">Send to:</span>
                   <button
                     onClick={() => setAnnounceTarget('all')}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'all' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'all' ? 'bg-black text-white' : 'bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground'}`}
                   >
                     All users
                   </button>
                   <button
                     onClick={() => setAnnounceTarget('inactive')}
-                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'inactive' ? 'bg-black text-white' : 'bg-gray-100 text-gray-600'}`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${announceTarget === 'inactive' ? 'bg-black text-white' : 'bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground'}`}
                   >
                     Inactive users only
                   </button>
                   {announceTarget === 'inactive' && (
-                    <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-muted-foreground">
                       last seen &gt;
                       <Input
                         type="number"
@@ -710,10 +710,10 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
               {(adminJobs as any[])?.map((j: any) => (
-                <div key={j.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                <div key={j.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-background rounded-lg p-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{j.title}</p>
-                    <p className="text-xs text-gray-500 truncate">
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground truncate">
                       {j.status} · ₦{parseFloat(j.price || '0').toLocaleString()} · {new Date(j.created_at).toLocaleDateString()}
                     </p>
                   </div>
@@ -729,7 +729,7 @@ export default function AdminDashboard() {
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
-              )) || <p className="text-sm text-gray-500">No jobs.</p>}
+              )) || <p className="text-sm text-gray-500 dark:text-muted-foreground">No jobs.</p>}
             </CardContent>
           </Card>
           )}
@@ -744,10 +744,10 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
               {(adminServices as any[])?.map((s: any) => (
-                <div key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                <div key={s.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-background rounded-lg p-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{s.title}</p>
-                    <p className="text-xs text-gray-500 truncate">
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground truncate">
                       ₦{parseFloat(s.price || '0').toLocaleString()} · by {s.provider_name || s.provider_id?.slice(0, 8)}
                     </p>
                   </div>
@@ -761,7 +761,7 @@ export default function AdminDashboard() {
                     <Trash2 className="w-3 h-3" />
                   </Button>
                 </div>
-              )) || <p className="text-sm text-gray-500">No services.</p>}
+              )) || <p className="text-sm text-gray-500 dark:text-muted-foreground">No services.</p>}
             </CardContent>
           </Card>
           )}
@@ -785,7 +785,7 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent className="space-y-2 max-h-[350px] overflow-y-auto">
               {(adminUsers as any[])?.map((u: any) => (
-                <div key={u.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2.5 border border-gray-100 dark:border-gray-800">
+                <div key={u.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-muted/50 rounded-lg p-2.5 border border-gray-100 dark:border-border">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <Link to={`/profile/${u.username || u.id}`} className="text-sm font-medium hover:underline truncate">
@@ -793,11 +793,11 @@ export default function AdminDashboard() {
                       </Link>
                       {u.is_verified && (
                         <span title="Verified Badge">
-                          <BadgeCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <BadgeCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 truncate">
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground truncate">
                       {u.email} {u.username ? `(@${u.username})` : ''} · <span className="font-mono uppercase text-[10px]">{u.role}</span>
                     </p>
                   </div>
@@ -807,7 +807,7 @@ export default function AdminDashboard() {
                       variant="outline"
                       onClick={() => toggleVerifyMutation.mutate(u.id)}
                       disabled={toggleVerifyMutation.isPending}
-                      className={`h-7 text-xs font-mono px-2 ${u.is_verified ? 'border-emerald-500 text-emerald-600' : 'border-gray-300'}`}
+                      className={`h-7 text-xs font-mono px-2 ${u.is_verified ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-gray-300 dark:border-border'}`}
                     >
                       {u.is_verified ? 'Verified ✓' : 'Verify'}
                     </Button>
@@ -825,7 +825,7 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
-              )) || <p className="text-sm text-gray-500">No users found.</p>}
+              )) || <p className="text-sm text-gray-500 dark:text-muted-foreground">No users found.</p>}
             </CardContent>
           </Card>
           )}
@@ -838,10 +838,10 @@ export default function AdminDashboard() {
               </CardHeader>
               <CardContent className="space-y-2 max-h-[300px] overflow-y-auto">
                 {(adminMessages as any[])?.map((m: any) => (
-                  <div key={m.id} className="flex items-center justify-between gap-3 bg-gray-50 rounded-lg p-2.5">
+                  <div key={m.id} className="flex items-center justify-between gap-3 bg-gray-50 dark:bg-background rounded-lg p-2.5">
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-700 truncate">{(m.content || '(image)').slice(0, 80)}</p>
-                      <p className="text-xs text-gray-500">{m.sender_name || m.sender_id?.slice(0, 8)} · {new Date(m.created_at).toLocaleString()}</p>
+                      <p className="text-sm text-gray-700 dark:text-muted-foreground truncate">{(m.content || '(image)').slice(0, 80)}</p>
+                      <p className="text-xs text-gray-500 dark:text-muted-foreground">{m.sender_name || m.sender_id?.slice(0, 8)} · {new Date(m.created_at).toLocaleString()}</p>
                     </div>
                     <Button
                       size="sm"
@@ -853,7 +853,7 @@ export default function AdminDashboard() {
                       <Trash2 className="w-3 h-3" />
                     </Button>
                   </div>
-                )) || <p className="text-sm text-gray-500">No messages.</p>}
+                )) || <p className="text-sm text-gray-500 dark:text-muted-foreground">No messages.</p>}
               </CardContent>
             </Card>
           )}
@@ -874,10 +874,10 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-1.5">Powers to grant (IAM-style tags — like AWS *FullAccess policies)</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-muted-foreground mb-1.5">Powers to grant (IAM-style tags — like AWS *FullAccess policies)</p>
                   <div className="flex flex-wrap gap-2">
                     {PERMISSIONS.map((p) => (
-                      <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${newAdminPerms.includes(p.slug) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                      <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${newAdminPerms.includes(p.slug) ? 'bg-black text-white border-black dark:border-foreground' : 'bg-gray-50 dark:bg-background text-gray-600 dark:text-muted-foreground border-gray-200 dark:border-border'}`}>
                         <input type="checkbox" className="hidden" checked={newAdminPerms.includes(p.slug)} onChange={() => togglePerm(null, p.slug)} />
                         {p.label}
                       </label>
@@ -891,7 +891,7 @@ export default function AdminDashboard() {
               const editPerms = permEdits[a.id] ?? a.permissions ?? []
               const isDirty = JSON.stringify(editPerms) !== JSON.stringify(a.permissions ?? [])
               return (
-                <Card key={a.id} className="bg-white border border-gray-100 mb-2">
+                <Card key={a.id} className="bg-white dark:bg-card border border-gray-100 dark:border-border mb-2">
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-center">
                       <CardTitle className="text-base">{a.display_name} ({a.email})</CardTitle>
@@ -901,7 +901,7 @@ export default function AdminDashboard() {
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap gap-2">
                       {PERMISSIONS.map((p) => (
-                        <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${editPerms.includes(p.slug) ? 'bg-black text-white border-black' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                        <label key={p.slug} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer border ${editPerms.includes(p.slug) ? 'bg-black text-white border-black dark:border-foreground' : 'bg-gray-50 dark:bg-background text-gray-600 dark:text-muted-foreground border-gray-200 dark:border-border'}`}>
                           <input type="checkbox" className="hidden" checked={editPerms.includes(p.slug)} onChange={() => togglePerm(a.id, p.slug)} />
                           {p.label}
                         </label>
@@ -932,15 +932,15 @@ export default function AdminDashboard() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border border-border bg-card shadow-sm">
               <div className="space-y-1">
                 <div className="flex items-center gap-2.5">
-                  <HeartPulse className="w-5 h-5 text-emerald-600 animate-pulse" />
+                  <HeartPulse className="w-5 h-5 text-emerald-600 dark:text-emerald-400 animate-pulse" />
                   <h3 className="text-lg font-semibold">Continuous Self-Healing Engine</h3>
                   {selfHealReport && (
                     <Badge className={
                       selfHealReport.overall_status === 'ok'
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
                         : selfHealReport.overall_status === 'healed'
-                        ? 'bg-blue-50 text-blue-700 border-blue-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
                     }>
                       {selfHealReport.overall_status === 'ok'
                         ? 'System Healthy'
@@ -972,7 +972,7 @@ export default function AdminDashboard() {
                   size="sm"
                   onClick={() => runHealMutation.mutate(false)}
                   disabled={runHealMutation.isPending || isHealLoading}
-                  className="bg-black text-white hover:bg-gray-800"
+                  className="bg-black text-white hover:bg-gray-800 dark:hover:bg-muted"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${runHealMutation.isPending ? 'animate-spin' : ''}`} />
                   Run Self-Heal Now
@@ -1011,10 +1011,10 @@ export default function AdminDashboard() {
                         <CardTitle className="text-sm font-medium">{labelMap[sub.subsystem] || sub.subsystem}</CardTitle>
                         <Badge variant="outline" className={
                           isHealthy
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 text-[10px]'
                             : isHealed
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 text-[10px]'
-                            : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
+                            ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800 text-[10px]'
+                            : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800 text-[10px]'
                         }>
                           {isHealthy ? 'Healthy' : isHealed ? 'Healed' : 'Warning'}
                         </Badge>
@@ -1041,14 +1041,14 @@ export default function AdminDashboard() {
             {/* Standalone Cron Job Portability Guide */}
             <div className="rounded-2xl border border-border bg-card p-5 space-y-3 shadow-sm">
               <div className="flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                <Terminal className="w-4 h-4 text-gray-700 dark:text-muted-foreground" />
                 <h4 className="font-semibold text-sm">Standalone Cron & Background Worker Portability</h4>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 By default, Gigr runs self-healing in-process every 120 seconds with zero extra worker cost.
                 When ready to offload to an external Linux crontab, Kubernetes CronJob, or Render background worker, run the standalone script directly:
               </p>
-              <div className="bg-gray-950 text-gray-100 rounded-xl p-3.5 font-mono text-xs overflow-x-auto space-y-1">
+              <div className="bg-gray-950 dark:bg-background text-gray-100 rounded-xl p-3.5 font-mono text-xs overflow-x-auto space-y-1">
                 <p className="text-gray-400"># Run once on a recurring schedule (e.g. Linux crontab every 2 minutes):</p>
                 <p className="text-emerald-400">cd backend && venv/bin/python scripts/run_self_heal.py --once</p>
                 <p className="text-gray-400 pt-2"># Or run continuously as a dedicated background daemon:</p>
@@ -1064,12 +1064,12 @@ export default function AdminDashboard() {
       {/* Courtroom Dialog */}
       {selectedDispute && (
         <Dialog open={courtroomOpen} onOpenChange={setCourtroomOpen}>
-          <DialogContent className="sm:max-w-2xl bg-white text-black max-h-[85vh] flex flex-col">
+          <DialogContent className="sm:max-w-2xl bg-white dark:bg-card text-black dark:text-foreground max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle>Courtroom – Dispute {selectedDispute.id.slice(0,8)}</DialogTitle>
             </DialogHeader>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm space-y-2">
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-4 text-sm space-y-2">
               <p><strong>Reason:</strong> {selectedDispute.reason}</p>
               {selectedJob && (
                 <>
@@ -1083,7 +1083,7 @@ export default function AdminDashboard() {
             <div className="flex-1 overflow-y-auto space-y-2 py-2">
               {courtroomMessages?.map((msg: any) => (
                 <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
+                  <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 dark:bg-muted text-black dark:text-foreground'}`}>
                     <p className="text-sm">{msg.content}</p>
                     {msg.image_url && (
                       <a href={msg.image_url} target="_blank" rel="noopener noreferrer">
@@ -1101,7 +1101,7 @@ export default function AdminDashboard() {
               {msgImagePreview && (
                 <div className="relative w-16 h-16">
                   <img src={msgImagePreview} className="rounded-lg object-cover w-full h-full" />
-                  <X className="absolute -top-2 -right-2 h-4 w-4 bg-white text-black border border-gray-300 rounded-full cursor-pointer"
+                  <X className="absolute -top-2 -right-2 h-4 w-4 bg-white dark:bg-card text-black dark:text-foreground border border-gray-300 dark:border-border rounded-full cursor-pointer"
                      onClick={() => { setMsgImageFile(null); setMsgImagePreview(null) }} />
                 </div>
               )}

@@ -13,12 +13,12 @@ type Service = components['schemas']['ServiceOut']
 
 const statusBadge = (status: string) => {
   switch (status) {
-    case 'open': return <Badge className="bg-blue-100 text-blue-800">Open</Badge>
-    case 'assigned': return <Badge className="bg-yellow-100 text-yellow-800">Assigned</Badge>
-    case 'funded': return <Badge className="bg-green-100 text-green-800">Funded</Badge>
-    case 'in_progress': return <Badge className="bg-purple-100 text-purple-800">In Progress</Badge>
+    case 'open': return <Badge className="bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400">Open</Badge>
+    case 'assigned': return <Badge className="bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-400">Assigned</Badge>
+    case 'funded': return <Badge className="bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400">Funded</Badge>
+    case 'in_progress': return <Badge className="bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-400">In Progress</Badge>
     case 'completed': return <Badge className="bg-black text-white">Completed</Badge>
-    case 'cancelled': return <Badge className="bg-red-100 text-red-800">Canceled</Badge>
+    case 'cancelled': return <Badge className="bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400">Canceled</Badge>
     default: return <Badge>{status}</Badge>
   }
 }
@@ -67,7 +67,7 @@ export default function GlobalItemModal() {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className="sm:max-w-2xl bg-white text-black">
+      <DialogContent className="sm:max-w-2xl bg-white dark:bg-card text-black dark:text-foreground">
         {isLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-6 w-3/4" />
@@ -94,14 +94,14 @@ export default function GlobalItemModal() {
               <p className="whitespace-pre-wrap">{service.description}</p>
               <div className="flex gap-4 text-sm font-medium items-center">
                 <span>Price: {fmtPrice(parseFloat(service.price as string))}</span>
-                <Badge variant={service.is_active ? 'default' : 'secondary'} className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}>
+                <Badge variant={service.is_active ? 'default' : 'secondary'} className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 dark:bg-secondary text-gray-600 dark:text-muted-foreground'}>
                   {service.is_active ? 'Active' : 'Paused'}
                 </Badge>
               </div>
             </div>
           </>
         ) : (
-          <div className="p-4 text-center text-gray-500">Item not found.</div>
+          <div className="p-4 text-center text-gray-500 dark:text-muted-foreground">Item not found.</div>
         )}
       </DialogContent>
     </Dialog>

@@ -68,8 +68,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950 px-4 py-8">
-      <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-background px-4 py-8">
+      <Card className="w-full max-w-md bg-white dark:bg-card border-gray-200 dark:border-border shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl font-bold tracking-tight">Sign in to Gigr</CardTitle>
           <CardDescription>Enter your email or phone number and password to continue</CardDescription>
@@ -105,7 +105,7 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -128,21 +128,21 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              className="w-full bg-black text-white hover:bg-gray-800 font-semibold"
+              className="w-full bg-black text-white hover:bg-gray-800 dark:hover:bg-muted font-semibold"
               disabled={loading || !identifier.trim() || !password}
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </Button>
           </form>
 
-          <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+          <div className="mt-4 border-t border-gray-100 dark:border-border pt-4">
             <GoogleSignInButton
               onToken={handleGoogleSuccess}
               onError={(msg) => setError(msg)}
             />
           </div>
 
-          <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-4 text-center text-sm text-gray-600 dark:text-muted-foreground">
             Don't have an account?{' '}
             <Link to="/register" className="font-medium text-black dark:text-white hover:underline">
               Register

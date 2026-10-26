@@ -207,7 +207,7 @@ export default function ServiceDetailPage() {
   if (serviceError || !service) {
     return (
       <div className="text-center py-12">
-        <h2 className="text-xl font-bold text-gray-800">Service not found</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-foreground">Service not found</h2>
         <Button variant="outline" className="mt-4" onClick={() => navigate('/dashboard/services')}>Back to Services</Button>
       </div>
     )
@@ -215,7 +215,7 @@ export default function ServiceDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
-      <Button variant="ghost" onClick={() => navigate(-1)} className="pl-0 hover:bg-transparent text-gray-500 hover:text-black">
+      <Button variant="ghost" onClick={() => navigate(-1)} className="pl-0 hover:bg-transparent text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-foreground">
         <ArrowLeft className="w-4 h-4 mr-2" /> Back
       </Button>
 
@@ -227,7 +227,7 @@ export default function ServiceDetailPage() {
               <div className="w-full h-64 md:h-96 relative">
                 <img src={service.image_url} className="w-full h-full object-cover" alt={service.title} />
                 <div className="absolute top-4 right-4 flex gap-2">
-                  <Badge className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 text-gray-600'}>
+                  <Badge className={service.is_active ? 'bg-black text-white' : 'bg-gray-200 dark:bg-secondary text-gray-600 dark:text-muted-foreground'}>
                     {service.is_active ? 'Active' : 'Paused'}
                   </Badge>
                 </div>
@@ -238,25 +238,25 @@ export default function ServiceDetailPage() {
               <div className="flex justify-between items-start mb-4">
                 <h1 className="text-3xl font-bold">{service.title}</h1>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-black">{fmtPrice(parseFloat(service.price as string))}</p>
-                  <p className="text-sm text-gray-500">Base Price</p>
+                  <p className="text-2xl font-bold text-black dark:text-foreground">{fmtPrice(parseFloat(service.price as string))}</p>
+                  <p className="text-sm text-gray-500 dark:text-muted-foreground">Base Price</p>
                 </div>
               </div>
 
-              <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none mb-8 whitespace-pre-wrap text-gray-700">
+              <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none mb-8 whitespace-pre-wrap text-gray-700 dark:text-muted-foreground">
                 {service.description || 'No description provided.'}
               </div>
 
               {/* Provider Info */}
               {provider && (
-                <div className="border-t border-gray-100 pt-6 mt-6">
+                <div className="border-t border-gray-100 dark:border-border pt-6 mt-6">
                   <h3 className="text-lg font-semibold mb-4">About the Provider</h3>
                   <div className="flex items-center gap-4">
                     <Link to={`/dashboard/user/${provider.id}`} className="flex-shrink-0">
                       {provider.profile_image_url ? (
-                        <img src={provider.profile_image_url} className="w-16 h-16 rounded-full object-cover border-2 border-gray-100" />
+                        <img src={provider.profile_image_url} className="w-16 h-16 rounded-full object-cover border-2 border-gray-100 dark:border-border" />
                       ) : (
-                        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-500">
+                        <div className="w-16 h-16 rounded-full bg-gray-200 dark:bg-secondary flex items-center justify-center text-xl font-bold text-gray-500 dark:text-muted-foreground">
                           {provider.display_name?.slice(0, 2).toUpperCase()}
                         </div>
                       )}
@@ -265,7 +265,7 @@ export default function ServiceDetailPage() {
                       <Link to={`/dashboard/user/${provider.id}`} className="text-lg font-semibold hover:underline">
                         {provider.display_name}
                       </Link>
-                      <p className="text-sm text-gray-500 flex items-center gap-1">
+                      <p className="text-sm text-gray-500 dark:text-muted-foreground flex items-center gap-1">
                         <MapPin className="w-3 h-3" /> 
                         {(provider as any).location_public ? 'Location public' : 'Location private'}
                       </p>
@@ -276,11 +276,11 @@ export default function ServiceDetailPage() {
 
               {/* Reviews & Ratings */}
               {ratings && ratings.length > 0 && (
-                <div className="border-t border-gray-100 pt-6 mt-6">
+                <div className="border-t border-gray-100 dark:border-border pt-6 mt-6">
                   <div className="flex items-center gap-3 mb-6">
                     <h3 className="text-lg font-semibold">Provider Reviews</h3>
                     {ratingSummary?.average && (
-                      <div className="flex items-center gap-1 bg-yellow-50 text-yellow-700 px-2 py-1 rounded-full text-sm font-semibold border border-yellow-200">
+                      <div className="flex items-center gap-1 bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400 px-2 py-1 rounded-full text-sm font-semibold border border-yellow-200 dark:border-yellow-800">
                         <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
                         {ratingSummary.average} ({ratingSummary.count})
                       </div>
@@ -288,29 +288,29 @@ export default function ServiceDetailPage() {
                   </div>
                   <div className="space-y-6">
                     {ratings.map(rating => (
-                      <div key={rating.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                      <div key={rating.id} className="bg-gray-50 dark:bg-background p-4 rounded-xl border border-gray-100 dark:border-border">
                         <div className="flex justify-between items-start mb-3">
                           <Link to={`/dashboard/user/${rating.rater_id}`} className="flex items-center gap-2 group">
                             {rating.rater_image ? (
                               <img src={rating.rater_image} className="w-8 h-8 rounded-full object-cover" />
                             ) : (
-                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500">
+                              <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-secondary flex items-center justify-center text-xs font-bold text-gray-500 dark:text-muted-foreground">
                                 {rating.rater_name?.slice(0, 2).toUpperCase()}
                               </div>
                             )}
                             <div>
                               <span className="font-semibold text-sm group-hover:underline">{rating.rater_name}</span>
-                              <p className="text-xs text-gray-500">for {rating.job_title}</p>
+                              <p className="text-xs text-gray-500 dark:text-muted-foreground">for {rating.job_title}</p>
                             </div>
                           </Link>
                           <div className="flex items-center">
                             {[...Array(5)].map((_, i) => (
-                              <Star key={i} className={`w-3 h-3 ${i < rating.score ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 text-gray-200'}`} />
+                              <Star key={i} className={`w-3 h-3 ${i < rating.score ? 'fill-yellow-400 text-yellow-400' : 'fill-gray-200 dark:fill-muted text-gray-200'}`} />
                             ))}
                           </div>
                         </div>
                         {rating.comment && (
-                          <p className="text-sm text-gray-700 italic">"{rating.comment}"</p>
+                          <p className="text-sm text-gray-700 dark:text-muted-foreground italic">"{rating.comment}"</p>
                         )}
                       </div>
                     ))}
@@ -326,7 +326,7 @@ export default function ServiceDetailPage() {
           <Card className="bg-card text-card-foreground border-border sticky top-6">
             <CardContent className="p-6">
               <Button
-                className="w-full h-12 text-lg font-semibold bg-black text-white hover:bg-gray-800 disabled:opacity-60"
+                className="w-full h-12 text-lg font-semibold bg-black text-white hover:bg-gray-800 dark:hover:bg-muted disabled:opacity-60"
                 onClick={() => requestMutation.mutate()}
                 disabled={hasRequested || requestMutation.isPending || !service.is_active}
               >
@@ -344,7 +344,7 @@ export default function ServiceDetailPage() {
                   Message
                 </Button>
               )}
-              <p className="text-xs text-center text-gray-500 mt-3">
+              <p className="text-xs text-center text-gray-500 dark:text-muted-foreground mt-3">
                 Payment is securely held in escrow until the job is completed.
               </p>
             </CardContent>
@@ -353,19 +353,19 @@ export default function ServiceDetailPage() {
           {/* Map Location */}
           {service.latitude && service.longitude && (
             <Card className="bg-card text-card-foreground border-border overflow-hidden">
-              <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="p-4 border-b border-gray-100 dark:border-border flex items-center justify-between">
                 <h3 className="font-semibold text-sm flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-blue-500" />
                   Service Area
                 </h3>
-                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                <span className="text-xs text-gray-500 dark:text-muted-foreground bg-gray-100 dark:bg-muted px-2 py-1 rounded-full">
                   {service.radius_km}km radius
                 </span>
               </div>
               {distanceKm !== null && (
-                <div className="bg-blue-50 border-b border-blue-100 px-4 py-3 flex items-center gap-2">
+                <div className="bg-blue-50 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-800 px-4 py-3 flex items-center gap-2">
                   <Navigation className="w-4 h-4 text-blue-500" />
-                  <span className="text-sm text-blue-800 font-medium">
+                  <span className="text-sm text-blue-800 dark:text-blue-400 font-medium">
                     {distanceKm.toFixed(1)} km away
                     {routeInfo?.duration_min != null &&
                       ` · ~${Math.round(routeInfo.duration_min)} min drive`}

@@ -75,7 +75,7 @@ const queryClient = new QueryClient({
 function PageFallback() {
   return (
     <div className="flex h-screen items-center justify-center">
-      <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
+      <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-border border-t-black animate-spin" />
     </div>
   )
 }
@@ -97,7 +97,7 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   if (isLoading && !user) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
+        <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-border border-t-black animate-spin" />
       </div>
     )
   }
@@ -115,7 +115,7 @@ function App() {
   if (isLoading && !user) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-black animate-spin" />
+        <div className="h-8 w-8 rounded-full border-2 border-gray-300 dark:border-border border-t-black animate-spin" />
       </div>
     )
   }

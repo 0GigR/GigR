@@ -71,7 +71,7 @@ export default function AgentCapsule() {
     >
       <div
         className={cn(
-          'bg-gray-900 dark:bg-gray-950 border border-gray-700/60',
+          'bg-gray-900 dark:bg-background border border-gray-700/60 dark:border-border/60',
           'shadow-xl shadow-black/40 backdrop-blur-sm',
           'rounded-full transition-all duration-300 ease-in-out',
           'pointer-events-auto overflow-hidden',
@@ -97,7 +97,7 @@ export default function AgentCapsule() {
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
-                  className="w-1 h-1 rounded-full bg-white animate-bounce"
+                  className="w-1 h-1 rounded-full bg-white dark:bg-card animate-bounce"
                   style={{ animationDelay: `${i * 120}ms` }}
                 />
               ))}
@@ -118,7 +118,7 @@ export default function AgentCapsule() {
                   key={opt.value}
                   type="button"
                   onClick={() => submitCommand(opt.value)}
-                  className="text-xs px-2.5 py-1 rounded-full bg-white hover:bg-gray-200 text-black font-medium transition-colors"
+                  className="text-xs px-2.5 py-1 rounded-full bg-white dark:bg-card hover:bg-gray-200 dark:hover:bg-secondary text-black dark:text-foreground font-medium transition-colors"
                 >
                   {opt.label}
                 </button>

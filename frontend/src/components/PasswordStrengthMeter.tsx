@@ -41,7 +41,7 @@ export function computePasswordScore(password: string): {
   const passedCount = criteria.filter((c) => c.met).length
 
   if (!password) {
-    return { score: 0, label: '', color: 'text-gray-400', barColor: 'bg-gray-200 dark:bg-gray-700', criteria }
+    return { score: 0, label: '', color: 'text-gray-400', barColor: 'bg-gray-200 dark:bg-secondary', criteria }
   }
 
   if (password.length < 6) {
@@ -82,7 +82,7 @@ export default function PasswordStrengthMeter({
       {password && (
         <>
           <div className="flex items-center justify-between">
-            <span className="text-gray-500 font-medium">Password strength</span>
+            <span className="text-gray-500 dark:text-muted-foreground font-medium">Password strength</span>
             <span className={`font-semibold ${color}`}>{label}</span>
           </div>
 
@@ -94,7 +94,7 @@ export default function PasswordStrengthMeter({
                 <div
                   key={step}
                   className={`h-full rounded-full transition-colors duration-300 ${
-                    active ? barColor : 'bg-gray-200 dark:bg-gray-700'
+                    active ? barColor : 'bg-gray-200 dark:bg-secondary'
                   }`}
                 />
               )
@@ -102,7 +102,7 @@ export default function PasswordStrengthMeter({
           </div>
 
           {/* Requirement checklist */}
-          <div className="grid grid-cols-2 gap-1 pt-1 text-[11px] text-gray-500">
+          <div className="grid grid-cols-2 gap-1 pt-1 text-[11px] text-gray-500 dark:text-muted-foreground">
             {criteria.map((item) => (
               <div key={item.label} className="flex items-center gap-1.5">
                 {item.met ? (
@@ -110,7 +110,7 @@ export default function PasswordStrengthMeter({
                 ) : (
                   <X className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                 )}
-                <span className={item.met ? 'text-gray-700 dark:text-gray-300 font-medium' : 'text-gray-400'}>
+                <span className={item.met ? 'text-gray-700 dark:text-muted-foreground font-medium' : 'text-gray-400'}>
                   {item.label}
                 </span>
               </div>

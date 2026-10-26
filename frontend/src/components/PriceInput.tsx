@@ -116,7 +116,7 @@ export function PriceInput({
         </span>
       </div>
       {showEquivalent && displayMode && canonicalNgn > 0 && value !== '' && (
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-gray-500 dark:text-muted-foreground">
           = ₦{Math.round(canonicalNgn).toLocaleString()} <span className="text-gray-400">(stored in Naira)</span>
         </p>
       )}

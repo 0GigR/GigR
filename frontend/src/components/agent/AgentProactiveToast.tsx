@@ -57,7 +57,7 @@ export default function AgentProactiveToast(): React.ReactElement | null {
   return (
     <aside
       aria-label="Proactive Agent Notification"
-      className="fixed bottom-24 left-4 z-40 max-w-sm w-[calc(100vw-2rem)] rounded-2xl bg-gray-950/95 border border-violet-500/30 p-3.5 shadow-2xl backdrop-blur-md text-white animate-in fade-in slide-in-from-bottom-4 duration-200"
+      className="fixed bottom-24 left-4 z-40 max-w-sm w-[calc(100vw-2rem)] rounded-2xl bg-gray-950/95 dark:bg-background/95 border border-violet-500/30 p-3.5 shadow-2xl backdrop-blur-md text-white animate-in fade-in slide-in-from-bottom-4 duration-200"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 text-violet-400">

@@ -296,10 +296,10 @@ export default function CommandPalette(): React.ReactElement | null {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: -16 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-full max-w-2xl mt-12 md:mt-20 rounded-2xl bg-gray-950/95 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_30px_rgba(139,92,246,0.15)] overflow-hidden flex flex-col max-h-[80vh]"
+          className="relative w-full max-w-2xl mt-12 md:mt-20 rounded-2xl bg-gray-950/95 dark:bg-background/95 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_30px_rgba(139,92,246,0.15)] overflow-hidden flex flex-col max-h-[80vh]"
         >
           {/* Top Search & Voice Command Bar */}
-          <div className="relative flex items-center px-4 py-3.5 border-b border-white/10 bg-gray-900/40">
+          <div className="relative flex items-center px-4 py-3.5 border-b border-white/10 bg-gray-900/40 dark:bg-card/40">
             <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-violet-600/20 text-violet-400 mr-3 border border-violet-500/30">
               <Sparkles className="w-4 h-4 animate-pulse" />
             </div>
@@ -317,7 +317,7 @@ export default function CommandPalette(): React.ReactElement | null {
                 onKeyDown={onPaletteKeyDown}
                 placeholder="Type a command or speak to the AI agent..."
                 disabled={isSubmitting}
-                className="w-full bg-transparent text-sm md:text-base text-white placeholder-gray-400 focus:outline-none pr-8"
+                className="w-full bg-transparent text-sm md:text-base text-white placeholder-gray-400 dark:placeholder:text-muted-foreground/80 focus:outline-none pr-8"
               />
               {queryText && (
                 <button
@@ -475,7 +475,7 @@ export default function CommandPalette(): React.ReactElement | null {
           </div>
 
           {/* Palette Footer Status */}
-          <div className="px-4 py-2.5 bg-gray-900/60 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-400">
+          <div className="px-4 py-2.5 bg-gray-900/60 dark:bg-card/60 border-t border-white/5 flex items-center justify-between text-[11px] text-gray-400">
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
                 <kbd className="px-1.5 py-0.5 rounded bg-white/5 border border-white/10 font-mono text-[10px]">

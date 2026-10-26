@@ -248,7 +248,7 @@ export default function OnboardingOverlay() {
           onClick={finish}
         >
           <motion.div
-            className="relative w-full max-w-md rounded-3xl bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-md rounded-3xl bg-white dark:bg-card shadow-2xl overflow-hidden"
             initial={{ scale: 0.9, y: 30, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.9, y: 30, opacity: 0 }}
@@ -289,7 +289,7 @@ export default function OnboardingOverlay() {
                   transition={{ duration: 0.3 }}
                 >
                   <h2 className="text-2xl font-bold mb-2">{current.title}</h2>
-                  <p className="text-gray-500 dark:text-gray-400 leading-relaxed">
+                  <p className="text-gray-500 dark:text-muted-foreground leading-relaxed">
                     {current.desc}
                   </p>
                 </motion.div>
@@ -309,7 +309,7 @@ export default function OnboardingOverlay() {
                           className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm transition-colors ${
                             active
                               ? 'border-gray-900 bg-gray-900 text-white dark:border-white dark:bg-white dark:text-black'
-                              : 'border-gray-200 text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:text-gray-200'
+                              : 'border-gray-200 text-gray-700 hover:border-gray-400 dark:hover:border-border dark:border-border dark:text-foreground'
                           }`}
                         >
                           <span className="text-base leading-none">{c.symbol}</span>
@@ -329,7 +329,7 @@ export default function OnboardingOverlay() {
                 {STEPS.map((_, i) => (
                   <motion.span
                     key={i}
-                    className={`h-2 rounded-full ${i === step ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700'}`}
+                    className={`h-2 rounded-full ${i === step ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-secondary'}`}
                     animate={{ width: i === step ? 24 : 8 }}
                   />
                 ))}
@@ -348,13 +348,13 @@ export default function OnboardingOverlay() {
               )}
 
               {/* Do not show again checkbox */}
-              <div className="flex items-center justify-center gap-2 mb-4 text-sm text-gray-500">
+              <div className="flex items-center justify-center gap-2 mb-4 text-sm text-gray-500 dark:text-muted-foreground">
                 <input
                   type="checkbox"
                   id="doNotShowAgain"
                   checked={doNotShowAgain}
                   onChange={(e) => setDoNotShowAgain(e.target.checked)}
-                  className="rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                  className="rounded border-gray-300 dark:border-border text-black dark:text-foreground focus:ring-black dark:focus:ring-ring cursor-pointer"
                 />
                 <label htmlFor="doNotShowAgain" className="cursor-pointer select-none">
                   Do not show this again
@@ -366,14 +366,14 @@ export default function OnboardingOverlay() {
                   {step > 0 && (
                     <button
                       onClick={back}
-                      className="inline-flex items-center text-sm text-gray-500 hover:text-black dark:hover:text-white font-medium"
+                      className="inline-flex items-center text-sm text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white font-medium"
                     >
                       <ArrowLeft className="mr-1 h-4 w-4" /> Back
                     </button>
                   )}
                   <button
                     onClick={finish}
-                    className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                    className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-foreground"
                   >
                     {current.isFundWallet ? 'Maybe later' : 'Skip'}
                   </button>

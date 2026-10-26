@@ -88,7 +88,7 @@ export default function AnnouncementPopup() {
           onClick={close}
         >
           <motion.div
-            className="relative w-full max-w-md rounded-3xl bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
+            className="relative w-full max-w-md rounded-3xl bg-white dark:bg-card shadow-2xl overflow-hidden"
             initial={{ scale: 0.92, y: 24, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.92, y: 24, opacity: 0 }}
@@ -122,7 +122,7 @@ export default function AnnouncementPopup() {
                 Announcement
               </p>
               <h2 className="text-xl font-bold mb-2">{current.title}</h2>
-              <p className="text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap text-sm">
+              <p className="text-gray-600 dark:text-muted-foreground leading-relaxed whitespace-pre-wrap text-sm">
                 {current.message}
               </p>
 
@@ -146,7 +146,7 @@ export default function AnnouncementPopup() {
                     Open <ExternalLink className="h-3.5 w-3.5" />
                   </a>
                 ) : null}
-                <Button variant="ghost" onClick={close} className="text-gray-500">
+                <Button variant="ghost" onClick={close} className="text-gray-500 dark:text-muted-foreground">
                   Close
                 </Button>
               </div>

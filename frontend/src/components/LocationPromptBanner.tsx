@@ -103,7 +103,7 @@ export default function LocationPromptBanner({ enabled = true }: { enabled?: boo
         <button
           onClick={handleEnable}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 bg-white text-indigo-600 px-3 py-1.5 rounded font-medium hover:bg-indigo-50 transition-colors disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 bg-white dark:bg-card text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors disabled:opacity-60"
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
           {busy ? 'Locating...' : 'Enable'}

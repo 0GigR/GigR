@@ -16,12 +16,12 @@ function BackgroundBlobs() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <motion.div
-        className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-gray-200 to-gray-100 blur-3xl opacity-50"
+        className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-gradient-to-br from-gray-200 dark:from-secondary to-gray-100 dark:to-muted blur-3xl opacity-50"
         animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
         transition={{ duration: 12, repeat: Infinity, ease: 'easeInOut' }}
       />
       <motion.div
-        className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-gray-200 to-gray-100 blur-3xl opacity-50"
+        className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full bg-gradient-to-br from-gray-200 dark:from-secondary to-gray-100 dark:to-muted blur-3xl opacity-50"
         animate={{ x: [0, -40, 0], y: [0, 40, 0] }}
         transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
       />
@@ -43,22 +43,22 @@ function FeatureCard({ icon: Icon, title, description, delay }: {
       viewport={{ once: true, margin: '-50px' }}
       transition={{ duration: 0.7, delay, ease: 'easeOut' }}
       whileHover={{ scale: 1.03, rotateX: 2, rotateY: -2 }}
-      className="relative bg-white border border-gray-200 rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-shadow duration-500 group"
+      className="relative bg-white dark:bg-card border border-gray-200 dark:border-border rounded-3xl p-8 shadow-lg hover:shadow-2xl transition-shadow duration-500 group"
     >
-      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-gray-50 dark:from-background to-white dark:to-card opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       <div className="relative">
         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-700 to-black flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
           <Icon className="w-7 h-7 text-white" />
         </div>
-        <h3 className="text-2xl font-bold mb-3 text-gray-900">{title}</h3>
-        <p className="text-gray-600 leading-relaxed">{description}</p>
+        <h3 className="text-2xl font-bold mb-3 text-gray-900 dark:text-foreground">{title}</h3>
+        <p className="text-gray-600 dark:text-muted-foreground leading-relaxed">{description}</p>
       </div>
     </motion.div>
   )
 }
 
 // ---------- Typewriter text (gradient-accented word) ----------
-function TypewriterText({ texts, className = 'text-black' }: { texts: string[]; className?: string }) {
+function TypewriterText({ texts, className = 'text-black dark:text-foreground' }: { texts: string[]; className?: string }) {
   const [index, setIndex] = useState(0)
   const [displayed, setDisplayed] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
@@ -105,7 +105,7 @@ const CATEGORIES = [
 
 function CategoryMarquee() {
   return (
-    <div className="relative py-5 border-y border-gray-100 bg-gray-50/60 overflow-hidden">
+    <div className="relative py-5 border-y border-gray-100 dark:border-border bg-gray-50/60 dark:bg-background/60 overflow-hidden">
       <div
         className="flex w-max whitespace-nowrap animate-[gigr-marquee_35s_linear_infinite] hover:[animation-play-state:paused] motion-reduce:animate-none"
         aria-hidden="true"
@@ -113,7 +113,7 @@ function CategoryMarquee() {
         {[...CATEGORIES, ...CATEGORIES].map((cat, i) => (
           <span
             key={i}
-            className="mx-3 inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 px-4 py-1.5 rounded-full border border-gray-200 bg-white shadow-sm"
+            className="mx-3 inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-muted-foreground px-4 py-1.5 rounded-full border border-gray-200 dark:border-border bg-white dark:bg-card shadow-sm"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500" />
             {cat}
@@ -130,73 +130,73 @@ function PhoneMockup() {
   return (
     <div className="relative mx-auto mt-16 md:mt-20">
       {/* Floating proof chips (desktop) */}
-      <div className="absolute -left-40 top-14 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_6s_ease-in-out_infinite]">
-        <span className="w-8 h-8 rounded-full bg-green-100 text-green-700 flex items-center justify-center shrink-0">
+      <div className="absolute -left-40 top-14 hidden xl:flex items-center gap-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_6s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 flex items-center justify-center shrink-0">
           <Shield className="w-4 h-4" />
         </span>
         <div className="text-left">
-          <p className="text-xs font-bold text-gray-900">Protected payment</p>
-          <p className="text-[10px] text-gray-500">{isPayPal ? 'Held in PayPal escrow until you approve' : 'Held safely until you approve'}</p>
+          <p className="text-xs font-bold text-gray-900 dark:text-foreground">Protected payment</p>
+          <p className="text-[10px] text-gray-500 dark:text-muted-foreground">{isPayPal ? 'Held in PayPal escrow until you approve' : 'Held safely until you approve'}</p>
         </div>
       </div>
-      <div className="absolute -right-40 top-36 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_7s_ease-in-out_infinite]">
-        <span className="w-8 h-8 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+      <div className="absolute -right-40 top-36 hidden xl:flex items-center gap-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_7s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
           <Star className="w-4 h-4" />
         </span>
         <div className="text-left">
-          <p className="text-xs font-bold text-gray-900">Verified neighbor</p>
-          <p className="text-[10px] text-gray-500">5-star local vouches</p>
+          <p className="text-xs font-bold text-gray-900 dark:text-foreground">Verified neighbor</p>
+          <p className="text-[10px] text-gray-500 dark:text-muted-foreground">5-star local vouches</p>
         </div>
       </div>
-      <div className="absolute -left-32 bottom-20 hidden xl:flex items-center gap-2 bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_8s_ease-in-out_infinite]">
-        <span className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+      <div className="absolute -left-32 bottom-20 hidden xl:flex items-center gap-2 bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl px-4 py-3 shadow-xl animate-[gigr-float_8s_ease-in-out_infinite]">
+        <span className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400 flex items-center justify-center shrink-0">
           <MapPin className="w-4 h-4" />
         </span>
         <div className="text-left">
-          <p className="text-xs font-bold text-gray-900">Near you</p>
-          <p className="text-[10px] text-gray-500">2 km away</p>
+          <p className="text-xs font-bold text-gray-900 dark:text-foreground">Near you</p>
+          <p className="text-[10px] text-gray-500 dark:text-muted-foreground">2 km away</p>
         </div>
       </div>
 
       {/* Phone frame */}
-      <div className="relative aspect-[9/17] w-[250px] rounded-[2.8rem] border-[10px] border-gray-900 bg-white shadow-2xl overflow-hidden sm:w-[264px]">
+      <div className="relative aspect-[9/17] w-[250px] rounded-[2.8rem] border-[10px] border-gray-900 dark:border-border bg-white dark:bg-card shadow-2xl overflow-hidden sm:w-[264px]">
         {/* Notch */}
-        <div className="absolute top-2 inset-x-0 mx-auto w-32 h-6 bg-gray-900 rounded-full z-20" />
+        <div className="absolute top-2 inset-x-0 mx-auto w-32 h-6 bg-gray-900 dark:bg-card rounded-full z-20" />
 
         {/* Screen */}
-        <div className="flex h-full flex-col px-4 pt-14 pb-6 bg-gray-50">
+        <div className="flex h-full flex-col px-4 pt-14 pb-6 bg-gray-50 dark:bg-background">
           {/* App header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-1.5">
-              <Logo className="w-5 h-5 text-black" />
+              <Logo className="w-5 h-5 text-black dark:text-foreground" />
               <span className="text-sm font-bold">Gigr</span>
             </div>
             <div className="relative">
-              <Bell className="w-4 h-4 text-gray-600" />
+              <Bell className="w-4 h-4 text-gray-600 dark:text-muted-foreground" />
               <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-fuchsia-500" />
             </div>
           </div>
 
           {/* Job card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm">
+          <div className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl p-3 shadow-sm">
             <div className="flex items-center gap-2 mb-2">
               <span className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white text-[9px] font-bold flex items-center justify-center">AO</span>
-              <span className="text-[11px] font-semibold text-gray-900">Ada O.</span>
+              <span className="text-[11px] font-semibold text-gray-900 dark:text-foreground">Ada O.</span>
               <span className="text-[9px] text-gray-400">· Client</span>
             </div>
-            <p className="text-[13px] font-bold text-gray-900 mb-1">Fix my iPhone screen</p>
-            <p className="text-[11px] text-gray-500 line-clamp-1 mb-2">Cracked glass, need a same-day repair near Lekki Phase 1.</p>
+            <p className="text-[13px] font-bold text-gray-900 dark:text-foreground mb-1">Fix my iPhone screen</p>
+            <p className="text-[11px] text-gray-500 dark:text-muted-foreground line-clamp-1 mb-2">Cracked glass, need a same-day repair near Lekki Phase 1.</p>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-black text-gray-900">₦45,000</span>
-              <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+              <span className="text-sm font-black text-gray-900 dark:text-foreground">₦45,000</span>
+              <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">
                 <Shield className="w-2.5 h-2.5" /> Escrowed
               </span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1 text-[9px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full font-semibold">
+              <span className="inline-flex items-center gap-1 text-[9px] bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 px-1.5 py-0.5 rounded-full font-semibold">
                 <Flame className="w-2.5 h-2.5" /> Hot
               </span>
-              <span className="inline-flex items-center gap-1 text-[9px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
+              <span className="inline-flex items-center gap-1 text-[9px] bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground px-1.5 py-0.5 rounded-full">
                 4 applications
               </span>
               <span className="text-[9px] text-gray-400">2h ago</span>
@@ -204,26 +204,26 @@ function PhoneMockup() {
           </div>
 
           {/* Second card */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-3 shadow-sm mt-2 flex items-center justify-between">
+          <div className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-2xl p-3 shadow-sm mt-2 flex items-center justify-between">
             <div className="min-w-0">
-              <p className="text-[12px] font-bold text-gray-900 truncate">Clean 3-bedroom apartment</p>
-              <p className="text-[10px] text-gray-500">₦25,000 · <span className="text-indigo-600 font-medium">2 km away</span></p>
+              <p className="text-[12px] font-bold text-gray-900 dark:text-foreground truncate">Clean 3-bedroom apartment</p>
+              <p className="text-[10px] text-gray-500 dark:text-muted-foreground">₦25,000 · <span className="text-indigo-600 dark:text-indigo-400 font-medium">2 km away</span></p>
             </div>
-            <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full shrink-0">
+            <span className="inline-flex items-center gap-1 text-[9px] font-semibold bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded-full shrink-0">
               Open
             </span>
           </div>
 
           {/* Chat bubble */}
           <div className="flex justify-end mt-2">
-            <div className="bg-gray-900 text-white rounded-2xl rounded-br-sm px-3 py-2 max-w-[85%]">
+            <div className="bg-gray-900 dark:bg-card text-white rounded-2xl rounded-br-sm px-3 py-2 max-w-[85%]">
               <p className="text-[10px] leading-snug">Work submitted — review and release payment when ready</p>
               <p className="text-[8px] text-gray-400 mt-0.5 text-right">9:41 AM</p>
             </div>
           </div>
 
           {/* Fund button */}
-          <button className="w-full mt-3 bg-gray-900 text-white text-[12px] font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg">
+          <button className="w-full mt-3 bg-gray-900 dark:bg-card text-white text-[12px] font-bold py-2.5 rounded-xl flex items-center justify-center gap-1.5 shadow-lg">
             <Shield className="w-3.5 h-3.5" /> Fund Escrow
           </button>
         </div>
@@ -250,17 +250,17 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 overflow-hidden scroll-smooth">
+    <div className="min-h-screen bg-white dark:bg-card text-gray-900 dark:text-foreground overflow-hidden scroll-smooth">
       {/* Navigation */}
-      <nav className="fixed w-full top-0 z-50 backdrop-blur-lg bg-white/80 border-b border-gray-200">
+      <nav className="fixed w-full top-0 z-50 backdrop-blur-lg bg-white/80 dark:bg-card/80 border-b border-gray-200 dark:border-border">
         <div className="flex items-center justify-between px-4 md:px-6 py-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-2">
-            <Logo className="w-8 h-8 text-black" />
+            <Logo className="w-8 h-8 text-black dark:text-foreground" />
             <span className="text-xl font-bold tracking-tight">Gigr</span>
           </div>
           <button
             onClick={() => setAuthOpen(true)}
-            className="inline-flex h-12 items-center justify-center rounded-full bg-black px-6 text-base font-semibold text-white shadow-lg transition-all hover:bg-gray-800 hover:shadow-xl"
+            className="inline-flex h-12 items-center justify-center rounded-full bg-black px-6 text-base font-semibold text-white shadow-lg transition-all hover:bg-gray-800 dark:hover:bg-muted hover:shadow-xl"
           >
             Sign In
           </button>
@@ -282,13 +282,13 @@ export default function LandingPage() {
             <br />
             <TypewriterText
               texts={['neighborly', 'effortlessly', 'dependably']}
-              className="text-black"
+              className="text-black dark:text-foreground"
             />
           </h1>
-          <p className="mt-8 text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+          <p className="mt-8 text-xl md:text-2xl text-gray-600 dark:text-muted-foreground max-w-3xl mx-auto leading-relaxed">
             The neighborhood marketplace where you get quality help from{' '}
-            <strong className="text-gray-900">trusted locals</strong>, clear upfront quotes, and{' '}
-            <strong className="text-gray-900">100% payment protection</strong> on every single job.
+            <strong className="text-gray-900 dark:text-foreground">trusted locals</strong>, clear upfront quotes, and{' '}
+            <strong className="text-gray-900 dark:text-foreground">100% payment protection</strong> on every single job.
           </p>
           <div className="mt-12 flex gap-5 justify-center flex-wrap">
             <button
@@ -300,7 +300,7 @@ export default function LandingPage() {
             </button>
             <a
               href="#how-it-works"
-              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-gray-800 px-10 text-lg font-bold text-gray-800 transition-all hover:bg-gray-800 hover:text-white"
+              className="inline-flex h-12 items-center justify-center rounded-full border-2 border-gray-800 dark:border-border px-10 text-lg font-bold text-gray-800 dark:text-foreground transition-all hover:bg-gray-800 dark:hover:bg-muted hover:text-white"
             >
               Learn More
             </a>
@@ -358,13 +358,13 @@ export default function LandingPage() {
               {i < 2 && (
                 <ChevronRight className="hidden md:block absolute -right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-200" />
               )}
-              <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-gray-300 to-gray-200">{item.step}</div>
+              <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-b from-gray-300 dark:from-secondary to-gray-200 dark:to-secondary">{item.step}</div>
               <div>
-                <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-4">
-                  <item.icon className="w-6 h-6 text-black" />
+                <div className="w-12 h-12 rounded-xl bg-gray-100 dark:bg-muted flex items-center justify-center mb-4">
+                  <item.icon className="w-6 h-6 text-black dark:text-foreground" />
                 </div>
                 <h3 className="text-xl font-bold mb-2">{item.title}</h3>
-                <p className="text-gray-600">{item.desc}</p>
+                <p className="text-gray-600 dark:text-muted-foreground">{item.desc}</p>
               </div>
             </motion.div>
           ))}
@@ -421,7 +421,7 @@ export default function LandingPage() {
         <h2 className="text-4xl md:text-6xl font-bold text-center mb-6">
           Loved by neighbors everywhere
         </h2>
-        <p className="text-center text-gray-500 text-lg mb-16 max-w-2xl mx-auto">
+        <p className="text-center text-gray-500 dark:text-muted-foreground text-lg mb-16 max-w-2xl mx-auto">
           Real jobs, safe payments, and verified reputations — from the people next door.
         </p>
         <div className="grid md:grid-cols-3 gap-10">
@@ -451,7 +451,7 @@ export default function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-50px' }}
               transition={{ duration: 0.6, delay: i * 0.12 }}
-              className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm hover:shadow-xl transition-shadow duration-500 flex flex-col"
+              className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-3xl p-8 shadow-sm hover:shadow-xl transition-shadow duration-500 flex flex-col"
             >
               <Quote className="w-8 h-8 text-gray-200 mb-4" />
               <div className="flex gap-0.5 mb-4">
@@ -459,14 +459,14 @@ export default function LandingPage() {
                   <Star key={n} className="w-4 h-4 fill-amber-400 text-amber-400" />
                 ))}
               </div>
-              <p className="text-gray-700 leading-relaxed flex-1">“{t.quote}”</p>
-              <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-100">
+              <p className="text-gray-700 dark:text-muted-foreground leading-relaxed flex-1">“{t.quote}”</p>
+              <div className="flex items-center gap-3 mt-6 pt-6 border-t border-gray-100 dark:border-border">
                 <span className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white text-xs font-bold flex items-center justify-center">
                   {t.initials}
                 </span>
                 <div>
-                  <p className="text-sm font-bold text-gray-900">{t.name}</p>
-                  <p className="text-xs text-gray-500">{t.role}</p>
+                  <p className="text-sm font-bold text-gray-900 dark:text-foreground">{t.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-muted-foreground">{t.role}</p>
                 </div>
               </div>
             </motion.div>
@@ -486,7 +486,7 @@ export default function LandingPage() {
           <h2 className="text-4xl md:text-6xl font-bold mb-6">
             Ready to hire and work with confidence?
           </h2>
-          <p className="text-xl text-gray-600 mb-10">Join thousands of neighbors getting jobs done safely and easily.</p>
+          <p className="text-xl text-gray-600 dark:text-muted-foreground mb-10">Join thousands of neighbors getting jobs done safely and easily.</p>
           <div className="relative inline-block">
             <div className="absolute -inset-5 rounded-full bg-gradient-to-r from-indigo-500/30 via-fuchsia-500/30 to-violet-500/30 blur-2xl animate-pulse" />
             <button
@@ -497,29 +497,29 @@ export default function LandingPage() {
               <ArrowRight className="h-6 w-6" />
             </button>
           </div>
-          <div className="mt-10 flex items-center justify-center gap-6 flex-wrap text-sm text-gray-500">
+          <div className="mt-10 flex items-center justify-center gap-6 flex-wrap text-sm text-gray-500 dark:text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <CheckCircle className="w-4 h-4 text-green-600" /> Free to join
+              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" /> Free to join
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Shield className="w-4 h-4 text-green-600" /> 100% Escrow protected
+              <Shield className="w-4 h-4 text-green-600 dark:text-green-400" /> 100% Escrow protected
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <MessageCircle className="w-4 h-4 text-green-600" /> Verified local help
+              <MessageCircle className="w-4 h-4 text-green-600 dark:text-green-400" /> Verified local help
             </span>
           </div>
         </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="py-10 px-6 border-t border-gray-100">
+      <footer className="py-10 px-6 border-t border-gray-100 dark:border-border">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <span className="text-gray-500">© 2026 Gigr · Built for every neighborhood.</span>
-          <div className="flex items-center gap-6 text-sm text-gray-500">
-            <a href="#how-it-works" className="hover:text-gray-900 transition-colors">How it works</a>
-            <a href="#features" className="hover:text-gray-900 transition-colors">Why Gigr</a>
-            <button onClick={() => setAuthOpen(true)} className="hover:text-gray-900 transition-colors">Sign in</button>
-            <button onClick={() => setAuthOpen(true)} className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">
+          <span className="text-gray-500 dark:text-muted-foreground">© 2026 Gigr · Built for every neighborhood.</span>
+          <div className="flex items-center gap-6 text-sm text-gray-500 dark:text-muted-foreground">
+            <a href="#how-it-works" className="hover:text-gray-900 dark:hover:text-foreground transition-colors">How it works</a>
+            <a href="#features" className="hover:text-gray-900 dark:hover:text-foreground transition-colors">Why Gigr</a>
+            <button onClick={() => setAuthOpen(true)} className="hover:text-gray-900 dark:hover:text-foreground transition-colors">Sign in</button>
+            <button onClick={() => setAuthOpen(true)} className="font-semibold text-gray-900 dark:text-foreground hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
               Get Started
             </button>
           </div>

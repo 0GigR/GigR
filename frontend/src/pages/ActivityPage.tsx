@@ -114,8 +114,8 @@ function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, o
         </div>
       </CardHeader>
       <CardContent className="text-sm">
-        <p className="text-gray-600 mb-2">₦{parseFloat(job.price as string).toLocaleString()}</p>
-        {job.escrow_address && <p className="text-xs text-green-600 mb-2">Escrow: {job.escrow_address.slice(0, 8)}...</p>}
+        <p className="text-gray-600 dark:text-muted-foreground mb-2">₦{parseFloat(job.price as string).toLocaleString()}</p>
+        {job.escrow_address && <p className="text-xs text-green-600 dark:text-green-400 mb-2">Escrow: {job.escrow_address.slice(0, 8)}...</p>}
         {job.image_url && <img src={job.image_url} className="rounded-lg w-20 h-20 object-cover mb-2 cursor-pointer" onClick={() => onLightbox(job.image_url)} />}
         
         <div className="flex gap-2 flex-wrap">
@@ -137,13 +137,13 @@ function ActivityJobCard({ job, tab, onOpenContractRoom, onFund, onSubmitWork, o
               <Button size="sm" onClick={() => onAccept({ type: 'release', jobId: job.id, title: job.title })} className="bg-black text-white" disabled={acceptPending}>
                 <CheckCircle className="w-3 h-3 mr-1" /> Accept & Pay
               </Button>
-              <Button size="sm" variant="outline" onClick={() => onDispute(job.id)} className="text-red-600 hover:text-red-700">
+              <Button size="sm" variant="outline" onClick={() => onDispute(job.id)} className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-400">
                 <Flag className="w-3 h-3 mr-1" /> Dispute
               </Button>
             </>
           )}
           {(job.status === 'open' || job.status === 'assigned') && tab === 'clienting' && (
-            <Button size="sm" variant="outline" onClick={() => onCancel({ type: 'cancel', jobId: job.id, title: job.title })} className="text-red-600 hover:text-red-700" disabled={cancelPending}>
+            <Button size="sm" variant="outline" onClick={() => onCancel({ type: 'cancel', jobId: job.id, title: job.title })} className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-400" disabled={cancelPending}>
               {cancelPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
               Cancel
             </Button>
@@ -182,14 +182,14 @@ type FeedEvent = {
 }
 
 const FEED_META: Record<FeedEvent['type'], { icon: ReactNode; color: string }> = {
-  posted: { icon: <Briefcase className="w-4 h-4" />, color: 'bg-blue-100 text-blue-700' },
-  applied: { icon: <Send className="w-4 h-4" />, color: 'bg-indigo-100 text-indigo-700' },
-  hired: { icon: <UserPlus className="w-4 h-4" />, color: 'bg-green-100 text-green-700' },
-  assigned: { icon: <Zap className="w-4 h-4" />, color: 'bg-amber-100 text-amber-700' },
-  funded: { icon: <Shield className="w-4 h-4" />, color: 'bg-emerald-100 text-emerald-700' },
-  submitted: { icon: <CheckCircle className="w-4 h-4" />, color: 'bg-purple-100 text-purple-700' },
+  posted: { icon: <Briefcase className="w-4 h-4" />, color: 'bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400' },
+  applied: { icon: <Send className="w-4 h-4" />, color: 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400' },
+  hired: { icon: <UserPlus className="w-4 h-4" />, color: 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400' },
+  assigned: { icon: <Zap className="w-4 h-4" />, color: 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400' },
+  funded: { icon: <Shield className="w-4 h-4" />, color: 'bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400' },
+  submitted: { icon: <CheckCircle className="w-4 h-4" />, color: 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400' },
   completed: { icon: <Star className="w-4 h-4" />, color: 'bg-black text-white' },
-  cancelled: { icon: <X className="w-4 h-4" />, color: 'bg-red-100 text-red-700' },
+  cancelled: { icon: <X className="w-4 h-4" />, color: 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400' },
 }
 
 function FeedEventRow({ event, isLast }: { event: FeedEvent; isLast: boolean }) {
@@ -197,7 +197,7 @@ function FeedEventRow({ event, isLast }: { event: FeedEvent; isLast: boolean }) 
   const { data: counterpart } = useUserInfo(event.counterpartId)
   return (
     <div className="relative flex gap-4 pb-6 last:pb-0">
-      {!isLast && <div className="absolute left-5 top-11 bottom-0 w-px bg-gray-200 dark:bg-gray-800" />}
+      {!isLast && <div className="absolute left-5 top-11 bottom-0 w-px bg-gray-200 dark:bg-muted" />}
       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${meta.color}`}>
         {meta.icon}
       </div>
@@ -219,7 +219,7 @@ function FeedEventRow({ event, isLast }: { event: FeedEvent; isLast: boolean }) 
             />
           )}
           {event.price ? (
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            <span className="text-xs font-semibold text-gray-700 dark:text-muted-foreground">
               ₦{parseFloat(event.price).toLocaleString()}
             </span>
           ) : null}
@@ -253,17 +253,17 @@ async function uploadFile(file: File): Promise<string> {
 const statusBadge = (status: string) => {
   switch (status) {
     case 'open':
-      return <Badge className="bg-blue-100 text-blue-800">Open</Badge>
+      return <Badge className="bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400">Open</Badge>
     case 'assigned':
-      return <Badge className="bg-yellow-100 text-yellow-800">Assigned</Badge>
+      return <Badge className="bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-400">Assigned</Badge>
     case 'funded':
-      return <Badge className="bg-green-100 text-green-800">Funded</Badge>
+      return <Badge className="bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400">Funded</Badge>
     case 'in_progress':
-      return <Badge className="bg-purple-100 text-purple-800">In Progress</Badge>
+      return <Badge className="bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-400">In Progress</Badge>
     case 'completed':
       return <Badge className="bg-black text-white">Completed</Badge>
     case 'cancelled':
-      return <Badge className="bg-red-100 text-red-800">Canceled</Badge>
+      return <Badge className="bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400">Canceled</Badge>
     default:
       return <Badge>{status}</Badge>
   }
@@ -630,7 +630,7 @@ export default function ActivityPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">My Activity</h1>
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-muted-foreground">
             Track your jobs, escrow, and reputation
           </p>
         </div>
@@ -657,41 +657,41 @@ export default function ActivityPage() {
       </div>
 
       {/* Two figures worth a glance; the rest stay one tap away. */}
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+      <div className="rounded-2xl border border-gray-100 dark:border-border bg-white dark:bg-card p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 sm:gap-10">
             <div>
               <p className="text-2xl font-bold leading-none">{activeJobsCount}</p>
-              <p className="text-xs text-gray-500 mt-1">Active jobs</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Active jobs</p>
             </div>
             <div>
               <p className="text-2xl font-bold leading-none">
                 {escrowTotal ? `₦${escrowTotal.toLocaleString()}` : '—'}
               </p>
-              <p className="text-xs text-gray-500 mt-1">In escrow</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">In escrow</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowAllStats((value) => !value)}
             aria-expanded={showAllStats}
-            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+            className="shrink-0 text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white inline-flex items-center gap-1"
           >
             {showAllStats ? 'Less' : 'More stats'}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
           </button>
         </div>
         {showAllStats && (
-          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-border animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <CheckCircle className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{completedJobs.length}</span>
-              <span className="text-xs text-gray-500">Completed</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Completed</span>
             </div>
             <div className="flex items-center gap-2">
               <Send className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{myActivityFull?.applications?.length || 0}</span>
-              <span className="text-xs text-gray-500">Applications sent</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Applications sent</span>
             </div>
           </div>
         )}
@@ -838,16 +838,16 @@ export default function ActivityPage() {
               }}
             >
               {myActivityFull.applications.map((app: any) => (
-                <motion.div key={app.id} variants={{ hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 } }} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm">
+                <motion.div key={app.id} variants={{ hidden: { opacity: 0, x: -20 }, visible: { opacity: 1, x: 0 } }} className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl p-4 shadow-sm">
                   <div className="flex justify-between items-start">
                     <h3 className="font-semibold text-lg">{app.job_title}</h3>
                     <Badge variant="outline">Applied</Badge>
                   </div>
-                  <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{app.message}</p>
-                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                  <p className="text-sm text-gray-500 dark:text-muted-foreground mt-2 whitespace-pre-wrap">{app.message}</p>
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-border">
                     {app.proposed_price && <span className="text-sm font-medium">Proposed: ₦{parseFloat(app.proposed_price).toLocaleString()}</span>}
                     {app.portfolio_url && (
-                      <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline inline-flex items-center">
+                      <a href={app.portfolio_url} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center">
                         <ExternalLink className="w-3 h-3 mr-1" /> Portfolio
                       </a>
                     )}
@@ -874,7 +874,7 @@ export default function ActivityPage() {
             </DialogHeader>
 
             {/* Job info */}
-            <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+            <div className="bg-gray-50 dark:bg-background rounded-lg p-3 text-sm space-y-1">
               <p>Status: {statusBadge(contractRoomJob.status)}</p>
               <p>
                 Price: ₦
@@ -883,7 +883,7 @@ export default function ActivityPage() {
                 ).toLocaleString()}
               </p>
               {contractRoomJob.escrow_address && !contractRoomJob.escrow_address.startsWith('paypal:') && (
-                <p className="text-xs text-green-600">
+                <p className="text-xs text-green-600 dark:text-green-400">
                   Escrow: {contractRoomJob.escrow_address.slice(0, 8)}...
                 </p>
               )}
@@ -899,8 +899,8 @@ export default function ActivityPage() {
 
             {/* Pending Amendments */}
             {contractAmendments?.filter(a => a.is_accepted === null).map((amend) => (
-              <div key={amend.id} className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm space-y-2 mt-2">
-                <p className="font-bold text-yellow-800">Scope Amendment Proposed</p>
+              <div key={amend.id} className="bg-yellow-50 dark:bg-yellow-950/40 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm space-y-2 mt-2">
+                <p className="font-bold text-yellow-800 dark:text-yellow-400">Scope Amendment Proposed</p>
                 <p><strong>Reason:</strong> {amend.reason}</p>
                 <p><strong>New Price:</strong> ₦{parseFloat(amend.new_total_price as string).toLocaleString()}</p>
                 {(amend as any).image_url && <img src={(amend as any).image_url} className="rounded-lg w-full max-h-32 object-cover mt-2 cursor-pointer" onClick={() => setLightboxSrc((amend as any).image_url)} />}
@@ -927,7 +927,7 @@ export default function ActivityPage() {
                   </div>
                 )}
                 {contractRoomJob?.provider_id === user?.id && (
-                  <p className="text-xs text-yellow-600">Waiting for client to accept...</p>
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400">Waiting for client to accept...</p>
                 )}
               </div>
             ))}
@@ -947,7 +947,7 @@ export default function ActivityPage() {
                     className={`max-w-[75%] rounded-lg p-3 ${
                       msg.sender_id === user?.id
                         ? 'bg-black text-white'
-                        : 'bg-gray-100 text-black'
+                        : 'bg-gray-100 dark:bg-muted text-black dark:text-foreground'
                     }`}
                   >
                     <ChatMessageContent
@@ -968,7 +968,7 @@ export default function ActivityPage() {
               <div className="border-t pt-2 flex flex-col gap-2">
                 <div className="flex gap-2 items-center">
                   <label className="cursor-pointer">
-                    <ImagePlus className="w-5 h-5 text-gray-500 hover:text-black" />
+                    <ImagePlus className="w-5 h-5 text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-foreground" />
                     <input
                       type="file"
                       accept="image/*, .heic, .heif, .webp"
@@ -1157,7 +1157,7 @@ export default function ActivityPage() {
                 </button>
               ))}
             </div>
-            <p className="text-center text-sm text-gray-500">
+            <p className="text-center text-sm text-gray-500 dark:text-muted-foreground">
               {ratingScore === 5 ? 'Excellent' : ratingScore === 4 ? 'Good' : ratingScore === 3 ? 'Average' : ratingScore === 2 ? 'Poor' : 'Terrible'}
             </p>
             <textarea
@@ -1165,7 +1165,7 @@ export default function ActivityPage() {
               value={ratingComment}
               onChange={e => setRatingComment(e.target.value)}
               rows={3}
-              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm resize-none focus:outline-none"
+              className="w-full rounded-md border border-gray-200 dark:border-border px-3 py-2 text-sm resize-none focus:outline-none"
             />
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setRatingJobId(null)}>Cancel</Button>
@@ -1197,7 +1197,7 @@ export default function ActivityPage() {
               rows={4}
             />
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setDisputeJobId(null)} className="border-gray-200">
+              <Button variant="outline" onClick={() => setDisputeJobId(null)} className="border-gray-200 dark:border-border">
                 Cancel
               </Button>
               <Button

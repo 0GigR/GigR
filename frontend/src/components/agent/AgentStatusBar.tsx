@@ -54,7 +54,7 @@ export default function AgentStatusBar(): React.ReactElement | null {
     >
       <span className={`w-2 h-2 rounded-full ${indicatorDotClass}`} />
       <span className="font-mono text-[10px] font-bold">{statusLabel}</span>
-      <span className="max-w-[140px] truncate text-gray-700 dark:text-gray-200">
+      <span className="max-w-[140px] truncate text-gray-700 dark:text-foreground">
         {activeTask.command_text}
       </span>
       {isRunning ? (

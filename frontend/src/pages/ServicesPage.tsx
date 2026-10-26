@@ -94,7 +94,7 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
               lastSeenAt={(provider as any)?.last_seen_at}
             />
             {!!(provider as any)?.vouches_received_count && (provider as any).vouches_received_count > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-medium">
+              <span className="inline-flex items-center gap-1 text-xs bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 px-2 py-0.5 rounded-full font-medium">
                 <BadgeCheck className="w-3 h-3" />
                 {(provider as any).vouches_received_count} vouch{(provider as any).vouches_received_count !== 1 ? 'es' : ''}
               </span>
@@ -113,16 +113,16 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
           <Link to={`/dashboard/services/${service.id}`} className="hover:underline decoration-2 underline-offset-2">
             <CardTitle className="text-lg font-semibold">{service.title}</CardTitle>
           </Link>
-          <Badge className={service.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 font-medium text-xs' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-gray-800 dark:text-gray-400 font-medium text-xs'}>
+          <Badge className={service.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 font-medium text-xs' : 'bg-gray-100 text-gray-600 border border-gray-200 dark:border-border dark:bg-muted dark:text-muted-foreground font-medium text-xs'}>
             {service.is_active ? 'Active' : 'Paused'}
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="text-sm text-gray-600">
+      <CardContent className="text-sm text-gray-600 dark:text-muted-foreground">
         <div>
           <p className={`mb-1 ${!showFullDesc ? 'line-clamp-2' : ''}`}>{service.description}</p>
           {service.description && service.description.length > 100 && (
-            <button className="text-xs text-blue-600 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
+            <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline" onClick={() => setShowFullDesc(!showFullDesc)}>
               {showFullDesc ? 'See less' : 'See more'}
             </button>
           )}
@@ -146,21 +146,21 @@ function ServiceCard({ service, onEdit, onDelete, onRequest, hasRequested, isReq
       <CardFooter className="pt-4 flex gap-2 justify-end items-center">
         {isOwner ? (
           <>
-            <Button size="sm" variant="ghost" onClick={() => onEdit(service)} className="text-gray-600 hover:text-black">
+            <Button size="sm" variant="ghost" onClick={() => onEdit(service)} className="text-gray-600 dark:text-muted-foreground hover:text-black dark:hover:text-foreground">
               <Edit className="w-4 h-4 mr-1" /> Edit
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => onDelete(service)} className="text-gray-600 hover:text-red-600">
+            <Button size="sm" variant="ghost" onClick={() => onDelete(service)} className="text-gray-600 dark:text-muted-foreground hover:text-red-600 dark:hover:text-red-400">
               <Trash2 className="w-4 h-4 mr-1" /> Delete
             </Button>
           </>
         ) : (
           <div className="flex w-full justify-between items-center">
-            <Link to={`/dashboard/services/${service.id}`} className="text-sm font-medium text-blue-600 hover:underline">
+            <Link to={`/dashboard/services/${service.id}`} className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline">
               View details →
             </Link>
             <div className="flex items-center gap-2">
               {hasRequested && (
-                <span className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                <span className="inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground px-2 py-1 rounded-full">
                   <Send className="w-3 h-3" /> Requested
                 </span>
               )}
@@ -515,8 +515,8 @@ export default function ServicesPage() {
           with the primary action. */}
       {/* Pinned while scrolling: on a long list the view switcher used to scroll
           away, so you had to go back to the top to change view. */}
-      <div className="sticky top-14 z-30 -mx-4 px-4 py-2 bg-white/90 dark:bg-gray-950/90 backdrop-blur border-b border-gray-100 dark:border-gray-800">
-      <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900">
+      <div className="sticky top-14 z-30 -mx-4 px-4 py-2 bg-white/90 dark:bg-background/90 backdrop-blur border-b border-gray-100 dark:border-border">
+      <div className="inline-flex rounded-xl border border-gray-200 dark:border-border p-0.5 bg-gray-50 dark:bg-card">
         {([
           ['browse', 'Browse', Search],
           ['map', 'Map', MapPin],
@@ -530,7 +530,7 @@ export default function ServicesPage() {
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               activeTab === value
                 ? 'bg-black text-white dark:bg-white dark:text-black shadow-sm'
-                : 'text-gray-500 hover:text-black dark:hover:text-white'
+                : 'text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white'
             }`}
           >
             <Icon className="w-4 h-4" />
@@ -543,7 +543,7 @@ export default function ServicesPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Services</h1>
-          <p className="text-gray-500">{activeTab === 'browse' ? 'Discover services in your neighborhood' : activeTab === 'map' ? 'See activity around you' : 'Manage your offerings'}</p>
+          <p className="text-gray-500 dark:text-muted-foreground">{activeTab === 'browse' ? 'Discover services in your neighborhood' : activeTab === 'map' ? 'See activity around you' : 'Manage your offerings'}</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           {activeTab !== 'map' && (
@@ -558,7 +558,7 @@ export default function ServicesPage() {
               </SelectContent>
             </Select>
           )}
-          <Button variant="outline" onClick={handleNearbySearch} disabled={locLoading} className="border-gray-200" title="Refresh nearby search">
+          <Button variant="outline" onClick={handleNearbySearch} disabled={locLoading} className="border-gray-200 dark:border-border" title="Refresh nearby search">
             <MapPin className="w-4 h-4" />
             <span className="sr-only">Refresh nearby search</span>
           </Button>
@@ -573,7 +573,7 @@ export default function ServicesPage() {
 
                 {/* Category search & create */}
                 <div>
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-400">Category *</label>
+                  <label className="text-xs font-medium text-gray-600 dark:text-muted-foreground">Category *</label>
                   {!formData.category_id ? (
                     <div className="relative mt-1">
                       <Input placeholder="Search or type a new category..." value={catSearch}
@@ -590,7 +590,7 @@ export default function ServicesPage() {
                       {catSearch && catSearchResults.length > 0 && (
                         <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
                           {catSearchResults.map(cat => (
-                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer text-sm" onClick={() => {
+                            <div key={cat.id} className="px-4 py-2 hover:bg-gray-100 dark:hover:bg-muted cursor-pointer text-sm" onClick={() => {
                               setFormData({...formData, category_id: cat.id})
                               setCatSearch(cat.name)
                               setCatSearchResults([])
@@ -602,7 +602,7 @@ export default function ServicesPage() {
                       )}
                       {catSearch && catSearchResults.length === 0 && (
                         <div className="absolute z-20 w-full bg-background border border-border rounded-lg mt-1 p-2 shadow-lg">
-                          <p className="text-sm text-gray-500 mb-2">No matches. Create "{catSearch}"</p>
+                          <p className="text-sm text-gray-500 dark:text-muted-foreground mb-2">No matches. Create "{catSearch}"</p>
                           <Button size="sm" onClick={() => createCategoryMutation.mutate(catSearch.trim())} disabled={!catSearch.trim()} className="w-full bg-black text-white">
                             <Plus className="w-4 h-4 mr-1" /> Create "{catSearch}"
                           </Button>
@@ -611,7 +611,7 @@ export default function ServicesPage() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{catSearch}</span>
+                      <span className="text-sm bg-gray-100 dark:bg-muted px-3 py-1 rounded-full">{catSearch}</span>
                       <Button size="sm" variant="ghost" onClick={() => { setFormData({...formData, category_id: ''}); setCatSearch('') }}>
                         <X className="w-4 h-4" />
                       </Button>
@@ -633,8 +633,8 @@ export default function ServicesPage() {
                 <Textarea rows={2} placeholder="Description (optional)" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
 
                 {/* Collapsible: Advanced Pricing (Range) */}
-                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(formData.min_price || formData.max_price)}>
-                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                <details className="group border border-gray-200 dark:border-border rounded-xl p-3 text-xs" open={Boolean(formData.min_price || formData.max_price)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-muted-foreground">
                     <span>Price Range / Negotiation (Optional)</span>
                     <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
                   </summary>
@@ -648,8 +648,8 @@ export default function ServicesPage() {
                 </details>
 
                 {/* Collapsible: Photo Upload */}
-                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(imagePreview)}>
-                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                <details className="group border border-gray-200 dark:border-border rounded-xl p-3 text-xs" open={Boolean(imagePreview)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-muted-foreground">
                     <span>Service Photo (Optional)</span>
                     <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
                   </summary>
@@ -666,7 +666,7 @@ export default function ServicesPage() {
                     />
                     {imagePreview ? (
                       <div className="relative w-28 h-28 mx-auto">
-                        <img src={imagePreview} className="rounded-lg object-cover w-full h-full border border-gray-200 dark:border-gray-700" />
+                        <img src={imagePreview} className="rounded-lg object-cover w-full h-full border border-gray-200 dark:border-border" />
                         <X className="absolute -top-2 -right-2 h-5 w-5 bg-red-600 text-white rounded-full p-0.5 cursor-pointer shadow" onClick={() => { setImageFile(null); setImagePreview(null) }} />
                       </div>
                     ) : (
@@ -678,17 +678,17 @@ export default function ServicesPage() {
                 </details>
 
                 {/* Collapsible: Location & Map Pin */}
-                <details className="group border border-gray-200 dark:border-gray-800 rounded-xl p-3 text-xs" open={Boolean(useCustomLocation)}>
-                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-gray-300">
+                <details className="group border border-gray-200 dark:border-border rounded-xl p-3 text-xs" open={Boolean(useCustomLocation)}>
+                  <summary className="flex items-center justify-between cursor-pointer font-medium select-none list-none text-gray-700 dark:text-muted-foreground">
                     <span className="truncate pr-2">Location: {address || (latitude ? `${latitude.toFixed(3)}, ${longitude?.toFixed(3)}` : 'Current GPS')}</span>
                     <ChevronDown className="w-4 h-4 shrink-0 transition-transform group-open:rotate-180 text-gray-400" />
                   </summary>
                   <div className="pt-2.5 space-y-2">
-                    <div className="text-gray-500">
+                    <div className="text-gray-500 dark:text-muted-foreground">
                       {locLoading ? 'Getting location...' : locError ? (
                         <span className="text-red-500 flex items-center gap-1"><X className="w-3 h-3 inline" />{locError} <Button size="sm" variant="ghost" onClick={refreshLoc}><RefreshCw className="w-3 h-3" /></Button></span>
                       ) : address ? (
-                        <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 inline text-gray-500" /> {address}</span>
+                        <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 inline text-gray-500 dark:text-muted-foreground" /> {address}</span>
                       ) : `Lat: ${latitude?.toFixed(4)}, Lon: ${longitude?.toFixed(4)}`}
                     </div>
 
@@ -707,7 +707,7 @@ export default function ServicesPage() {
                       <label htmlFor="custom-location-service" className="font-medium cursor-pointer">Set custom map location</label>
                     </div>
                     {useCustomLocation && customLocation && (
-                      <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700">
+                      <div className="mt-2 rounded-lg overflow-hidden border border-gray-200 dark:border-border">
                         <LocationPicker 
                           latitude={customLocation.lat} 
                           longitude={customLocation.lng} 
@@ -719,8 +719,8 @@ export default function ServicesPage() {
                 </details>
 
                 <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="border-gray-200">Cancel</Button>
-                  <Button size="sm" onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
+                  <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="border-gray-200 dark:border-border">Cancel</Button>
+                  <Button size="sm" onClick={handleCreateOrUpdate} className="bg-black text-white hover:bg-gray-800 dark:hover:bg-muted" disabled={locLoading || isCreating || createMutation.isPending || updateMutation.isPending}>
                     {isCreating || createMutation.isPending || updateMutation.isPending
                       ? (editService ? 'Saving...' : 'Creating...')
                       : (editService ? 'Save Changes' : 'Create')}
@@ -739,8 +739,8 @@ export default function ServicesPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
             <Input placeholder="Search services..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleTextSearch()} className="pl-10 bg-background border-border" />
           </div>
-          <Button variant="outline" onClick={handleTextSearch} disabled={searchLoading} className="border-gray-200">{searchLoading ? 'Searching...' : 'Search'}</Button>
-          {searchResults && <Button variant="ghost" size="sm" onClick={clearSearch} className="text-gray-500"><X className="w-4 h-4 mr-1" /> Clear</Button>}
+          <Button variant="outline" onClick={handleTextSearch} disabled={searchLoading} className="border-gray-200 dark:border-border">{searchLoading ? 'Searching...' : 'Search'}</Button>
+          {searchResults && <Button variant="ghost" size="sm" onClick={clearSearch} className="text-gray-500 dark:text-muted-foreground"><X className="w-4 h-4 mr-1" /> Clear</Button>}
         </div>
       )}
 
@@ -758,9 +758,9 @@ export default function ServicesPage() {
                 onRadiusChange={setRadius}
               />
             ) : (
-              <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-border rounded-xl bg-gray-50 dark:bg-background">
                 <MapPin className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">Enable location to view the neighborhood map.</p>
+                <p className="text-gray-500 dark:text-muted-foreground">Enable location to view the neighborhood map.</p>
               </div>
             )}
           </div>
@@ -776,7 +776,7 @@ export default function ServicesPage() {
             <h2 className="text-lg font-semibold mb-4">Browse Services</h2>
             {nearbyLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {[1,2,3,4].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
+                {[1,2,3,4].map(i => <Card key={i} className="bg-gray-50 dark:bg-background"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
               </div>
             ) : processedNearby.length ? (
               <>
@@ -794,9 +794,9 @@ export default function ServicesPage() {
                 )}
               </>
             ) : (
-              <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-border rounded-xl bg-gray-50 dark:bg-background">
                 <MapPin className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">No services found nearby. Try a wider search or create your own.</p>
+                <p className="text-gray-500 dark:text-muted-foreground">No services found nearby. Try a wider search or create your own.</p>
               </div>
             )}
           </div>
@@ -818,7 +818,7 @@ export default function ServicesPage() {
                       toast.error(extractError(err, 'Failed to sync service radius'))
                     }
                   }}
-                  className="text-xs h-8 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="text-xs h-8 border-gray-200 dark:border-border text-gray-700 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted"
                 >
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
                   Sync all services to current radius ({radius > 0 ? `${radius} km` : '25 km'})
@@ -827,16 +827,16 @@ export default function ServicesPage() {
             </div>
             {myLoading ? (
               <div className="grid gap-4 md:grid-cols-2">
-                {[1,2].map(i => <Card key={i} className="bg-gray-50"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
+                {[1,2].map(i => <Card key={i} className="bg-gray-50 dark:bg-background"><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full mb-2" /><Skeleton className="h-4 w-1/2" /></CardContent></Card>)}
               </div>
             ) : processedMine.length ? (
               <div className="grid gap-4 md:grid-cols-2">
                 {processedMine.map(s => <ServiceCard key={s.id} service={s} onEdit={handleEdit} onDelete={handleDelete} onRequest={handleRequest} hasRequested={requestedServiceIds.has(s.id)} isRequesting={requestingId === s.id} />)}
               </div>
             ) : (
-              <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+              <div className="text-center py-12 border border-dashed border-gray-200 dark:border-border rounded-xl bg-gray-50 dark:bg-background">
                 <Plus className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500">You haven't created any services yet.</p>
+                <p className="text-gray-500 dark:text-muted-foreground">You haven't created any services yet.</p>
               </div>
             )}
           </div>

@@ -34,17 +34,17 @@ interface AdminLedger {
 }
 
 const KIND_TONE: Record<string, string> = {
-  order_created: 'bg-gray-100 text-gray-700',
-  captured: 'bg-blue-100 text-blue-800',
-  payout_sent: 'bg-green-100 text-green-800',
-  refunded: 'bg-purple-100 text-purple-800',
-  failed: 'bg-red-100 text-red-800',
+  order_created: 'bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground',
+  captured: 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400',
+  payout_sent: 'bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400',
+  refunded: 'bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-400',
+  failed: 'bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400',
 }
 
 function KindCell({ value }: ICellRendererParams<LedgerEvent, string>) {
   if (!value) return null
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_TONE[value] ?? 'bg-gray-100 text-gray-700'}`}>
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${KIND_TONE[value] ?? 'bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground'}`}>
       {KIND_LABEL[value] ?? value}
     </span>
   )
@@ -62,8 +62,8 @@ function useIsDark() {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-3 dark:border-gray-800 dark:bg-gray-900">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
+    <div className="rounded-xl border border-gray-100 bg-white p-3 dark:border-border dark:bg-card">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-muted-foreground">{label}</p>
       <p className={`mt-0.5 text-xl font-bold ${tone}`}>{value}</p>
     </div>
   )
@@ -121,16 +121,16 @@ export function PaymentsLedger({ scope }: { scope: 'admin' | 'mine' }) {
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
   if (isError || !data) {
-    return <p className="text-sm text-red-600">Couldn't load the payments ledger.</p>
+    return <p className="text-sm text-red-600 dark:text-red-400">Couldn't load the payments ledger.</p>
   }
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Held in escrow" value={fmt(data.totals.held_in_escrow)} tone="text-blue-700" />
-        <Stat label="Captured" value={fmt(data.totals.captured)} tone="text-gray-900 dark:text-gray-100" />
-        <Stat label="Paid out" value={fmt(data.totals.paid_out)} tone="text-green-700" />
-        <Stat label="Refunded" value={fmt(data.totals.refunded)} tone="text-purple-700" />
+        <Stat label="Held in escrow" value={fmt(data.totals.held_in_escrow)} tone="text-blue-700 dark:text-blue-400" />
+        <Stat label="Captured" value={fmt(data.totals.captured)} tone="text-gray-900 dark:text-foreground" />
+        <Stat label="Paid out" value={fmt(data.totals.paid_out)} tone="text-green-700 dark:text-green-400" />
+        <Stat label="Refunded" value={fmt(data.totals.refunded)} tone="text-purple-700 dark:text-purple-400" />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
