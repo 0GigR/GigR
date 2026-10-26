@@ -20,12 +20,19 @@ import {
   AlertTriangle,
   Bot,
   Brain,
+  Briefcase,
+  ChevronDown,
   CircleAlert,
+  FolderOpen,
   Loader2,
+  MessageSquare,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  Star,
+  Tag,
   Trash2,
+  User,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { extractError } from '@/lib/api'
@@ -59,6 +66,7 @@ import {
   type MemoryGroup,
   type MemoryVerification,
   type VerificationTone,
+  type FactCategory,
 } from '@/lib/agentMemory'
 
 const VERIFICATION_STYLES: Record<VerificationTone, string> = {
@@ -68,6 +76,31 @@ const VERIFICATION_STYLES: Record<VerificationTone, string> = {
     'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300',
   unavailable:
     'border-gray-200 bg-gray-100 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300',
+}
+
+// One icon and one restrained accent per category, so a section is recognisable
+// before its heading is read. The accents stay in the palette the rest of the
+// dashboard uses; they are not a status signal.
+const FACT_CATEGORY_ICONS: Record<FactCategory, ReactNode> = {
+  about: <User className="w-4 h-4" />,
+  jobs: <Briefcase className="w-4 h-4" />,
+  services: <Tag className="w-4 h-4" />,
+  messages: <MessageSquare className="w-4 h-4" />,
+  ratings: <Star className="w-4 h-4" />,
+  other: <FolderOpen className="w-4 h-4" />,
+}
+
+const FACT_CATEGORY_ACCENTS: Record<FactCategory, string> = {
+  about:
+    'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
+  jobs: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
+  services:
+    'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
+  messages:
+    'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
+  ratings: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300',
+  other:
+    'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
 
 function httpStatus(error: unknown): number | null {
@@ -302,6 +335,12 @@ function MemoryFactsSection({
   onRetry: () => void
   onOpenAgent: () => void
 }) {
+  // Hooks run before every early return: the section is rendered while loading,
+  // then with facts, and the state must keep its slot across those renders.
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<FactCategory>>(
+    new Set(),
+  )
+
   const retryButton = (label: string) => (
     <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
       {retrying ? (
@@ -379,46 +418,106 @@ function MemoryFactsSection({
 
   const count = facts.length
   const factGroups = groupFactsByCategory(facts)
+  const allCollapsed =
+    factGroups.length > 0 && factGroups.every((group) => collapsedGroups.has(group.id))
+
+  const toggleGroup = (id: FactCategory) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    setCollapsedGroups(
+      allCollapsed ? new Set() : new Set(factGroups.map((group) => group.id)),
+    )
+  }
+
   return (
-    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100">What Gigr remembers</h2>
-        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
-          {count}
-        </span>
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            What Gigr remembers
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {count} {count === 1 ? 'thing' : 'things'} Gigr remembers, grouped by what each
+            sentence is about.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleAll}
+          className="h-7 px-2 text-xs text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-300"
+        >
+          {allCollapsed ? 'Expand all' : 'Collapse all'}
+        </Button>
       </div>
-      <p className="text-sm text-gray-500 mt-1">
-        {count} {count === 1 ? 'thing' : 'things'} Gigr remembers, grouped by what each
-        sentence is about.
-      </p>
-      <div className="mt-5 space-y-5">
-        {factGroups.map((group) => (
-          <div
-            key={group.id}
-            className="border-t border-gray-100 dark:border-gray-800 pt-4 first:border-t-0 first:pt-0"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {group.label}
-              </h3>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
-                {group.entries.length}
-              </span>
-            </div>
-            <ol className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-              {group.entries.map((fact, index) => (
-                <li
-                  key={`${group.id}-${index}-${fact.text}`}
-                  className="py-3 first:pt-0 last:pb-0 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+
+      <div className="space-y-3">
+        {factGroups.map((group) => {
+          const isCollapsed = collapsedGroups.has(group.id)
+          return (
+            <div
+              key={group.id}
+              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.id)}
+                aria-expanded={!isCollapsed}
+                aria-controls={`fact-group-${group.id}`}
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500/40"
+              >
+                <span
+                  className={cn(
+                    'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                    FACT_CATEGORY_ACCENTS[group.id],
+                  )}
                 >
-                  {fact.text}
-                </li>
-              ))}
-            </ol>
-          </div>
-        ))}
+                  {FACT_CATEGORY_ICONS[group.id]}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
+                    {group.label}
+                  </span>
+                  <span className="block text-[11px] text-gray-500 mt-0.5">
+                    {group.entries.length}{' '}
+                    {group.entries.length === 1 ? 'thing' : 'things'}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'w-4 h-4 text-gray-400 transition-transform duration-200',
+                    isCollapsed && '-rotate-90',
+                  )}
+                />
+              </button>
+              {!isCollapsed && (
+                <ol
+                  id={`fact-group-${group.id}`}
+                  className="px-4 pb-3 divide-y divide-gray-100 dark:divide-gray-800 animate-in fade-in duration-200"
+                >
+                  {group.entries.map((fact, index) => (
+                    <li
+                      key={`${group.id}-${index}-${fact.text}`}
+                      className="py-3 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+                    >
+                      {fact.text}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )
+        })}
       </div>
-      <p className="text-[11px] leading-relaxed text-gray-400 mt-4">
+
+      <p className="text-[11px] leading-relaxed text-gray-400">
         {source === 'walrus'
           ? 'Read from Walrus Memory. Within each group, the most relevant sentence comes first. This is what one memory recall returned.'
           : 'This is what one memory recall returned.'}
