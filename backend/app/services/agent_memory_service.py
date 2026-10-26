@@ -42,6 +42,7 @@ from ..crud.agent_memory import (
     load_memory,
     merge_memory,
 )
+from .memory_fact_category import categorize_fact
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -136,6 +137,19 @@ class MemoryContext:
 
 
 @dataclass(frozen=True)
+class ReviewedFact:
+    """One recalled sentence and the display category it belongs to.
+
+    ``text`` is exactly what the relayer returned, after trimming. ``category``
+    is a stable identifier from :mod:`.memory_fact_category`; the client owns the
+    label it shows, so the wording can change without changing this contract.
+    """
+
+    text: str
+    category: str
+
+
+@dataclass(frozen=True)
 class RecalledFacts:
     """The sentences one read-only review found, and why a review found none.
 
@@ -148,11 +162,12 @@ class RecalledFacts:
     or try again in a moment.
 
     ``facts`` holds the stored texts verbatim, in the order the relayer ranked
-    them. Nothing is parsed out of them and nothing is invented: a page that
-    shows these lines shows exactly what the store returned.
+    them, each with its category. Nothing is parsed out of them and nothing is
+    invented: a page that shows these lines shows exactly what the store
+    returned, grouped by a rule this module owns.
     """
 
-    facts: tuple[str, ...] = ()
+    facts: tuple[ReviewedFact, ...] = ()
     source: str = "none"
     reason: str = "ok"
 
@@ -455,10 +470,14 @@ class AgentMemoryService:
             # The extraction is inside the guard as well: a gateway that answers
             # with something other than recalled entries is a dependency failure,
             # not a reason to fail the page.
-            facts = tuple(
+            texts = (
                 memory.text.strip()
                 for memory in _deduplicate_recalled(memories)
                 if memory.text.strip()
+            )
+            facts = tuple(
+                ReviewedFact(text=text, category=categorize_fact(text))
+                for text in texts
             )
         except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
             logger.warning(

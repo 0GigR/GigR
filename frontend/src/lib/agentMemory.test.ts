@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import {
+  asFactCategory,
   failedVerification,
   findSuiReference,
   formatMemoryValue,
+  groupFactsByCategory,
   groupMemory,
   humanizeMemoryKey,
   normalizeVerification,
   verificationLabel,
   verificationReasonText,
   verificationTone,
+  type FactEntry,
   type MemoryVerification,
 } from './agentMemory'
 
@@ -199,5 +202,37 @@ describe('verificationReasonText', () => {
   it('does not echo a certified reason when the answer is not verified', () => {
     const text = verificationReasonText(verification({ verified: false, reason: 'certified_blob' }))
     expect(text).toBe('The check did not confirm this reference.')
+  })
+})
+
+describe('groupFactsByCategory', () => {
+  const facts: FactEntry[] = [
+    { text: 'Bola Ade has messaged about Fix sink.', category: 'messages' },
+    { text: 'Bola Ade is based in Ihiagwa.', category: 'about' },
+    { text: 'Bola Ade has messaged about Move furniture.', category: 'messages' },
+  ]
+
+  it('groups in the page order and keeps the server order inside a group', () => {
+    const groups = groupFactsByCategory(facts)
+
+    expect(groups.map((group) => group.id)).toEqual(['about', 'messages'])
+    expect(groups[0].label).toBe('About you')
+    expect(groups[1].label).toBe('Messages and activity')
+    expect(groups[1].entries.map((entry) => entry.text)).toEqual([
+      'Bola Ade has messaged about Fix sink.',
+      'Bola Ade has messaged about Move furniture.',
+    ])
+  })
+
+  it('omits an empty category instead of rendering a heading with no rows', () => {
+    expect(groupFactsByCategory([])).toEqual([])
+    expect(groupFactsByCategory(facts).some((group) => group.id === 'jobs')).toBe(false)
+  })
+
+  it('coerces an unknown or missing category to other rather than dropping the fact', () => {
+    expect(asFactCategory('jobs')).toBe('jobs')
+    expect(asFactCategory('unknown')).toBe('other')
+    expect(asFactCategory(undefined)).toBe('other')
+    expect(asFactCategory('toString')).toBe('other')
   })
 })

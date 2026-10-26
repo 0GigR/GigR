@@ -30,6 +30,7 @@ from app.services.agent_memory_service import (
     MEMORY_REVIEW_TIMEOUT_SECONDS,
     AgentMemoryService,
     RecalledFacts,
+    ReviewedFact,
 )
 
 
@@ -105,11 +106,39 @@ async def test_review_returns_walrus_sentences_deduplicated_trimmed_and_read_onl
 
     result = await _review(monkeypatch, gateway)
 
-    assert result.facts == (duplicate, "Kosi lives in Yaba")
+    assert [fact.text for fact in result.facts] == [
+        duplicate,
+        "Kosi lives in Yaba",
+    ]
     assert result.count == 2
     assert result.source == "walrus"
     assert result.reason == "ok"
     assert gateway.remember_calls == []
+
+
+async def test_review_categorizes_each_fact_without_changing_its_text(monkeypatch):
+    """The page needs groups; the sentences must stay exactly what was stored.
+
+    The category is assigned by the service, not the browser, so every client
+    groups the same memory the same way. The text itself is not edited.
+    """
+    sentences = (
+        "Kosi hired a provider for Fix sink at 8000 naira (completed, 2026).",
+        "Kosi has messaged about Fix sink.",
+        "Kosi is based in Ihiagwa.",
+        "A dispute was raised on a job Kosi messaged about.",
+    )
+    gateway = RecordingGateway(tuple(recalled(text) for text in sentences))
+
+    result = await _review(monkeypatch, gateway)
+
+    assert [fact.text for fact in result.facts] == list(sentences)
+    assert [fact.category for fact in result.facts] == [
+        "jobs",
+        "messages",
+        "about",
+        "ratings",
+    ]
 
 
 async def test_review_asks_the_users_namespace_with_the_bounded_broad_default(
@@ -264,12 +293,18 @@ class StubMemoryService:
 async def test_facts_endpoint_returns_the_documented_shape(monkeypatch):
     """The page consumes facts, count, source and reason, and nothing else.
 
-    The entries are objects with a text field, the count is the number of
+    Each entry carries its text and its category; the count is the number of
     entries, and the query parameter reaches the service.
     """
     service = StubMemoryService(
         RecalledFacts(
-            facts=("Kosi lives in Yaba", "Kosi paid 15000 naira"),
+            facts=(
+                ReviewedFact(text="Kosi is based in Yaba.", category="about"),
+                ReviewedFact(
+                    text="Kosi hired a provider for Fix sink at 8000 naira.",
+                    category="jobs",
+                ),
+            ),
             source="walrus",
             reason="ok",
         )
@@ -285,8 +320,11 @@ async def test_facts_endpoint_returns_the_documented_shape(monkeypatch):
 
     assert body == {
         "facts": [
-            {"text": "Kosi lives in Yaba"},
-            {"text": "Kosi paid 15000 naira"},
+            {"text": "Kosi is based in Yaba.", "category": "about"},
+            {
+                "text": "Kosi hired a provider for Fix sink at 8000 naira.",
+                "category": "jobs",
+            },
         ],
         "count": 2,
         "source": "walrus",

@@ -24,6 +24,76 @@ export interface MemoryGroup {
   entries: MemoryEntry[]
 }
 
+/** The categories the backend assigns to one recalled sentence. */
+export type FactCategory =
+  | 'about'
+  | 'jobs'
+  | 'services'
+  | 'messages'
+  | 'ratings'
+  | 'other'
+
+export interface FactEntry {
+  text: string
+  category: FactCategory
+}
+
+export interface FactGroup {
+  id: FactCategory
+  label: string
+  entries: FactEntry[]
+}
+
+const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {
+  about: 'About you',
+  jobs: 'Work and jobs',
+  services: 'Services and rates',
+  messages: 'Messages and activity',
+  ratings: 'Ratings and disputes',
+  other: 'Other details',
+}
+
+// The order the page reads: who the person is, what they did, what they offer,
+// how they talk, how they were rated, and anything the rule did not recognise.
+const FACT_CATEGORY_ORDER: readonly FactCategory[] = [
+  'about',
+  'jobs',
+  'services',
+  'messages',
+  'ratings',
+  'other',
+]
+
+const FACT_CATEGORIES = new Set<string>(Object.keys(FACT_CATEGORY_LABELS))
+
+/**
+ * Coerce an unknown category into one this page can render.
+ *
+ * A missing or unknown value becomes "other" rather than disappearing: the
+ * sentence is real memory and must still be shown, even when its category is
+ * not one this build knows.
+ */
+export function asFactCategory(value: unknown): FactCategory {
+  return typeof value === 'string' && FACT_CATEGORIES.has(value)
+    ? (value as FactCategory)
+    : 'other'
+}
+
+/**
+ * Group facts by category, in the page's fixed order.
+ *
+ * Entries keep the order the server sent them (the relayer's relevance order),
+ * so grouping never reshuffles a section. An empty category is omitted instead
+ * of rendering a heading with no rows.
+ */
+export function groupFactsByCategory(facts: FactEntry[]): FactGroup[] {
+  return FACT_CATEGORY_ORDER.map((id) => ({
+    id,
+    label: FACT_CATEGORY_LABELS[id],
+    entries: facts.filter((fact) => fact.category === id),
+  })).filter((group) => group.entries.length > 0)
+}
+
 /** The four keys the agent's own guardrails currently write. */
 const KNOWN_LABELS: Record<string, string> = {
   location_name: 'Preferred location',

@@ -3372,15 +3372,20 @@ async def list_memory_facts_endpoint(
     """Read-only: the sentences Walrus Memory holds for the caller.
 
     Auth is required and nothing is written; the only input is the optional
-    recall query, which selects what is read. With the flag off, the gateway
-    unconfigured, or the relayer unreachable, the service answers with an empty
-    list and a reason, so the page shows a calm state instead of an error.
+    recall query, which selects what is read. Each entry carries its display
+    category, so every client groups the same sentences the same way. With the
+    flag off, the gateway unconfigured, or the relayer unreachable, the service
+    answers with an empty list and a reason, so the page shows a calm state
+    instead of an error.
     """
     facts = await build_agent_memory_service(db).review_facts(
         current_user.id, query=query
     )
     return {
-        "facts": [{"text": text} for text in facts.facts],
+        "facts": [
+            {"text": fact.text, "category": fact.category}
+            for fact in facts.facts
+        ],
         "count": facts.count,
         "source": facts.source,
         "reason": facts.reason,
