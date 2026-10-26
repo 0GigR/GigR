@@ -337,7 +337,10 @@ function MemoryFactsSection({
 }) {
   // Hooks run before every early return: the section is rendered while loading,
   // then with facts, and the state must keep its slot across those renders.
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<FactCategory>>(
+  // Sections start closed: the page opens as a five-card overview with counts,
+  // and one click reveals the sentences. Tracking what is open (not what is
+  // closed) makes that the empty default and survives facts arriving late.
+  const [expandedGroups, setExpandedGroups] = useState<Set<FactCategory>>(
     new Set(),
   )
 
@@ -418,11 +421,11 @@ function MemoryFactsSection({
 
   const count = facts.length
   const factGroups = groupFactsByCategory(facts)
-  const allCollapsed =
-    factGroups.length > 0 && factGroups.every((group) => collapsedGroups.has(group.id))
+  const allExpanded =
+    factGroups.length > 0 && factGroups.every((group) => expandedGroups.has(group.id))
 
   const toggleGroup = (id: FactCategory) => {
-    setCollapsedGroups((current) => {
+    setExpandedGroups((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -431,8 +434,8 @@ function MemoryFactsSection({
   }
 
   const toggleAll = () => {
-    setCollapsedGroups(
-      allCollapsed ? new Set() : new Set(factGroups.map((group) => group.id)),
+    setExpandedGroups(
+      allExpanded ? new Set() : new Set(factGroups.map((group) => group.id)),
     )
   }
 
@@ -445,7 +448,7 @@ function MemoryFactsSection({
           </h2>
           <p className="text-sm text-gray-500 mt-1">
             {count} {count === 1 ? 'thing' : 'things'} Gigr remembers, grouped by what each
-            sentence is about.
+            sentence is about. Open a section to read it.
           </p>
         </div>
         <Button
@@ -454,13 +457,13 @@ function MemoryFactsSection({
           onClick={toggleAll}
           className="h-7 px-2 text-xs text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-300"
         >
-          {allCollapsed ? 'Expand all' : 'Collapse all'}
+          {allExpanded ? 'Collapse all' : 'Expand all'}
         </Button>
       </div>
 
       <div className="space-y-3">
         {factGroups.map((group) => {
-          const isCollapsed = collapsedGroups.has(group.id)
+          const isExpanded = expandedGroups.has(group.id)
           return (
             <div
               key={group.id}
@@ -469,7 +472,7 @@ function MemoryFactsSection({
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
-                aria-expanded={!isCollapsed}
+                aria-expanded={isExpanded}
                 aria-controls={`fact-group-${group.id}`}
                 className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500/40"
               >
@@ -493,11 +496,11 @@ function MemoryFactsSection({
                 <ChevronDown
                   className={cn(
                     'w-4 h-4 text-gray-400 transition-transform duration-200',
-                    isCollapsed && '-rotate-90',
+                    !isExpanded && '-rotate-90',
                   )}
                 />
               </button>
-              {!isCollapsed && (
+              {isExpanded && (
                 <ol
                   id={`fact-group-${group.id}`}
                   className="px-4 pb-3 divide-y divide-gray-100 dark:divide-gray-800 animate-in fade-in duration-200"
