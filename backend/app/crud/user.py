@@ -329,3 +329,15 @@ async def get_eligible_jurors(db: AsyncSession, job_location: Geography, min_vou
     )
     result = await db.execute(query)
     return result.scalars().all()
+
+async def list_user_ids(db: AsyncSession) -> List[UUID]:
+    """Every user id, in the order a resumable run must walk them.
+
+    Ordered by signup time then id, so two runs traverse the same sequence and a
+    run that was killed can be restarted without wondering which users it had
+    already reached.
+    """
+    result = await db.execute(
+        select(User.id).order_by(User.created_at.asc().nulls_last(), User.id.asc())
+    )
+    return list(result.scalars().all())

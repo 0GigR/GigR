@@ -95,3 +95,6 @@ backend/test_init_full.py
 backend/test_sa.py
 # Demo recordings (large binaries)
 frontend/recordings/
+
+# Walrus memory backfill resume state
+backend/.walrus_backfill_state.json

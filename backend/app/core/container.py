@@ -20,6 +20,8 @@ from .gateways.tatum_sui_gateway import TatumSuiGateway
 from .gateways.walrus_memory_gateway import WalrusMemoryGateway
 from .resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
 from ..services.agent_memory_service import AgentMemoryService
+from ..services.event_fact_service import EventFactService
+from ..services.fact_memory_service import FactMemoryService
 from ..services.memory_verification_service import MemoryVerificationService
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -165,6 +167,16 @@ _log_flag_state()
 def build_agent_memory_service(db: "AsyncSession") -> AgentMemoryService:
     """Assemble the memory service for one request or one background task."""
     return AgentMemoryService(db=db, gateway=agent_memory_gateway)
+
+
+def build_fact_memory_service() -> FactMemoryService:
+    """The fact writer, using the one gateway this process built."""
+    return FactMemoryService(gateway=agent_memory_gateway)
+
+
+def build_event_fact_service(db: "AsyncSession") -> EventFactService:
+    """Assemble the event fact service for one request or one background task."""
+    return EventFactService(db=db, memory=build_fact_memory_service())
 
 
 def build_memory_verification_service() -> MemoryVerificationService:

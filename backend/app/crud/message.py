@@ -178,3 +178,29 @@ async def _maybe_queue_auto_reply(db: AsyncSession, job_id: UUID, message: Messa
 async def delete_message(db: AsyncSession, message: Message) -> None:
     await db.delete(message)
     await db.commit()
+
+async def list_messages_for_jobs(db: AsyncSession, job_ids: List[UUID]) -> List[Message]:
+    """Every message on these jobs, oldest first, in one query."""
+    if not job_ids:
+        return []
+    result = await db.execute(
+        select(Message)
+        .where(Message.job_id.in_(list(job_ids)))
+        .order_by(Message.created_at.asc().nulls_last(), Message.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_messages_by_sender(db: AsyncSession, sender_id: UUID) -> List[Message]:
+    """Every message the user sent, oldest first, whatever the job.
+
+    Needed because a pre-assignment conversation happens on a job the applicant
+    is not the client or the provider of, so the job-based query alone would
+    miss the applicant's own side of it.
+    """
+    result = await db.execute(
+        select(Message)
+        .where(Message.sender_id == sender_id)
+        .order_by(Message.created_at.asc().nulls_last(), Message.id.asc())
+    )
+    return list(result.scalars().all())

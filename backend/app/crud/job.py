@@ -408,3 +408,35 @@ async def search_jobs_by_text(db: AsyncSession, query: str, limit: int = 20, off
         jobs.sort(key=lambda j: relevance_score(tokens, j.title, j.description), reverse=True)
 
     return jobs[offset:offset + limit]
+
+
+async def list_all_jobs_by_client(db: AsyncSession, client_id: UUID) -> List[Job]:
+    """Every job the user posted, oldest first, with no page limit.
+
+    A fact about "how many jobs this user completed" must count all of them, so
+    this must not reuse the paged browse query.
+    """
+    result = await db.execute(
+        select(Job)
+        .where(Job.client_id == client_id)
+        .order_by(Job.created_at.asc().nulls_last(), Job.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_all_jobs_by_provider(db: AsyncSession, provider_id: UUID) -> List[Job]:
+    """Every job the user was hired for, oldest first, with no page limit."""
+    result = await db.execute(
+        select(Job)
+        .where(Job.provider_id == provider_id)
+        .order_by(Job.created_at.asc().nulls_last(), Job.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_jobs_by_ids(db: AsyncSession, job_ids: List[UUID]) -> List[Job]:
+    """The jobs with these ids, in one query; an empty input returns nothing."""
+    if not job_ids:
+        return []
+    result = await db.execute(select(Job).where(Job.id.in_(list(job_ids))))
+    return list(result.scalars().all())

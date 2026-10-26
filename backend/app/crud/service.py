@@ -186,3 +186,21 @@ async def search_services_by_text(
         services.sort(key=lambda s: relevance_score(tokens, s.title, s.description), reverse=True)
 
     return services[offset:offset + limit]
+
+async def list_active_services_by_provider(
+    db: AsyncSession, provider_id: UUID
+) -> List[ServiceListing]:
+    """Every active listing of one provider, ordered by title.
+
+    Only ``is_active`` rows: a paused listing is not something the provider
+    currently offers, and the fact extractor skips it anyway.
+    """
+    result = await db.execute(
+        select(ServiceListing)
+        .where(
+            ServiceListing.provider_id == provider_id,
+            ServiceListing.is_active.is_(True),
+        )
+        .order_by(ServiceListing.title.asc(), ServiceListing.id.asc())
+    )
+    return list(result.scalars().all())
