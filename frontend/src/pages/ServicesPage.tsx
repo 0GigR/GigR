@@ -566,9 +566,9 @@ export default function ServicesPage() {
             <DialogTrigger asChild>
               <Button className="gigr-cta border-0"><Plus className="w-4 h-4 mr-2" /> New</Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-background text-foreground max-h-[85vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-lg bg-background text-foreground max-h-[85vh] overflow-y-auto overflow-x-hidden">
               <DialogHeader><DialogTitle>{editService ? 'Edit Service' : 'Create Service'}</DialogTitle></DialogHeader>
-              <div className="space-y-3 py-2">
+              <div className="space-y-3 py-2 min-w-0">
                 <Input placeholder="Title *" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
 
                 {/* Category search & create */}
@@ -619,7 +619,7 @@ export default function ServicesPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
                   <PriceInput placeholder="Fixed Rate (Optional)" value={formData.price} onChange={v => setFormData({...formData, price: v})} />
                   <div>
                     <div className="relative">
@@ -639,7 +639,7 @@ export default function ServicesPage() {
                     <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-gray-400" />
                   </summary>
                   <div className="pt-2.5 space-y-2">
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
                       <PriceInput placeholder="Min Price" value={formData.min_price} onChange={v => setFormData({...formData, min_price: v})} />
                       <PriceInput placeholder="Max Price" value={formData.max_price} onChange={v => setFormData({...formData, max_price: v})} />
                     </div>
