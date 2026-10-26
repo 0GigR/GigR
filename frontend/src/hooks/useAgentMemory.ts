@@ -70,6 +70,8 @@ export type MemoryFactsReason =
   | 'ok'
   | 'feature_disabled'
   | 'not_configured'
+  | 'relayer_busy'
+  | 'relayer_timeout'
   | 'relayer_unavailable'
   | 'unavailable'
 
@@ -89,6 +91,8 @@ const FACTS_REASONS = new Set<MemoryFactsReason>([
   'ok',
   'feature_disabled',
   'not_configured',
+  'relayer_busy',
+  'relayer_timeout',
   'relayer_unavailable',
 ])
 
@@ -122,7 +126,10 @@ export function normalizeMemoryFacts(body: unknown): AgentMemoryFacts {
 }
 
 async function fetchAgentMemoryFacts(): Promise<AgentMemoryFacts> {
-  const factsResponse = await api.get('/ai/memory/facts')
+  // A review recall downloads and decrypts one entry per fact, which can take
+  // longer than the shared 15s API timeout. The backend bounds the recall at
+  // 20s, so the request budget sits above it.
+  const factsResponse = await api.get('/ai/memory/facts', { timeout: 30000 })
   return normalizeMemoryFacts(factsResponse.data)
 }
 
@@ -132,10 +139,11 @@ export function useAgentMemoryFacts(enabled = true) {
     queryKey: ['agent', 'memory', 'facts'],
     queryFn: fetchAgentMemoryFacts,
     enabled,
-    staleTime: 30 * 1000,
-    // One retry: each attempt is one relayer call, and the page already offers
-    // an explicit Try again button.
-    retry: 1,
+    staleTime: 5 * 60 * 1000,
+    // No automatic retry: one recall already costs the relayer budget, and the
+    // page offers an explicit Try again button. A 429 must not be widened by a
+    // silent second attempt.
+    retry: 0,
   })
 }
 

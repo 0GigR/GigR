@@ -52,9 +52,9 @@ class FakeGateway:
             raise RuntimeError("relayer unreachable")
         return "job-1"
 
-    async def recall(self, query, namespace, limit):
+    async def recall(self, query, namespace, limit, **options):
         self.recall_calls.append(
-            {"query": query, "namespace": namespace, "limit": limit}
+            {"query": query, "namespace": namespace, "limit": limit, **options}
         )
         if self.fail_recall:
             raise RuntimeError("relayer unreachable")

@@ -60,6 +60,14 @@ MEMORY_MIRROR_MAX_KEYS = 10
 # minute budget.
 MEMORY_REVIEW_LIMIT = 50
 
+# The deadline one review recall may take. The task path asks for five entries
+# and the dependency policy's deadline covers it; a page that asks for dozens
+# pays one Walrus download and one decrypt per entry, which regularly takes
+# longer than that policy. The relayer itself runs a recall with no client
+# deadline to completion, so the caller is the only bound. One attempt only:
+# retrying a deadline this long would double what the page waits.
+MEMORY_REVIEW_TIMEOUT_SECONDS = 20.0
+
 # The query a review sends when the caller supplies none. A recall ranks by
 # similarity to this text, so it names the subjects the fact writer stores
 # rather than a single question: the page shows every kind of fact, not only the
@@ -134,7 +142,10 @@ class RecalledFacts:
     ``source`` names the store that answered: ``"walrus"`` only when the relayer
     answered the recall, ``"none"`` otherwise. ``reason`` is ``"ok"`` when the
     relayer answered, or a stable code the client maps to a sentence:
-    ``"feature_disabled"``, ``"not_configured"``, ``"relayer_unavailable"``.
+    ``"feature_disabled"``, ``"not_configured"``, ``"relayer_busy"``,
+    ``"relayer_timeout"``, ``"relayer_unavailable"``. Busy and timeout are
+    separated because they ask different things of the reader: wait a minute,
+    or try again in a moment.
 
     ``facts`` holds the stored texts verbatim, in the order the relayer ranked
     them. Nothing is parsed out of them and nothing is invented: a page that
@@ -148,6 +159,27 @@ class RecalledFacts:
     @property
     def count(self) -> int:
         return len(self.facts)
+
+
+def _review_failure_reason(error: BaseException) -> str:
+    """The stable reason code for one failed review recall.
+
+    The gateway raises one typed error for every outbound failure and carries
+    the boundary's own outcome in its message: ``rate_limited: ...`` when the
+    relayer said the budget is spent, ``timeout after ...`` when the deadline
+    expired, and an exception name otherwise. Splitting busy from timeout is
+    what lets the page ask the reader to wait a minute rather than retry into a
+    limit that is still open.
+
+    An unrecognised message is ``relayer_unavailable``: the safe answer when the
+    cause is not one of the two the client can act on.
+    """
+    detail = str(error).casefold()
+    if "rate_limited" in detail or "429" in detail:
+        return "relayer_busy"
+    if "timeout" in detail or "timed out" in detail or "504" in detail:
+        return "relayer_timeout"
+    return "relayer_unavailable"
 
 
 def _memory_text(key: str, value: Any) -> str:
@@ -394,9 +426,15 @@ class AgentMemoryService:
 
         Every unavailable state is a typed answer, not an exception: with the
         flag off the review is ``feature_disabled``, with no usable gateway it is
-        ``not_configured``, and a relayer that fails or times out is
+        ``not_configured``, and a relayer that is rate limited, times out or
+        otherwise fails is ``relayer_busy``, ``relayer_timeout`` or
         ``relayer_unavailable``. The page can then degrade calmly, and a relayer
         outage cannot turn a read into a 500.
+
+        One long attempt is made, not the two short ones the task path uses: the
+        page asks for dozens of entries, so it gets
+        :data:`MEMORY_REVIEW_TIMEOUT_SECONDS` once rather than a deadline that
+        would cut off a recall the relayer would have completed.
 
         Exact duplicate texts collapse, because the relayer is append-only.
         Blank texts are dropped: an empty line is not a memory.
@@ -408,7 +446,11 @@ class AgentMemoryService:
         recall_query = (query or "").strip() or MEMORY_REVIEW_QUERY
         try:
             memories = await self._gateway.recall(
-                recall_query, memory_namespace(user_id), MEMORY_REVIEW_LIMIT
+                recall_query,
+                memory_namespace(user_id),
+                MEMORY_REVIEW_LIMIT,
+                timeout_seconds=MEMORY_REVIEW_TIMEOUT_SECONDS,
+                retry=False,
             )
             # The extraction is inside the guard as well: a gateway that answers
             # with something other than recalled entries is a dependency failure,
@@ -426,7 +468,7 @@ class AgentMemoryService:
                 type(exc).__name__,
                 exc,
             )
-            return RecalledFacts(reason="relayer_unavailable")
+            return RecalledFacts(reason=_review_failure_reason(exc))
         return RecalledFacts(facts=facts, source="walrus", reason="ok")
 
     async def save(self, user_id: UUID, updates: Dict[str, Any]) -> Dict[str, Any]:

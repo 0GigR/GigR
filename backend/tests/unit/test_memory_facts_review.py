@@ -27,6 +27,7 @@ from app.core.gateways.walrus_memory_gateway import RecalledMemory
 from app.services.agent_memory_service import (
     MEMORY_REVIEW_LIMIT,
     MEMORY_REVIEW_QUERY,
+    MEMORY_REVIEW_TIMEOUT_SECONDS,
     AgentMemoryService,
     RecalledFacts,
 )
@@ -46,18 +47,27 @@ class RecordingGateway:
         self,
         memories: tuple[RecalledMemory, ...] = (),
         fail_recall: bool = False,
+        failure: BaseException | None = None,
     ) -> None:
         self.memories = memories
         self.fail_recall = fail_recall
+        self.failure = failure
         self.recall_calls: list[dict] = []
         self.remember_calls: list[dict] = []
 
-    async def recall(self, query, namespace, limit):
+    async def recall(self, query, namespace, limit, **options):
         self.recall_calls.append(
-            {"query": query, "namespace": namespace, "limit": limit}
+            {
+                "query": query,
+                "namespace": namespace,
+                "limit": limit,
+                **options,
+            }
         )
+        if self.failure is not None:
+            raise self.failure
         if self.fail_recall:
-            raise TimeoutError("relayer did not answer")
+            raise RuntimeError("recall failed")
         return self.memories
 
     async def remember(self, text, namespace, idempotency_key=None):
@@ -123,9 +133,12 @@ async def test_review_asks_the_users_namespace_with_the_bounded_broad_default(
             "query": MEMORY_REVIEW_QUERY,
             "namespace": f"review-user-{user_id}",
             "limit": 50,
+            "timeout_seconds": 20.0,
+            "retry": False,
         }
     ]
     assert MEMORY_REVIEW_LIMIT == 50
+    assert MEMORY_REVIEW_TIMEOUT_SECONDS == 20.0
     assert MEMORY_REVIEW_QUERY.strip() != ""
 
 
@@ -202,6 +215,38 @@ async def test_review_returns_empty_and_a_reason_when_the_relayer_fails(monkeypa
     assert result.count == 0
     assert result.source == "none"
     assert result.reason == "relayer_unavailable"
+
+
+async def test_review_reports_a_rate_limited_relayer_as_busy(monkeypatch):
+    """A spent request budget is not an outage and must not read like one.
+
+    The relayer answers 429 with no retry, so the page must ask the reader to
+    wait a minute rather than show the same note as an unreachable service. The
+    boundary carries the reason in the typed error's message.
+    """
+    gateway = RecordingGateway(
+        failure=RuntimeError("rate_limited: 429 Too Many Requests")
+    )
+
+    result = await _review(monkeypatch, gateway)
+
+    assert result.facts == ()
+    assert result.reason == "relayer_busy"
+    assert gateway.recall_calls[0]["retry"] is False
+
+
+async def test_review_reports_an_expired_deadline_as_a_timeout(monkeypatch):
+    """A recall that ran out of time is reported as slow, not as a failure.
+
+    The page can tell the reader that the recall took too long, which is true
+    even when the relayer is healthy and the entries are safe.
+    """
+    gateway = RecordingGateway(failure=RuntimeError("timeout after 20.0s"))
+
+    result = await _review(monkeypatch, gateway)
+
+    assert result.facts == ()
+    assert result.reason == "relayer_timeout"
 
 
 class StubMemoryService:

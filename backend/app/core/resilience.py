@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import random
 import time
 from collections.abc import Awaitable, Callable
@@ -206,8 +207,28 @@ class Boundary:
         fallback: Callable[[str], Awaitable[Outcome[T]]],
         *,
         idempotent: bool,
+        timeout_seconds: float | None = None,
     ) -> Outcome[T]:
+        """Run one outbound operation inside the dependency's policy.
+
+        ``timeout_seconds`` overrides the policy's deadline for this call only.
+        It exists because one dependency can serve reads of very different
+        sizes: a five-entry recall and a fifty-entry recall cross the same
+        boundary, and the second legitimately needs longer. The breaker, the
+        bulkhead and the retry count stay shared, so a slow read still counts
+        against the same breaker as every other call to the dependency.
+
+        A value that is not finite and positive is ignored: the policy deadline
+        applies, never an unbounded wait.
+        """
         attempts_allowed = self._policy.max_attempts if idempotent else 1
+        timeout = self._policy.timeout_seconds
+        if (
+            timeout_seconds is not None
+            and math.isfinite(timeout_seconds)
+            and timeout_seconds > 0
+        ):
+            timeout = timeout_seconds
 
         if not self._breaker.allows_request():
             self._metrics.increment(
@@ -220,7 +241,7 @@ class Boundary:
         for attempt in range(1, attempts_allowed + 1):
             rate_limited = False
             try:
-                async with asyncio.timeout(self._policy.timeout_seconds):
+                async with asyncio.timeout(timeout):
                     value = await self._bulkhead.run(operation)
                 self._breaker.on_success()
                 return Outcome(
@@ -230,7 +251,7 @@ class Boundary:
                     dependency=self._policy.dependency,
                 )
             except asyncio.TimeoutError:
-                last_error = f"timeout after {self._policy.timeout_seconds}s"
+                last_error = f"timeout after {timeout}s"
             except Exception as exc:  # noqa: BLE001 - the boundary converts everything
                 if http_status(exc) == 429:
                     rate_limited = True

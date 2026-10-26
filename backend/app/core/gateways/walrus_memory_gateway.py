@@ -95,8 +95,16 @@ class WalrusMemoryGateway:
         operation_name: str,
         operation: Any,
         fallback: Any,
+        *,
+        timeout_seconds: float | None = None,
+        retry: bool = True,
     ) -> Any:
-        outcome = await self._boundary.call(operation, fallback, idempotent=True)
+        outcome = await self._boundary.call(
+            operation,
+            fallback,
+            idempotent=retry,
+            timeout_seconds=timeout_seconds,
+        )
         return self._resolve(operation_name, outcome)
 
     async def _write(self, operation_name: str, operation: Any) -> Any:
@@ -133,13 +141,24 @@ class WalrusMemoryGateway:
         return await self._write("remember", operation)
 
     async def recall(
-        self, query: str, namespace: str, limit: int
+        self,
+        query: str,
+        namespace: str,
+        limit: int,
+        *,
+        timeout_seconds: float | None = None,
+        retry: bool = True,
     ) -> tuple[RecalledMemory, ...]:
         """Return the stored memories most similar to ``query`` in ``namespace``.
 
         Each entry keeps its text, relevance score and creation timestamp, so a
         caller can tell two contradicting memories apart by age. The relayer
         returns them best match first and that order is preserved.
+
+        ``timeout_seconds`` gives one large read more room than the dependency's
+        policy allows; the breaker is still the same one (see ``Boundary.call``).
+        ``retry`` is false for a call that already waits a long time, so a
+        failure cannot double the wall clock the caller pays.
         """
         if not query or not query.strip():
             raise ValueError("recall requires a non-empty query (operation=recall)")
@@ -158,7 +177,11 @@ class WalrusMemoryGateway:
             )
 
         return await self._read(
-            "recall", operation, outcome_fallback(DEPENDENCY, (), "recall_degraded")
+            "recall",
+            operation,
+            outcome_fallback(DEPENDENCY, (), "recall_degraded"),
+            timeout_seconds=timeout_seconds,
+            retry=retry,
         )
 
     async def list_namespaces(self) -> tuple[str, ...]:
