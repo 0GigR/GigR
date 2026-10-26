@@ -43,8 +43,20 @@ class FakeSdk:
         self.remember_result = types.SimpleNamespace(job_id="job-42", status="pending")
         self.recall_result = types.SimpleNamespace(
             results=[
-                types.SimpleNamespace(blob_id="b1", text="first", distance=0.1),
-                types.SimpleNamespace(blob_id="b2", text="second", distance=0.2),
+                types.SimpleNamespace(
+                    blob_id="b1",
+                    text="first",
+                    distance=0.1,
+                    score=0.93,
+                    created_at="2026-01-05T10:00:00Z",
+                ),
+                types.SimpleNamespace(
+                    blob_id="b2",
+                    text="second",
+                    distance=0.2,
+                    score=0.81,
+                    created_at="2025-12-31T23:00:00Z",
+                ),
             ],
             total=2,
         )
@@ -126,11 +138,16 @@ async def test_remember_returns_job_id_and_forwards_idempotency_key():
     ]
 
 
-async def test_recall_returns_memory_texts_in_order():
+async def test_recall_returns_text_score_and_created_at_in_order():
+    """A recall must not throw away the metadata memwal 0.2.x returns: the
+    timestamp is what lets a reader tell two contradicting facts apart by age."""
     sdk = FakeSdk()
-    texts = await make_gateway(sdk).recall("leaking tap", "gigr-user-7", 5)
+    memories = await make_gateway(sdk).recall("leaking tap", "gigr-user-7", 5)
 
-    assert texts == ("first", "second")
+    assert [(memory.text, memory.score, memory.created_at) for memory in memories] == [
+        ("first", 0.93, "2026-01-05T10:00:00Z"),
+        ("second", 0.81, "2025-12-31T23:00:00Z"),
+    ]
     assert sdk.recall_calls == [
         {"query": "leaking tap", "limit": 5, "namespace": "gigr-user-7"}
     ]
@@ -221,7 +238,10 @@ async def test_gateway_round_trips_through_the_installed_sdk_mock():
     )
     assert isinstance(job_id, str) and job_id
 
-    texts = await gateway.recall("plumber", "gigr-user-9", 5)
-    assert texts == ('last_search: "plumber"',)
+    memories = await gateway.recall("plumber", "gigr-user-9", 5)
+    assert [memory.text for memory in memories] == ['last_search: "plumber"']
+    # The installed SDK really carries the two fields the gateway now keeps.
+    assert memories[0].score is not None
+    assert memories[0].created_at is not None
 
     assert (await gateway.list_namespaces()) == ("gigr-user-9",)

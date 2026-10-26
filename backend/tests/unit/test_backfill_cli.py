@@ -54,16 +54,25 @@ class FakeSession:
         return False
 
 
-def _load_cli(monkeypatch, *, gateway, histories):
-    """Import the script and replace the database behind it."""
+def _load_cli(monkeypatch, *, gateway, histories, seen=None):
+    """Import the script and replace the database behind it.
+
+    ``seen`` receives the geocoder the script injected into the fact source, so
+    a test can assert what the feature flag selected.
+    """
     spec = importlib.util.spec_from_file_location("backfill_cli_under_test", SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
     from app.services.fact_memory_service import FactMemoryService
 
+    def fake_history_service(db, geocoder=None):
+        if seen is not None:
+            seen["geocoder"] = geocoder
+        return FakeHistory(histories)
+
     monkeypatch.setattr(module, "async_session", lambda: FakeSession())
-    monkeypatch.setattr(module, "UserHistoryService", lambda db: FakeHistory(histories))
+    monkeypatch.setattr(module, "UserHistoryService", fake_history_service)
     monkeypatch.setattr(
         module, "build_fact_memory_service", lambda: FactMemoryService(gateway=gateway)
     )
@@ -211,3 +220,33 @@ async def test_a_write_failure_reports_where_it_stopped_and_resumes(
     # key is the one the failed attempt used.
     assert not state_path.exists()
     assert "no progress file was written yet" in printed
+
+
+async def test_the_memory_flag_decides_whether_a_geocoder_is_injected(
+    tmp_path, monkeypatch, capsys
+):
+    """With the flag off the backfill must behave exactly as it did before
+    geocoding existed: no gateway reaches the fact source, so no point can
+    become a place name."""
+    monkeypatch.setattr(settings, "FEATURE_AGENT_WALRUS_MEMORY", False)
+    off = {}
+    cli_off = _load_cli(
+        monkeypatch,
+        gateway=FakeGateway(),
+        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        seen=off,
+    )
+    assert await cli_off.run(["--state-file", str(tmp_path / "off.json")]) == 0
+    assert off["geocoder"] is None
+    capsys.readouterr()
+
+    monkeypatch.setattr(settings, "FEATURE_AGENT_WALRUS_MEMORY", True)
+    on = {}
+    cli_on = _load_cli(
+        monkeypatch,
+        gateway=FakeGateway(),
+        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        seen=on,
+    )
+    assert await cli_on.run(["--state-file", str(tmp_path / "on.json")]) == 0
+    assert on["geocoder"] is cli_on.geocoding_gateway

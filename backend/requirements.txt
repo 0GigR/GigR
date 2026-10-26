@@ -28,4 +28,4 @@ requests
 pywebpush==2.3.0
 # Walrus Memory SDK for the agent memory backend behind
 # FEATURE_AGENT_WALRUS_MEMORY. Imported lazily, so the app runs without it.
-memwal>=0.1.11
+memwal>=0.2.1

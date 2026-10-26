@@ -35,9 +35,11 @@ BACKEND_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
+from app.core.agent_features import agent_feature_enabled
 from app.core.config import settings
-from app.core.container import build_fact_memory_service
+from app.core.container import build_fact_memory_service, geocoding_gateway
 from app.core.database import async_session, engine
+from app.core.memory_namespace import FLAG_NAME
 from app.services.memory_backfill_service import (
     DEFAULT_REQUESTS_PER_MINUTE,
     MAX_REQUESTS_PER_MINUTE,
@@ -119,8 +121,12 @@ async def run(argv: list[str]) -> int:
         return EXIT_REFUSED
 
     async with async_session() as db:
+        # A place name comes from a reverse lookup, so the geocoder is injected
+        # only while the memory feature is on: with the flag off the sentences
+        # are exactly the ones this script produced before it existed.
+        geocoder = geocoding_gateway if agent_feature_enabled(FLAG_NAME) else None
         service = MemoryBackfillService(
-            history=UserHistoryService(db),
+            history=UserHistoryService(db, geocoder=geocoder),
             memory=memory,
             namespace_prefix=namespace_prefix,
             state=state,

@@ -19,6 +19,7 @@ from sqlalchemy import text
 from app.api.v1.endpoints import ai as ai_endpoints
 from app.core.config import settings
 from app.core.database import async_session, engine
+from app.core.gateways.walrus_memory_gateway import RecalledMemory
 from conftest import auth_headers, register_user
 
 MEMORY_URL = "/api/v1/ai/memory"
@@ -34,8 +35,10 @@ class FakeGateway:
         recall_texts: tuple[str, ...] = (),
         fail_remember: bool = False,
         fail_recall: bool = False,
+        recall_created_at: str | None = None,
     ) -> None:
         self.recall_texts = recall_texts
+        self.recall_created_at = recall_created_at
         self.fail_remember = fail_remember
         self.fail_recall = fail_recall
         self.remember_calls: list[dict] = []
@@ -55,7 +58,12 @@ class FakeGateway:
         )
         if self.fail_recall:
             raise RuntimeError("relayer unreachable")
-        return self.recall_texts
+        return tuple(
+            RecalledMemory(
+                text=text, score=None, created_at=self.recall_created_at
+            )
+            for text in self.recall_texts
+        )
 
     async def list_namespaces(self):
         return ()

@@ -13,7 +13,10 @@ from uuid import UUID, uuid4
 
 from geoalchemy2.elements import WKBElement
 
+import app.services.osm_geo as osm_geo
 import app.services.user_history_service as history_module
+from app.core.gateways.geocoding_gateway import GeocodingGateway
+from app.core.resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
 from app.models.dispute import Dispute, DisputeStatus
 from app.models.job import Job
 from app.models.message import Message
@@ -194,6 +197,89 @@ def _patch_crud(
     monkeypatch.setattr(history_module, "list_messages_by_sender", fake_messages_by_sender)
     monkeypatch.setattr(history_module, "list_disputes_for_jobs", fake_disputes_for_jobs)
     monkeypatch.setattr(history_module, "list_jobs_by_ids", fake_jobs_by_ids)
+
+
+NOMINATIM_PLACE = {
+    "lat": "6.5095",
+    "lon": "3.3711",
+    "display_name": "Lekki, Lagos, Nigeria",
+    "address": {"suburb": "Lekki", "city": "Lagos"},
+}
+
+
+class _FakeResponse:
+    """One Nominatim answer, or one failure."""
+
+    def __init__(self, payload=None, fail: bool = False) -> None:
+        self._payload = payload
+        self._fail = fail
+
+    def raise_for_status(self) -> None:
+        if self._fail:
+            raise RuntimeError("Nominatim answered 503")
+
+    def json(self):
+        return self._payload
+
+
+class _FakeNominatim:
+    """Stands in for httpx.AsyncClient; records every request it receives."""
+
+    def __init__(self, responses) -> None:
+        self._responses = list(responses)
+        self.requests: list[dict] = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        return False
+
+    async def get(self, url, params=None):
+        self.requests.append({"url": url, "params": dict(params or {})})
+        if not self._responses:
+            raise AssertionError("unexpected second Nominatim request")
+        response = self._responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+
+def _patch_nominatim(monkeypatch, responses) -> _FakeNominatim:
+    """Replace the HTTP layer below the real Nominatim client.
+
+    The throttle timestamp is process-wide, so it is reset too: a lookup an
+    earlier test made a moment ago would otherwise make the first request here
+    wait a real second and race the boundary's timeout.
+    """
+    http = _FakeNominatim(responses)
+    osm_geo._geocode_cache.clear()
+    monkeypatch.setattr(osm_geo, "_last_nominatim_call", 0.0)
+    monkeypatch.setattr(osm_geo, "_client", lambda: http)
+    return http
+
+
+def _geocoding_gateway() -> GeocodingGateway:
+    """The real gateway over the real Nominatim client and a fake HTTP layer."""
+    boundary = Boundary(
+        ResiliencePolicy(
+            dependency="nominatim",
+            timeout_seconds=1.0,
+            failure_threshold=5,
+            reset_timeout_seconds=60.0,
+            max_attempts=1,
+            max_concurrency=1,
+        ),
+        StructuredLogMetricSink("nominatim-test"),
+    )
+    return GeocodingGateway(boundary=boundary, reverse_geocode=osm_geo.reverse_geocode)
+
+
+class _BrokenGeocoder:
+    """A geocoder that raises instead of answering: the worst plausible case."""
+
+    async def place_name(self, latitude, longitude):
+        raise RuntimeError("geocoder exploded")
 
 
 async def test_a_user_who_did_both_gets_both_role_sentences(monkeypatch):
@@ -443,3 +529,84 @@ async def test_every_fact_is_unique(monkeypatch):
 async def test_user_ids_come_from_the_crud_order(monkeypatch):
     _patch_crud(monkeypatch, user=_user())
     assert await UserHistoryService(db=object()).user_ids() == [USER_ID]
+
+
+async def test_a_reverse_geocoded_point_becomes_the_place_in_the_fact(monkeypatch):
+    """The PostGIS point is not a place name, so the sentence may only name a
+    place the geocoder actually returned. The user point and the job point here
+    are the same point, so the cache must answer the second lookup."""
+    _patch_crud(
+        monkeypatch,
+        user=_user(),
+        client_jobs=[_job(id=uuid4())],
+        category_names={CATEGORY_ID: "Plumbing"},
+    )
+    http = _patch_nominatim(
+        monkeypatch, [_FakeResponse(NOMINATIM_PLACE), _FakeResponse(NOMINATIM_PLACE)]
+    )
+
+    history = await UserHistoryService(
+        db=object(), geocoder=_geocoding_gateway()
+    ).history(USER_ID)
+
+    assert "Bola Ade is based in Lekki, Lagos." in history.facts
+    assert (
+        "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
+        "in Lekki, Lagos (completed, 2026)."
+    ) in history.facts
+    assert len(http.requests) == 1
+    assert http.requests[0]["url"].endswith("/reverse")
+
+
+async def test_a_failed_reverse_geocode_produces_no_location_fact(monkeypatch):
+    """A geocoder outage may cost the place clause, never the other facts: the
+    user is written without "based in" and the job without "in ...", and every
+    other sentence still appears."""
+    _patch_crud(
+        monkeypatch,
+        user=_user(),
+        client_jobs=[_job(id=uuid4(), location=None)],
+        services=[_listing()],
+        category_names={CATEGORY_ID: "Plumbing"},
+    )
+    http = _patch_nominatim(monkeypatch, [_FakeResponse(fail=True)])
+
+    history = await UserHistoryService(
+        db=object(), geocoder=_geocoding_gateway()
+    ).history(USER_ID)
+
+    # One point had to be looked up, and its failure did not stop the rest.
+    assert len(http.requests) == 1
+    assert http.requests[0]["url"].endswith("/reverse")
+    assert not any("is based in" in fact for fact in history.facts)
+    assert (
+        "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
+        "(completed, 2026)."
+    ) in history.facts
+    assert "Bola Ade lists Emergency pipe repair at 12000 naira within 7.5 km." in (
+        history.facts
+    )
+    assert "Bola Ade works in plumbing and tiling." in history.facts
+
+
+async def test_a_crashing_geocoder_cannot_fail_the_users_history(monkeypatch):
+    """The service must absorb a geocoder that raises, because the backfill it
+    feeds is not allowed to stop over a place name."""
+    _patch_crud(
+        monkeypatch,
+        user=_user(),
+        client_jobs=[_job(id=uuid4())],
+        category_names={CATEGORY_ID: "Plumbing"},
+    )
+
+    history = await UserHistoryService(
+        db=object(), geocoder=_BrokenGeocoder()
+    ).history(USER_ID)
+
+    assert history is not None
+    assert not any("is based in" in fact for fact in history.facts)
+    assert (
+        "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
+        "(completed, 2026)."
+    ) in history.facts
+    assert "Bola Ade is a client on Gigr." in history.facts

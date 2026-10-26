@@ -11,24 +11,30 @@ only place that resolves the two fields the extractor cannot resolve for itself:
   active listing or have been hired. When both are true both role sentences are
   emitted, because both are true; the side with more jobs is written first.
 
-Location is deliberately absent, and this is a decision, not an omission.
-``users.last_location`` and ``jobs.location`` are PostGIS geography columns, and
-no column in this schema holds a place name (there is no city, address or place
-text anywhere beside them). The extractor needs a place name for "is based in
-..." and for "hired a provider for ... in ..."; passing a geometry value would
-render a coordinate pair as if it were a place, which contract 3 of its
-docstring forbids. So those two sentences are not produced at all until the
-schema has a column that really holds a place name.
+Location is resolved, not copied. ``users.last_location`` and ``jobs.location``
+are PostGIS geography columns, and no column in this schema holds a place name.
+The extractor needs a place name for "is based in ..." and for "hired a provider
+for ... in ..."; passing a geometry value would render a coordinate pair as if
+it were a place, which contract 3 of its docstring forbids.
+
+So a point becomes a place name only through the injected geocoding gateway,
+which reuses the process's Nominatim client and its cache. The gateway is the
+only reason this service makes an outbound call, it is optional (the map-less
+default is unchanged), and a lookup that fails is caught here: a missing place
+name costs one prepositional phrase, never the user's other facts. With no
+gateway, or no place, no location sentence is produced at all.
 
 The service reads through the crud layer and never builds a query itself.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
+from ..core.geo import extract_coordinates
 from ..crud.category import get_category_names
 from ..crud.dispute import list_disputes_for_jobs, list_disputes_for_user
 from ..crud.job import (
@@ -45,6 +51,10 @@ from .user_fact_service import build_user_facts, clean_fact_text
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from ..core.gateways.geocoding_gateway import GeocodingGateway
+
+logger = logging.getLogger(__name__)
 
 ROLE_CLIENT = "client"
 ROLE_PROVIDER = "provider"
@@ -82,10 +92,19 @@ class UserHistoryService:
     ``db`` is the caller's session; the service only reads. Every query is
     batched over the user's own rows, so the work per user is a fixed set of
     queries rather than one per job or per message.
+
+    ``geocoder`` is injected from the composition root and may be None, in which
+    case no point is ever turned into a place name and no location sentence is
+    produced. It is the only outbound dependency this service has.
     """
 
-    def __init__(self, db: "AsyncSession") -> None:
+    def __init__(
+        self,
+        db: "AsyncSession",
+        geocoder: Optional["GeocodingGateway"] = None,
+    ) -> None:
         self._db = db
+        self._geocoder = geocoder
 
     async def user_ids(self) -> list[UUID]:
         """Every user id, in the stable order the backfill walks them."""
@@ -113,15 +132,23 @@ class UserHistoryService:
             as_provider=len(provider_jobs),
             active_listings=len(services),
         )
+        user_place = await self._place_name(user.last_location)
+        client_places = await self._places_for_jobs(client_jobs)
 
         facts: list[str] = []
         facts.extend(_role_sentences(display_name, sides))
         facts.extend(
             build_user_facts(
-                {"id": user.id, "display_name": user.display_name, "skills": user.skills},
+                {
+                    "id": user.id,
+                    "display_name": user.display_name,
+                    "skills": user.skills,
+                    "last_location": user_place,
+                },
                 services=[_service_row(listing) for listing in services],
                 client_jobs=[
-                    _job_row(job, category_names) for job in client_jobs
+                    _job_row(job, category_names, client_places.get(job.id))
+                    for job in client_jobs
                 ],
                 provider_jobs=[
                     _job_row(job, category_names) for job in provider_jobs
@@ -188,6 +215,45 @@ class UserHistoryService:
             {"display_name": user.display_name}, threads=threads
         )
 
+    async def _place_name(self, location_value: Any) -> Optional[str]:
+        """The place name for one PostGIS point, or None.
+
+        ``extract_coordinates`` is the one geometry reader in the codebase, and
+        it answers (None, None) for a missing or unreadable value; no lookup is
+        attempted then. A lookup failure is caught here as well as inside the
+        gateway, because a missing place name may cost one clause but must never
+        cost the user the rest of their facts.
+        """
+        if self._geocoder is None:
+            return None
+        latitude, longitude = extract_coordinates(location_value)
+        if latitude is None or longitude is None:
+            return None
+        try:
+            return await self._geocoder.place_name(latitude, longitude)
+        except Exception as exc:  # noqa: BLE001 - a geocoder must not fail the backfill
+            logger.warning(
+                "[user-history] reverse geocode failed (operation=place_name): "
+                "%s: %s; the fact is written without a place",
+                type(exc).__name__,
+                exc,
+            )
+            return None
+
+    async def _places_for_jobs(self, jobs: list[Any]) -> dict[Any, Optional[str]]:
+        """Reverse-geocode the user's job points, keyed by job id.
+
+        Only a job that names a provider can produce the sentence that carries a
+        place, so the rest are not looked up at all: a backfill must not spend
+        the Nominatim budget on a row whose fact would be skipped anyway.
+        """
+        places: dict[Any, Optional[str]] = {}
+        for job in jobs:
+            if getattr(job, "provider_id", None) is None:
+                continue
+            places[job.id] = await self._place_name(getattr(job, "location", None))
+        return places
+
 
 def _sides(*, as_client: int, as_provider: int, active_listings: int) -> list[str]:
     """The marketplace sides the user has really been on, the heavier one first.
@@ -226,11 +292,15 @@ def _role_sentences(display_name: str, sides: list[str]) -> list[str]:
     return sentences
 
 
-def _job_row(job: Any, category_names: dict[Any, str]) -> dict[str, Any]:
+def _job_row(
+    job: Any, category_names: dict[Any, str], place: Optional[str] = None
+) -> dict[str, Any]:
     """The mapping the extractor reads for one job, with the category name.
 
-    ``location`` is absent on purpose: the column is a geography value and the
-    schema holds no place name, so no place sentence can be supported.
+    ``place`` is the reverse-geocoded name of the job point, or None when there
+    is no point, no geocoder, or the lookup failed. The extractor renders it
+    only when it is real text, so a missing name drops the "in ..." clause
+    instead of putting a coordinate in the sentence.
     """
     category_name = category_names.get(job.category_id) if job.category_id else None
     return {
@@ -242,6 +312,7 @@ def _job_row(job: Any, category_names: dict[Any, str]) -> dict[str, Any]:
         "status": job.status,
         "created_at": job.created_at,
         "category": category_name,
+        "location": place,
     }
 
 
