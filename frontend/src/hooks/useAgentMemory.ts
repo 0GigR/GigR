@@ -18,6 +18,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import api from '@/lib/api'
+import { asFactCategory, type FactCategory } from '@/lib/agentMemory'
 
 export interface AgentMemorySnapshot {
   memory: Record<string, unknown>
@@ -60,6 +61,7 @@ export async function forgetAgentMemoryKey(key: string): Promise<Record<string, 
 /** One stored sentence, exactly as Walrus Memory returned it. */
 export interface MemoryFact {
   text: string
+  category: FactCategory
 }
 
 /**
@@ -108,9 +110,10 @@ export function normalizeMemoryFacts(body: unknown): AgentMemoryFacts {
   const facts = Array.isArray(raw.facts)
     ? raw.facts.flatMap((entry) => {
         if (!entry || typeof entry !== 'object') return []
-        const text = (entry as Record<string, unknown>).text
+        const record = entry as Record<string, unknown>
+        const text = record.text
         if (typeof text !== 'string' || !text.trim()) return []
-        return [{ text }]
+        return [{ text, category: asFactCategory(record.category) }]
       })
     : []
   const reason =

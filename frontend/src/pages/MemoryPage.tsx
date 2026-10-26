@@ -48,6 +48,7 @@ import {
   failedVerification,
   findSuiReference,
   formatMemoryValue,
+  groupFactsByCategory,
   groupMemory,
   humanizeMemoryKey,
   normalizeVerification,
@@ -377,6 +378,7 @@ function MemoryFactsSection({
   }
 
   const count = facts.length
+  const factGroups = groupFactsByCategory(facts)
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
@@ -386,21 +388,39 @@ function MemoryFactsSection({
         </span>
       </div>
       <p className="text-sm text-gray-500 mt-1">
-        {count} {count === 1 ? 'thing' : 'things'} Gigr remembers
+        {count} {count === 1 ? 'thing' : 'things'} Gigr remembers, grouped by what each
+        sentence is about.
       </p>
-      <ol className="mt-4 divide-y divide-gray-100 dark:divide-gray-800">
-        {facts.map((fact, index) => (
-          <li
-            key={`${index}-${fact.text}`}
-            className="py-3.5 first:pt-0 last:pb-0 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+      <div className="mt-5 space-y-5">
+        {factGroups.map((group) => (
+          <div
+            key={group.id}
+            className="border-t border-gray-100 dark:border-gray-800 pt-4 first:border-t-0 first:pt-0"
           >
-            {fact.text}
-          </li>
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {group.label}
+              </h3>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+                {group.entries.length}
+              </span>
+            </div>
+            <ol className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
+              {group.entries.map((fact, index) => (
+                <li
+                  key={`${group.id}-${index}-${fact.text}`}
+                  className="py-3 first:pt-0 last:pb-0 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+                >
+                  {fact.text}
+                </li>
+              ))}
+            </ol>
+          </div>
         ))}
-      </ol>
+      </div>
       <p className="text-[11px] leading-relaxed text-gray-400 mt-4">
         {source === 'walrus'
-          ? 'Read from Walrus Memory, most relevant first. This is what one memory recall returned.'
+          ? 'Read from Walrus Memory. Within each group, the most relevant sentence comes first. This is what one memory recall returned.'
           : 'This is what one memory recall returned.'}
       </p>
     </section>
