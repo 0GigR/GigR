@@ -241,6 +241,27 @@ def build_memory_hint(memory: Dict[str, Any], budget_tokens: int = MEMORY_BUDGET
         parts.append(hint)
         tokens_used += cost
 
+    # Fields outside the priority list are still memory. Recalled Walrus facts
+    # arrive as whole sentences under their own labels, and an allowlist that
+    # only renders the seven keys above silently discards every one of them:
+    # the relayer answered, the prompt received nothing, and the task logged a
+    # recall of zero. Remaining fields follow the priority ones, in a stable
+    # order, within the same token budget.
+    for key in sorted(memory):
+        if key in priority_keys:
+            continue
+        value = memory.get(key)
+        if value is None:
+            continue
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value[:5])
+        hint = f"{key}: {value}"
+        cost = _estimate_tokens(hint)
+        if tokens_used + cost > budget_tokens:
+            break
+        parts.append(hint)
+        tokens_used += cost
+
     return "; ".join(parts)
 
 

@@ -229,3 +229,36 @@ async def test_near_duplicate_recalled_facts_are_not_collapsed(monkeypatch):
         "last_search": "plumber",
         "usual_search": "plumber",
     }
+
+
+async def test_a_recalled_sentence_fact_reaches_the_prompt_without_a_local_key(
+    monkeypatch,
+):
+    """Backfilled facts are whole sentences, not local memory keys.
+
+    The relayer holds "Kosi hired a provider for a leaking pipe at 15000 naira"
+    while the JSONB store holds keys like "last_search". Matching recalled text
+    against the local keys alone discarded every backfilled fact, so the relayer
+    answered while the prompt received nothing and the task logged "Recalled 0".
+    A recalled sentence that matches no local key must still reach the model.
+    """
+    gateway = RecordingGateway(
+        memories=(
+            recalled("Kosi hired a provider for a leaking pipe at 15000 naira."),
+            recalled('last_search: "plumber"'),
+        )
+    )
+
+    context = await _load(monkeypatch, gateway, {"last_search": "plumber"})
+
+    assert context.source == "walrus"
+    assert context.recall_log_line == "Searching memory: Recalled 2 memories from Walrus"
+    # The key-matched entry keeps its own name and value.
+    assert context.entries["last_search"] == "plumber"
+    # The sentence fact is present under its own label and is not lost.
+    assert "Kosi hired a provider for a leaking pipe at 15000 naira." in (
+        context.prompt_entries.values()
+    )
+    hint = build_memory_hint(context.prompt_entries)
+    assert "leaking pipe" in hint
+    assert "last_search" in hint
