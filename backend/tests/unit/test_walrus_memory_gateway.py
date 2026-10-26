@@ -112,6 +112,14 @@ class SlowSdk(FakeSdk):
         return await super().recall(query, limit, namespace, max_distance)
 
 
+class DelayedSdk(FakeSdk):
+    """A recall that outlasts the dependency policy but not the override."""
+
+    async def recall(self, query, limit=10, namespace=None, max_distance=None):
+        await asyncio.sleep(0.2)
+        return await super().recall(query, limit, namespace, max_distance)
+
+
 def make_gateway(client, boundary: Boundary | None = None) -> WalrusMemoryGateway:
     return WalrusMemoryGateway(
         boundary=boundary or make_boundary(),
@@ -170,6 +178,33 @@ async def test_recall_timeout_raises_dependency_unavailable_and_stops_waiting():
 
     assert "walrus-memory" in str(caught.value)
     assert elapsed < 1.0
+
+
+async def test_recall_can_use_a_longer_deadline_than_the_dependency_policy():
+    """A page read that asks for dozens of entries needs more than the task budget.
+
+    The override is per call and only the deadline changes: the breaker and the
+    bulkhead stay the dependency's, which is why this still goes through one
+    Boundary. Without the override the same call times out (the test above).
+    """
+    gateway = make_gateway(DelayedSdk(), make_boundary(timeout=0.05))
+
+    memories = await gateway.recall(
+        "what do you remember", "gigr-user-7", 50, timeout_seconds=0.5
+    )
+
+    assert [memory.text for memory in memories] == ["first", "second"]
+
+
+async def test_recall_without_retry_calls_the_sdk_once():
+    """One long attempt, not two: a retry would double what the page waits."""
+    sdk = RaisingSdk()
+    gateway = make_gateway(sdk, make_boundary(timeout=0.5, attempts=3))
+
+    with pytest.raises(DependencyUnavailableError):
+        await gateway.recall("query", "gigr-user-7", 50, retry=False)
+
+    assert sdk.calls == 1
 
 
 async def test_breaker_opens_after_threshold_and_stops_calling_the_sdk():

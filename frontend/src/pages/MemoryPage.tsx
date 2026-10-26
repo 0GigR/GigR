@@ -301,6 +301,17 @@ function MemoryFactsSection({
   onRetry: () => void
   onOpenAgent: () => void
 }) {
+  const retryButton = (label: string) => (
+    <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
+      {retrying ? (
+        <Loader2 className="w-3 h-3 animate-spin" />
+      ) : (
+        <RefreshCw className="w-3 h-3" />
+      )}
+      {label}
+    </Button>
+  )
+
   if (loading) return <LoadingState />
 
   if (failed) {
@@ -309,16 +320,7 @@ function MemoryFactsSection({
         warning
         title="We could not read Walrus Memory"
         body="Nothing has changed. The sentences Gigr stores are safe. Check your connection, then try again."
-        action={
-          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-            {retrying ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3" />
-            )}
-            Try again
-          </Button>
-        }
+        action={retryButton('Try again')}
       />
     )
   }
@@ -332,16 +334,29 @@ function MemoryFactsSection({
             ? 'Walrus Memory is turned off in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
             : 'Walrus Memory is not set up in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
         }
-        action={
-          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-            {retrying ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3" />
-            )}
-            Check again
-          </Button>
-        }
+        action={retryButton('Check again')}
+      />
+    )
+  }
+
+  if (reason === 'relayer_busy') {
+    return (
+      <MemoryNotice
+        warning
+        title="Walrus Memory is busy"
+        body="The relayer is limiting how often it can be read right now. Your facts are safe. Wait a minute, then try again."
+        action={retryButton('Try again')}
+      />
+    )
+  }
+
+  if (reason === 'relayer_timeout') {
+    return (
+      <MemoryNotice
+        warning
+        title="Walrus Memory took too long"
+        body="The recall did not finish in time. Your facts are safe. Try again; a smaller recall often completes."
+        action={retryButton('Try again')}
       />
     )
   }
@@ -352,16 +367,7 @@ function MemoryFactsSection({
         warning
         title="We could not read Walrus Memory"
         body="Nothing has changed. The sentences Gigr stores are safe. Try again in a moment."
-        action={
-          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-            {retrying ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-              <RefreshCw className="w-3 h-3" />
-            )}
-            Try again
-          </Button>
-        }
+        action={retryButton('Try again')}
       />
     )
   }
@@ -599,6 +605,9 @@ function LoadingState() {
   return (
     <div className="space-y-4" aria-busy="true">
       <p className="text-sm text-gray-500">Loading what Gigr remembers...</p>
+      <p className="text-xs text-gray-400">
+        Reading the sentences from Walrus Memory. This can take a few seconds.
+      </p>
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-14 w-full" />
