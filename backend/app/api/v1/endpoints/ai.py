@@ -2270,7 +2270,10 @@ async def _execute_task(task_id: str):
                 # Walrus Memory on, the query is the task's own command, so only
                 # the memories relevant to it are injected.
                 recall = await _load_memory(db, task.user_id, query=task.command_text)
-                memory = recall.entries
+                # The prompt-facing view: a recalled fact carries the date the
+                # relayer reported for it, so the model can prefer the newer of
+                # two contradicting facts.
+                memory = recall.prompt_entries
                 if recall.semantic:
                     await _log(db, task.id, "info", recall.recall_log_line)
                 if memory and task.params is not None:

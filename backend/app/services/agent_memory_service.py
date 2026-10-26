@@ -14,6 +14,10 @@ Two rules hold on every path:
   used, which is why a relayer outage cannot turn a memory save into a 500.
 * A recall reports where its memories actually came from, so the agent activity
   log never claims a Walrus recall that did not happen.
+* A recalled entry keeps the timestamp the relayer returned, and the prompt
+  shows that date next to the fact. Recency is then visible to the model, which
+  can prefer the newer of two contradicting facts; an entry without a usable
+  timestamp is injected without a date, never with a placeholder.
 
 This module imports the persistence layer directly and never a database driver.
 """
@@ -24,6 +28,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from uuid import UUID
 
@@ -54,11 +59,16 @@ class MemoryContext:
     ``source`` is ``"walrus"`` only when the relayer answered the recall and its
     entries were used. ``semantic`` is true when a semantic recall was actually
     attempted, which is what the activity log line keys off.
+
+    ``dates`` maps a recalled memory key to the newest YYYY-MM-DD date the
+    relayer reported for it. It is empty whenever the memories came from the
+    JSONB store, which carries no per-entry timestamps.
     """
 
     entries: Dict[str, Any] = field(default_factory=dict)
     source: str = "json"
     semantic: bool = False
+    dates: Dict[str, str] = field(default_factory=dict)
 
     @property
     def count(self) -> int:
@@ -67,6 +77,23 @@ class MemoryContext:
     @property
     def source_label(self) -> str:
         return "Walrus" if self.source == "walrus" else "local storage"
+
+    @property
+    def prompt_entries(self) -> Dict[str, Any]:
+        """The entries as they enter the prompt, every recalled fact dated.
+
+        The date is appended to the value, so the line the model reads is
+        ``last_search: plumber (2026-01-05)``. An entry the relayer returned no
+        usable date for is passed through untouched, which keeps the prompt
+        identical to the one the JSONB store produces.
+        """
+        if not self.dates:
+            return self.entries
+        rendered = dict(self.entries)
+        for key, day in self.dates.items():
+            if key in rendered:
+                rendered[key] = f"{rendered[key]} ({day})"
+        return rendered
 
     @property
     def recall_log_line(self) -> str:
@@ -93,22 +120,57 @@ def _memory_text(key: str, value: Any) -> str:
     return f"{key}: {rendered}"[:MEMORY_TEXT_LIMIT]
 
 
-def _keys_for_texts(texts: Iterable[str], known_keys: Iterable[str]) -> list[str]:
-    """Map recalled texts back to known memory keys, longest key first.
+def _memory_date(created_at: Any) -> Optional[str]:
+    """The YYYY-MM-DD date of a recalled memory, or None when it has none.
+
+    The relayer sends ISO-8601 text. A value that is missing, is not text, or
+    does not parse yields None, and the caller then attaches no date at all: a
+    placeholder or a guessed date would tell the model something the store never
+    said.
+    """
+    if isinstance(created_at, datetime):
+        return created_at.date().isoformat()
+    if isinstance(created_at, date):
+        return created_at.isoformat()
+    if not isinstance(created_at, str):
+        return None
+    text = created_at.strip()
+    if not text:
+        return None
+    candidate = text[:-1] + "+00:00" if text.endswith(("Z", "z")) else text
+    try:
+        return datetime.fromisoformat(candidate).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _match_recalled(
+    memories: Iterable["RecalledMemory"], known_keys: Iterable[str]
+) -> list[tuple[str, Optional[str]]]:
+    """Map recalled memories back to known memory keys, longest key first.
 
     Matching against the keys that exist locally means a malformed or foreign
     text is ignored rather than injected, and a key containing spaces or a colon
     still matches unambiguously.
+
+    Returns ``(key, day)`` pairs in the order the memories ranked them. ``day``
+    is the newest date among the memories that matched that key: the same fact
+    may have been written several times, and the newest version is the one the
+    model should see. It is None when no matching memory carried a usable date.
     """
     ordered_keys = sorted(known_keys, key=len, reverse=True)
-    matched: list[str] = []
-    for text in texts:
+    matched: dict[str, Optional[str]] = {}
+    for memory in memories:
         for key in ordered_keys:
-            if text == key or text.startswith(f"{key}: "):
+            if memory.text == key or memory.text.startswith(f"{key}: "):
+                day = _memory_date(memory.created_at)
+                known = matched.get(key)
                 if key not in matched:
-                    matched.append(key)
+                    matched[key] = day
+                elif day is not None and (known is None or day > known):
+                    matched[key] = day
                 break
-    return matched
+    return list(matched.items())
 
 
 class AgentMemoryService:
@@ -140,8 +202,10 @@ class AgentMemoryService:
             return False
         return True
 
-    async def _recall_texts(self, user_id: UUID, query: str) -> Optional[tuple[str, ...]]:
-        """Recall texts, or None when the relayer could not answer.
+    async def _recall_memories(
+        self, user_id: UUID, query: str
+    ) -> Optional[tuple["RecalledMemory", ...]]:
+        """Recall memories, or None when the relayer could not answer.
 
         Every failure is caught here: Walrus Memory must never break a task, so
         the caller falls back to the local store instead of seeing an exception.
@@ -170,14 +234,16 @@ class AgentMemoryService:
         are injected; a recall failure falls back to the whole dict.
         """
         if self._semantic_enabled() and query and query.strip():
-            texts = await self._recall_texts(user_id, query)
-            if texts is not None:
+            memories = await self._recall_memories(user_id, query)
+            if memories is not None:
                 local = await load_memory(self._db, user_id)
-                keys = _keys_for_texts(texts, local.keys())
+                matched = _match_recalled(memories, local.keys())
+                keys = [key for key, _ in matched]
                 return MemoryContext(
                     entries={key: local[key] for key in keys},
                     source="walrus",
                     semantic=True,
+                    dates={key: day for key, day in matched if day is not None},
                 )
             # The recall was attempted and failed. Report the local store as the
             # source, because that is the store that actually answered.

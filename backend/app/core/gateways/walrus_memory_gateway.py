@@ -9,6 +9,7 @@ never rendered by ``repr``.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from ..errors import DependencyUnavailableError
@@ -17,6 +18,23 @@ from ..resilience import Boundary, Outcome, failure_fallback, outcome_fallback
 logger = logging.getLogger(__name__)
 
 DEPENDENCY = "walrus-memory"
+
+
+@dataclass(frozen=True)
+class RecalledMemory:
+    """One stored memory and the metadata the relayer returned with it.
+
+    ``text`` is what the memory was stored as, which is what the caller matches
+    against its own keys. ``score`` is the relayer's relevance score and
+    ``created_at`` its ISO-8601 timestamp; both are optional because the relayer
+    leaves them out for entries whose embedding or timestamp it does not know.
+    A reader that needs a date formats it and treats an unparseable value as no
+    date at all, never as a guess.
+    """
+
+    text: str
+    score: float | None
+    created_at: str | None
 
 
 class WalrusMemoryGateway:
@@ -114,16 +132,30 @@ class WalrusMemoryGateway:
 
         return await self._write("remember", operation)
 
-    async def recall(self, query: str, namespace: str, limit: int) -> tuple[str, ...]:
-        """Return the stored texts most similar to ``query`` in ``namespace``."""
+    async def recall(
+        self, query: str, namespace: str, limit: int
+    ) -> tuple[RecalledMemory, ...]:
+        """Return the stored memories most similar to ``query`` in ``namespace``.
+
+        Each entry keeps its text, relevance score and creation timestamp, so a
+        caller can tell two contradicting memories apart by age. The relayer
+        returns them best match first and that order is preserved.
+        """
         if not query or not query.strip():
             raise ValueError("recall requires a non-empty query (operation=recall)")
 
-        async def operation() -> tuple[str, ...]:
+        async def operation() -> tuple[RecalledMemory, ...]:
             result = await self._sdk_client().recall(
                 query, limit=limit, namespace=namespace
             )
-            return tuple(memory.text for memory in result.results)
+            return tuple(
+                RecalledMemory(
+                    text=memory.text,
+                    score=memory.score,
+                    created_at=memory.created_at,
+                )
+                for memory in result.results
+            )
 
         return await self._read(
             "recall", operation, outcome_fallback(DEPENDENCY, (), "recall_degraded")

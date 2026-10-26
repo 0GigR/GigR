@@ -1,4 +1,4 @@
-"""Composition root for the agent memory slice and the Tatum boundaries.
+"""Composition root for the agent memory slice and the outbound boundaries.
 
 The circuit breaker, the boundary and the gateway are built here, once per
 process, and injected into the service. A service never constructs them and
@@ -7,7 +7,8 @@ never touches the memwal SDK or the Sui JSON-RPC.
 Nothing here imports an SDK at module level: with no MEMWAL_* credentials the
 gateway is simply None, and the service keeps using the JSONB memory. With no
 TATUM_* credentials the Tatum gateway is None and the memory paths are
-untouched.
+untouched. The geocoding gateway is always built, because Nominatim needs no
+credentials; it only makes a request when a caller asks it for a place.
 """
 
 from __future__ import annotations
@@ -16,9 +17,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from .config import settings
+from .gateways.geocoding_gateway import GeocodingGateway
 from .gateways.tatum_sui_gateway import TatumSuiGateway
 from .gateways.walrus_memory_gateway import WalrusMemoryGateway
 from .resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
+from ..services import osm_geo
 from ..services.agent_memory_service import AgentMemoryService
 from ..services.event_fact_service import EventFactService
 from ..services.fact_memory_service import FactMemoryService
@@ -50,6 +53,16 @@ TATUM_RESET_TIMEOUT_SECONDS = 20.0
 TATUM_MAX_ATTEMPTS = 1
 TATUM_MAX_CONCURRENCY = 2
 
+# One policy for the Nominatim dependency. The timeout matches the HTTP client's
+# own (GEO_HTTP_TIMEOUT_SECONDS) so a hung lookup cannot outlive the boundary.
+# Reads are retried, because a reverse lookup is idempotent; the reused client
+# still spaces every attempt to Nominatim's one request per second.
+NOMINATIM_DEPENDENCY = "nominatim"
+NOMINATIM_FAILURE_THRESHOLD = 4
+NOMINATIM_RESET_TIMEOUT_SECONDS = 60.0
+NOMINATIM_MAX_ATTEMPTS = 2
+NOMINATIM_MAX_CONCURRENCY = 1
+
 
 def build_memory_boundary() -> Boundary:
     """The outbound boundary every Walrus Memory call crosses."""
@@ -63,6 +76,21 @@ def build_memory_boundary() -> Boundary:
             max_concurrency=MEMORY_MAX_CONCURRENCY,
         ),
         StructuredLogMetricSink(DEPENDENCY),
+    )
+
+
+def build_geocoding_boundary() -> Boundary:
+    """The outbound boundary every reverse-geocoding call crosses."""
+    return Boundary(
+        ResiliencePolicy(
+            dependency=NOMINATIM_DEPENDENCY,
+            timeout_seconds=settings.GEO_HTTP_TIMEOUT_SECONDS,
+            failure_threshold=NOMINATIM_FAILURE_THRESHOLD,
+            reset_timeout_seconds=NOMINATIM_RESET_TIMEOUT_SECONDS,
+            max_attempts=NOMINATIM_MAX_ATTEMPTS,
+            max_concurrency=NOMINATIM_MAX_CONCURRENCY,
+        ),
+        StructuredLogMetricSink(NOMINATIM_DEPENDENCY),
     )
 
 
@@ -127,6 +155,20 @@ def build_tatum_sui_gateway() -> TatumSuiGateway | None:
     )
 
 
+def build_geocoding_gateway() -> GeocodingGateway:
+    """The reverse-geocoding gateway over the process's one Nominatim client.
+
+    ``osm_geo.reverse_geocode`` is injected rather than imported by the gateway:
+    that client owns the User-Agent, the one-request-per-second throttle and the
+    cache Nominatim's usage policy requires, and a second Nominatim client in
+    the codebase would mean two budgets and two caches for the same service.
+    """
+    return GeocodingGateway(
+        boundary=build_geocoding_boundary(),
+        reverse_geocode=osm_geo.reverse_geocode,
+    )
+
+
 def _log_flag_state() -> None:
     """Log the Tatum flag state once at startup, one line per flag."""
     logger.info(
@@ -161,6 +203,7 @@ def _log_flag_state() -> None:
 agent_memory_gateway = build_agent_memory_gateway()
 tatum_solana_boundary = build_tatum_solana_boundary()
 tatum_sui_gateway = build_tatum_sui_gateway()
+geocoding_gateway = build_geocoding_gateway()
 _log_flag_state()
 
 

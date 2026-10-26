@@ -1,27 +1,45 @@
-"""Unit tests for the agent memory service's Walrus namespace prefix.
+"""Unit tests for the agent memory service: the namespace and the prompt date.
 
-No database and no network. The service's two outbound methods are called
-directly with a recording gateway, and the namespace they build is asserted.
-This is the regression for a prefix that was a module constant: changing
-MEMWAL_NAMESPACE_PREFIX in the environment had no effect on the namespace the
-relayer received.
+No database and no network. The crud layer is replaced with a fixed local
+memory mapping and the gateway with a recording fake, so what is exercised is
+the service's own two decisions: the namespace it builds, and the date it puts
+next to each recalled fact before that fact reaches the prompt.
+
+The namespace tests are the regression for a prefix that was a module constant:
+changing MEMWAL_NAMESPACE_PREFIX in the environment had no effect on the
+namespace the relayer received.
 """
 
 from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.core.config import Settings, settings
+from app.core.gateways.walrus_memory_gateway import RecalledMemory
+from app.services import agent_memory_service as memory_module
+from app.services.agent_guardrails import build_memory_hint
 from app.services.agent_memory_service import AgentMemoryService
 
 
+def recalled(
+    text: str,
+    *,
+    score: float | None = None,
+    created_at: object = None,
+) -> RecalledMemory:
+    """One recalled entry, shaped as the gateway returns it."""
+    return RecalledMemory(text=text, score=score, created_at=created_at)
+
+
 class RecordingGateway:
-    """The two gateway methods the namespace tests touch."""
+    """The two gateway methods the service uses."""
 
     configured = True
 
-    def __init__(self, recall_texts: tuple[str, ...] = ()) -> None:
-        self.recall_texts = recall_texts
+    def __init__(self, memories: tuple[RecalledMemory, ...] = ()) -> None:
+        self.memories = memories
         self.remember_calls: list[dict] = []
         self.recall_calls: list[dict] = []
 
@@ -35,7 +53,19 @@ class RecordingGateway:
         self.recall_calls.append(
             {"query": query, "namespace": namespace, "limit": limit}
         )
-        return self.recall_texts
+        return self.memories
+
+
+async def _load(monkeypatch, gateway, local_memory):
+    """Run the semantic load against a fixed local memory, without a database."""
+    monkeypatch.setattr(settings, "FEATURE_AGENT_WALRUS_MEMORY", True)
+
+    async def fake_load_memory(db, user_id):
+        return dict(local_memory)
+
+    monkeypatch.setattr(memory_module, "load_memory", fake_load_memory)
+    service = AgentMemoryService(db=None, gateway=gateway)
+    return await service.load(uuid.uuid4(), query="fix a leak")
 
 
 def test_settings_read_the_namespace_prefix_from_the_environment(monkeypatch):
@@ -71,14 +101,82 @@ async def test_env_namespace_prefix_reaches_the_gateway_for_reads_and_writes(
         settings, "MEMWAL_NAMESPACE_PREFIX", startup.MEMWAL_NAMESPACE_PREFIX
     )
 
-    gateway = RecordingGateway(recall_texts=('last_search: "plumber"',))
+    gateway = RecordingGateway(memories=(recalled('last_search: "plumber"'),))
     service = AgentMemoryService(db=None, gateway=gateway)
     user_id = uuid.uuid4()
 
     await service._mirror(user_id, {"last_search": "plumber"})
-    await service._recall_texts(user_id, "fix a leak")
+    await service._recall_memories(user_id, "fix a leak")
 
     expected = f"acme-user-{user_id}"
     assert [call["namespace"] for call in gateway.remember_calls] == [expected]
     assert [call["namespace"] for call in gateway.recall_calls] == [expected]
     assert gateway.remember_calls[0]["text"] == 'last_search: "plumber"'
+
+
+async def test_a_recalled_fact_reaches_the_prompt_with_its_date(monkeypatch):
+    """The model must see when a recalled fact was written, so a contradiction
+    can be settled by recency. The date is YYYY-MM-DD and sits after the value."""
+    gateway = RecordingGateway(
+        memories=(
+            recalled(
+                'last_search: "plumber"',
+                score=0.93,
+                created_at="2026-01-05T10:00:00Z",
+            ),
+        )
+    )
+
+    context = await _load(monkeypatch, gateway, {"last_search": "plumber"})
+
+    assert context.source == "walrus"
+    assert context.recall_log_line == "Searching memory: Recalled 1 memory from Walrus"
+    # The raw entries stay as the JSONB store holds them.
+    assert context.entries == {"last_search": "plumber"}
+    # The prompt sees the dated value.
+    assert context.prompt_entries == {"last_search": "plumber (2026-01-05)"}
+    assert build_memory_hint(context.prompt_entries) == (
+        "last_search: plumber (2026-01-05)"
+    )
+
+
+@pytest.mark.parametrize("created_at", [None, "", "   ", "not-a-date", 12345])
+async def test_a_memory_without_a_usable_date_reaches_the_prompt_with_no_date(
+    monkeypatch, created_at
+):
+    """A missing or unparseable timestamp must not become a placeholder, a guess
+    or a crash: the fact is injected exactly as the JSONB store would inject it."""
+    gateway = RecordingGateway(
+        memories=(recalled('last_search: "plumber"', created_at=created_at),)
+    )
+
+    context = await _load(monkeypatch, gateway, {"last_search": "plumber"})
+
+    assert context.entries == {"last_search": "plumber"}
+    assert context.prompt_entries == {"last_search": "plumber"}
+    assert build_memory_hint(context.prompt_entries) == "last_search: plumber"
+
+
+async def test_the_newest_date_wins_when_the_same_fact_was_recalled_twice(
+    monkeypatch,
+):
+    """Walrus is append-only, so one fact can come back several times. The prompt
+    must carry the newest date, which is the one that settles a contradiction."""
+    gateway = RecordingGateway(
+        memories=(
+            recalled(
+                'usual_price_job: 12000',
+                score=0.80,
+                created_at="2025-03-01T09:00:00Z",
+            ),
+            recalled(
+                'usual_price_job: 15000',
+                score=0.91,
+                created_at="2026-01-05T10:00:00Z",
+            ),
+        )
+    )
+
+    context = await _load(monkeypatch, gateway, {"usual_price_job": 15000})
+
+    assert context.prompt_entries == {"usual_price_job": "15000 (2026-01-05)"}

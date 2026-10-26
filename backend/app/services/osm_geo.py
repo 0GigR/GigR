@@ -36,6 +36,11 @@ OSM_ATTRIBUTION = "© OpenStreetMap contributors"
 # Nominatim asks for a maximum of one request per second from a single client.
 _NOMINATIM_MIN_INTERVAL_SECONDS = 1.0
 
+# Tells a cached empty answer from a key the cache has never held. A reverse
+# lookup that found no place is stored as None, and re-asking the server for it
+# would spend the one-request-per-second budget on a point already answered.
+_CACHE_MISS = object()
+
 
 class _TTLCache:
     """Tiny in-process TTL cache.
@@ -49,14 +54,20 @@ class _TTLCache:
         self._data: Dict[Any, tuple[float, Any]] = {}
         self._maxsize = maxsize
 
-    def get(self, key: Any) -> Any:
+    def get(self, key: Any, default: Any = None) -> Any:
+        """The cached value, or ``default`` when the key is absent or expired.
+
+        ``default`` exists because a cached ``None`` is a real answer here: a
+        point that reverse-geocodes to nothing is cached too, and the caller
+        must be able to tell that hit from a miss without looking inside.
+        """
         hit = self._data.get(key)
         if hit is None:
-            return None
+            return default
         expires_at, value = hit
         if expires_at < time.monotonic():
             self._data.pop(key, None)
-            return None
+            return default
         return value
 
     def set(self, key: Any, value: Any, ttl_seconds: float) -> None:
@@ -226,8 +237,8 @@ async def reverse_geocode(
 ) -> Optional[Dict[str, Any]]:
     """Turn coordinates into a human-readable place (neighbourhood label)."""
     cache_key = ("reverse", round(latitude, 4), round(longitude, 4), zoom)
-    cached = _geocode_cache.get(cache_key)
-    if cached is not None:
+    cached = _geocode_cache.get(cache_key, _CACHE_MISS)
+    if cached is not _CACHE_MISS:
         return cached or None
 
     try:
