@@ -180,3 +180,52 @@ async def test_the_newest_date_wins_when_the_same_fact_was_recalled_twice(
     context = await _load(monkeypatch, gateway, {"usual_price_job": 15000})
 
     assert context.prompt_entries == {"usual_price_job": "15000 (2026-01-05)"}
+
+
+async def test_duplicate_recalled_texts_collapse_before_the_prompt(monkeypatch):
+    """The relayer is append-only: a write that reported a server error may still
+    have been stored, so one fact comes back several times. Exact duplicates must
+    collapse to the first occurrence before the prompt is built."""
+    gateway = RecordingGateway(
+        memories=(
+            recalled('last_search: "plumber"', created_at="2026-01-05T10:00:00Z"),
+            recalled('last_search: "plumber"', created_at="2026-01-05T10:00:00Z"),
+            recalled('last_search: "plumber"', created_at="2026-01-04T10:00:00Z"),
+            recalled(
+                'usual_price_job: 15000', created_at="2025-03-01T09:00:00Z"
+            ),
+        )
+    )
+    service = AgentMemoryService(db=None, gateway=gateway)
+
+    memories = await service._recall_memories(uuid.uuid4(), "fix a leak")
+
+    assert [memory.text for memory in memories] == [
+        'last_search: "plumber"',
+        'usual_price_job: 15000',
+    ]
+    # The first occurrence is the one kept, so its date is the one that survives.
+    assert memories[0].created_at == "2026-01-05T10:00:00Z"
+
+
+async def test_near_duplicate_recalled_facts_are_not_collapsed(monkeypatch):
+    """Only exact text equality is a duplicate. Two different sentences that say
+    similar things are two facts, and both must reach the prompt."""
+    gateway = RecordingGateway(
+        memories=(
+            recalled('last_search: "plumber"'),
+            recalled('usual_search: "plumber"'),
+        )
+    )
+
+    context = await _load(
+        monkeypatch,
+        gateway,
+        {"last_search": "plumber", "usual_search": "plumber"},
+    )
+
+    assert context.count == 2
+    assert context.prompt_entries == {
+        "last_search": "plumber",
+        "usual_search": "plumber",
+    }

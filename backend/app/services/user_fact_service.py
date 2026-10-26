@@ -9,17 +9,20 @@ meaningful. Nothing is guessed: no placeholder words, no currency symbol, and no
 rounding of a source value that would change what it says. A row whose price is
 missing, zero, or not a whole naira amount produces no sentence.
 
-Two fields need care at the call site, because the database does not store them
-as text:
+One field needs care at the call site, because the database does not store it as
+text:
 
 - User.last_location and Job.location are PostGIS points. A sentence needs a
   place name, so pass the name under the key "last_location" or "location" (for
   example the city the point sits in). A geometry value is not a place name and
   produces no sentence.
-- User.role holds the authorization role ("user", "admin", "superadmin"). The
-  role sentence describes the marketplace side, so pass "provider" or "client"
-  under the key "role". Any other value produces no role sentence rather than a
-  guessed one.
+
+No sentence names a marketplace side. Gigr has no fixed sides: the same person
+can hire and be hired, and switching between the two is normal, so calling
+someone "a client" or "a provider" would state something the product does not
+have. Every sentence therefore describes what the rows show the user did, never
+which side they are on. ``users.role`` is an authorization value and is not read
+here at all.
 """
 
 import hashlib
@@ -78,13 +81,13 @@ def build_user_facts(
 ) -> list[str]:
     """Return the fact sentences the given rows support, in a stable order.
 
-    profile is the user row (or an equivalent mapping): id, display_name, role,
+    profile is the user row (or an equivalent mapping): id, display_name,
     last_location, skills. services are the user's service listings,
     client_jobs the jobs where the user is the client, provider_jobs the jobs
     where the user is the provider, ratings the ratings the user received, and
     disputes the disputes the user is part of. Every collection may be empty.
 
-    The order is fixed: role, location, skills, service listings, jobs hired,
+    The order is fixed: location, skills, service listings, jobs hired,
     category budgets, completed counts, ratings, disputes. Within one group the
     rows are sorted by their own values, never by arrival order, so the same
     rows in any order produce the same list. Identical sentences appear once.
@@ -101,7 +104,6 @@ def build_user_facts(
 
     user_id = profile.get("id")
     facts: list[str] = []
-    facts.extend(_role_facts(display_name, profile.get("role")))
     facts.extend(_location_facts(display_name, profile.get("last_location")))
     facts.extend(_skills_facts(display_name, profile.get("skills")))
     facts.extend(_service_facts(display_name, services, user_id))
@@ -278,15 +280,6 @@ def _mappings(rows: Iterable[Any]) -> Iterator[Mapping[str, Any]]:
     for row in rows:
         if isinstance(row, Mapping):
             yield row
-
-
-def _role_facts(display_name: str, role: Any) -> list[str]:
-    side = clean_fact_text(role).casefold()
-    if side == "provider":
-        return [f"{display_name} is a provider on Gigr."]
-    if side == "client":
-        return [f"{display_name} is a client on Gigr."]
-    return []
 
 
 def _location_facts(display_name: str, last_location: Any) -> list[str]:
