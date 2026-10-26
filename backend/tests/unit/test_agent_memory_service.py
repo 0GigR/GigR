@@ -262,3 +262,77 @@ async def test_a_recalled_sentence_fact_reaches_the_prompt_without_a_local_key(
     hint = build_memory_hint(context.prompt_entries)
     assert "leaking pipe" in hint
     assert "last_search" in hint
+
+
+async def test_a_recalled_mirror_of_a_forgotten_key_never_reaches_the_prompt(
+    monkeypatch,
+):
+    """Forget deletes the JSONB key, but Walrus Memory keeps the mirrored text.
+
+    The relayer is append-only, so a recalled ``last_search: "plumber"`` whose
+    key is no longer local is the mirror of a forgotten preference. Injecting it
+    as a sentence fact would silently undo Forget and hand the model the value
+    the user removed.
+    """
+    gateway = RecordingGateway(
+        memories=(
+            recalled('last_search: "plumber"'),
+            recalled("Kosi hired a provider for a leaking pipe at 15000 naira."),
+        )
+    )
+
+    context = await _load(monkeypatch, gateway, {})
+
+    assert "last_search" not in context.entries
+    assert context.count == 1
+    assert "Kosi hired a provider for a leaking pipe at 15000 naira." in (
+        context.prompt_entries.values()
+    )
+
+
+async def test_unmatched_key_shaped_text_is_not_injected_as_a_fact(monkeypatch):
+    """The regression the smoke suite caught: an unknown entry is not a fact.
+
+    The CI suite recalls a text whose key is not in the local memory beside two
+    that are. Only the two local keys may reach the prompt; the third one is a
+    mirror the relayer happens to hold, not something Gigr remembers now.
+    """
+    gateway = RecordingGateway(
+        memories=(
+            recalled('last_search: "plumber"'),
+            recalled("usual_price_job: 5000"),
+            recalled("unknown_entry: 1"),
+        )
+    )
+    local = {
+        "last_search": "plumber",
+        "usual_price_job": 5000,
+        "unrelated": "secret",
+    }
+
+    context = await _load(monkeypatch, gateway, local)
+
+    assert context.entries == {
+        "last_search": "plumber",
+        "usual_price_job": 5000,
+    }
+    assert context.count == 2
+    assert context.recall_log_line == "Searching memory: Recalled 2 memories from Walrus"
+
+
+async def test_a_sentence_fact_that_contains_a_colon_still_reaches_the_prompt(
+    monkeypatch,
+):
+    """The mirror rule must not eat prose that merely contains a colon.
+
+    A backfilled sentence such as "Kosi posted a job for Fix: sink." ends with a
+    full stop, so its tail is not JSON and it is still a fact. Without this
+    guard, the filter meant to protect Forget would silently drop such facts.
+    """
+    fact = "Kosi posted a job for Fix: sink."
+    gateway = RecordingGateway(memories=(recalled(fact),))
+
+    context = await _load(monkeypatch, gateway, {})
+
+    assert "Kosi posted a job for Fix: sink." in context.prompt_entries.values()
+    assert context.count == 1
