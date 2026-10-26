@@ -12,9 +12,9 @@ export default function PaymentsPage() {
     <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <ShieldCheck className="h-6 w-6 text-blue-600" /> Payments
+          <ShieldCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" /> Payments
         </h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-sm text-gray-500 dark:text-muted-foreground">
           Every escrow step on your jobs — checkout, funds held, payouts and refunds — straight from PayPal.
         </p>
       </div>

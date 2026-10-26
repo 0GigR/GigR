@@ -233,13 +233,13 @@ export default function ProfilePage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">Profile</h1>
-          <p className="text-gray-500">Your public identity and on‑chain reputation</p>
+          <p className="text-gray-500 dark:text-muted-foreground">Your public identity and on‑chain reputation</p>
         </div>
         {user?.id && (
           <div className="flex items-center gap-2">
             <Link
               to={`/profile/${encodeURIComponent(portfolioSlug)}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-muted text-gray-800 dark:text-foreground hover:bg-gray-100 dark:hover:bg-secondary transition-colors"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               View Public Portfolio
@@ -254,7 +254,7 @@ export default function ProfilePage() {
                   toast.success('Public portfolio link copied to clipboard!')
                 }
               }}
-              className="text-xs h-8 border-gray-200 dark:border-gray-700"
+              className="text-xs h-8 border-gray-200 dark:border-border"
             >
               <Share2 className="w-3.5 h-3.5 mr-1.5" />
               Copy Share Link
@@ -305,11 +305,11 @@ export default function ProfilePage() {
               {editing ? (
                 <>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Display Name</label>
+                    <label className="text-xs text-gray-500 dark:text-muted-foreground mb-1 block">Display Name</label>
                     <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Display name" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Username (Portfolio handle)</label>
+                    <label className="text-xs text-gray-500 dark:text-muted-foreground mb-1 block">Username (Portfolio handle)</label>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">@</span>
                       <Input
@@ -324,25 +324,25 @@ export default function ProfilePage() {
                     </p>
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Phone Number</label>
+                    <label className="text-xs text-gray-500 dark:text-muted-foreground mb-1 block">Phone Number</label>
                     <Input value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="Phone" />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-500 mb-1 block">Bio</label>
+                    <label className="text-xs text-gray-500 dark:text-muted-foreground mb-1 block">Bio</label>
                     <textarea
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
                       placeholder="Write a short bio (max 500 chars)..."
                       maxLength={500}
                       rows={3}
-                      className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white resize-none"
+                      className="w-full rounded-md border border-gray-200 dark:border-border bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white resize-none"
                     />
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 mb-1.5">Skills (press Enter to add)</p>
+                    <p className="text-xs text-gray-500 dark:text-muted-foreground mb-1.5">Skills (press Enter to add)</p>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {skills.map(s => (
-                        <span key={s} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">
+                        <span key={s} className="inline-flex items-center gap-1 bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground text-xs px-2.5 py-1 rounded-full">
                           {s}
                           <button onClick={() => setSkills(prev => prev.filter(x => x !== s))} className="text-gray-400 hover:text-red-500">×</button>
                         </span>
@@ -376,23 +376,23 @@ export default function ProfilePage() {
                   <div className="flex flex-wrap items-center gap-2 text-lg font-semibold">
                     <span>{user?.display_name}</span>
                     {user?.username && (
-                      <span className="text-xs font-mono text-gray-500 dark:text-gray-400 font-normal">
+                      <span className="text-xs font-mono text-gray-500 dark:text-muted-foreground font-normal">
                         @{user.username}
                       </span>
                     )}
-                    {user?.is_verified && <Badge className="bg-green-100 text-green-700">Verified</Badge>}
+                    {user?.is_verified && <Badge className="bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400">Verified</Badge>}
                   </div>
                   {(user as any)?.bio && (
-                    <p className="text-sm text-gray-700 leading-relaxed">{(user as any).bio}</p>
+                    <p className="text-sm text-gray-700 dark:text-muted-foreground leading-relaxed">{(user as any).bio}</p>
                   )}
                   {(user as any)?.skills?.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {(user as any).skills.map((s: string) => (
-                        <span key={s} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">{s}</span>
+                        <span key={s} className="bg-gray-100 dark:bg-muted text-gray-700 dark:text-muted-foreground text-xs px-2.5 py-1 rounded-full">{s}</span>
                       ))}
                     </div>
                   )}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 dark:text-muted-foreground">
                     <div className="flex items-center gap-2"><Mail className="w-4 h-4" /> {user?.email}</div>
                     {user?.phone_number && (
                       <div className="flex items-center gap-2"><Phone className="w-4 h-4" /> {user.phone_number}</div>
@@ -428,9 +428,9 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {!isSolana && <PayoutAccountCard />}
-          {isSolana && <p className="text-sm text-gray-500">Your invisible on‑chain identity — powered by Solana</p>}
+          {isSolana && <p className="text-sm text-gray-500 dark:text-muted-foreground">Your invisible on‑chain identity — powered by Solana</p>}
           {isSolana && (walletInfo?.wallet_public_key ? (
-            <div className="bg-gray-50 rounded-lg p-3 flex items-center justify-between">
+            <div className="bg-gray-50 dark:bg-background rounded-lg p-3 flex items-center justify-between">
               <code className="text-xs break-all">
                 {showWalletAddress
                   ? walletInfo.wallet_public_key
@@ -452,7 +452,7 @@ export default function ProfilePage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-xs font-semibold gap-1 bg-white hover:bg-gray-100 dark:bg-gray-900"
+                  className="h-8 text-xs font-semibold gap-1 bg-white hover:bg-gray-100 dark:hover:bg-muted dark:bg-card"
                   onClick={() => setShowTransferModal(true)}
                 >
                   <Send className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
@@ -472,25 +472,25 @@ export default function ProfilePage() {
           />
 
           {/* Display currency — how prices across Gigr are shown */}
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-border bg-gray-50 dark:bg-background px-3 py-2.5">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-800">Display currency</p>
-              <p className="text-xs text-gray-500">Prices are stored in Naira — shown converted.</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-foreground">Display currency</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground">Prices are stored in Naira — shown converted.</p>
             </div>
             <CurrencySelect />
           </div>
 
           {/* Live balance — rendered in the display currency (Naira until rates load) */}
           {isSolana && (<>
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 rounded-xl p-4">
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-100 dark:border-green-800 rounded-xl p-4">
             <div className="flex items-center justify-between gap-2 mb-1">
               <div className="flex items-center gap-2">
-                <Coins className="w-4 h-4 text-green-600" />
-                <span className="text-xs font-medium text-green-700">Wallet Balance</span>
+                <Coins className="w-4 h-4 text-green-600 dark:text-green-400" />
+                <span className="text-xs font-medium text-green-700 dark:text-green-400">Wallet Balance</span>
               </div>
               <button
                 onClick={() => setShowUSDC((v) => !v)}
-                className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800"
+                className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-400"
               >
                 <RefreshCw className="w-3 h-3" />
                 {showUSDC ? `Show ${fiatCode}` : 'Show USDC'}
@@ -499,12 +499,12 @@ export default function ProfilePage() {
             {balanceLoading ? (
               <Skeleton className="h-8 w-32" />
             ) : showUSDC ? (
-              <p className="text-2xl font-bold text-green-900">
+              <p className="text-2xl font-bold text-green-900 dark:text-green-400">
                 {usdcFloat.toFixed(2)}
-                <span className="text-sm font-normal text-green-600 ml-1">USDC</span>
+                <span className="text-sm font-normal text-green-600 dark:text-green-400 ml-1">USDC</span>
               </p>
             ) : (
-              <p className="text-2xl font-bold text-green-900">
+              <p className="text-2xl font-bold text-green-900 dark:text-green-400">
                 {fiatValue != null
                   ? fiatCode === 'NGN'
                     ? `₦${fiatValue.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -513,7 +513,7 @@ export default function ProfilePage() {
                     ? '₦—'
                     : `${symbolFor(fiatCode)}—`}
                 {fiatValue != null && (
-                  <span className="text-xs font-normal text-green-600 ml-2">
+                  <span className="text-xs font-normal text-green-600 dark:text-green-400 ml-2">
                     ≈ {usdcFloat.toFixed(2)} USDC
                   </span>
                 )}
@@ -526,39 +526,39 @@ export default function ProfilePage() {
       </Card>
 
       {/* Two figures worth a glance; the rest stay one tap away. */}
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+      <div className="rounded-2xl border border-gray-100 dark:border-border bg-white dark:bg-card p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 sm:gap-10">
             <div>
               <p className="text-2xl font-bold leading-none">{vouchesReceived?.length || 0}</p>
-              <p className="text-xs text-gray-500 mt-1">Vouches</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Vouches</p>
             </div>
             <div>
               <p className="text-2xl font-bold leading-none">{completedJobs.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Jobs completed</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Jobs completed</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowAllStats((value) => !value)}
             aria-expanded={showAllStats}
-            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+            className="shrink-0 text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white inline-flex items-center gap-1"
           >
             {showAllStats ? 'Less' : 'More stats'}
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showAllStats ? 'rotate-180' : ''}`} />
           </button>
         </div>
         {showAllStats && (
-          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+          <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-border animate-in fade-in duration-200">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{myServices?.length || 0}</span>
-              <span className="text-xs text-gray-500">Services listed</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Services listed</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-gray-400" />
               <span className="text-lg font-bold leading-none">{pendingJobs.length}</span>
-              <span className="text-xs text-gray-500">Active jobs</span>
+              <span className="text-xs text-gray-500 dark:text-muted-foreground">Active jobs</span>
             </div>
           </div>
         )}
@@ -571,14 +571,14 @@ export default function ProfilePage() {
             <Shield className="w-5 h-5" /> Human Verification
           </CardTitle>
         </CardHeader>
-        <CardContent className="text-sm text-gray-600">
+        <CardContent className="text-sm text-gray-600 dark:text-muted-foreground">
           {user?.is_verified ? (
-            <div className="flex items-center gap-2 text-green-700 font-medium bg-green-50 px-4 py-3 rounded-xl border border-green-200">
+            <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-medium bg-green-50 dark:bg-green-950/40 px-4 py-3 rounded-xl border border-green-200 dark:border-green-800">
               <CheckCircle className="w-5 h-5" /> Human verified.
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-yellow-700 font-medium bg-yellow-50 px-4 py-3 rounded-xl border border-yellow-200 mb-4">
+              <div className="flex items-center gap-2 text-yellow-700 dark:text-yellow-400 font-medium bg-yellow-50 dark:bg-yellow-950/40 px-4 py-3 rounded-xl border border-yellow-200 dark:border-yellow-800 mb-4">
                 <XCircle className="w-5 h-5" /> Not yet verified. Please verify you are human to unlock all features.
               </div>
               <Turnstile
@@ -610,7 +610,7 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Share my location on my public profile</p>
-              <p className="text-xs text-gray-500 mt-0.5">
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">
                 When enabled, other users can see roughly where you are and how far they are from you.
               </p>
             </div>
@@ -625,10 +625,10 @@ export default function ProfilePage() {
                 await fetchUser()
               }}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                (user as any)?.location_public ? 'bg-black' : 'bg-gray-200'
+                (user as any)?.location_public ? 'bg-black' : 'bg-gray-200 dark:bg-secondary'
               }`}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white dark:bg-card transition-transform ${
                 (user as any)?.location_public ? 'translate-x-6' : 'translate-x-1'
               }`} />
             </button>
@@ -649,9 +649,9 @@ export default function ProfilePage() {
           ) : vouchesReceived?.length ? (
             <div className="space-y-2">
               {vouchesReceived.map(v => (
-                <div key={v.id} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                <div key={v.id} className="flex items-center justify-between bg-gray-50 dark:bg-background rounded-lg p-3">
                   <div>
-                    <p className="text-sm text-gray-700">Vouched for completed work</p>
+                    <p className="text-sm text-gray-700 dark:text-muted-foreground">Vouched for completed work</p>
                     {v.cnf_nft_id && (
                       <span className={`text-xs px-1.5 py-0.5 rounded-full border ${VOUCH_TONE_CLASS[vouchProof(v.cnf_nft_id).tone]}`}>
                         {vouchProof(v.cnf_nft_id).label}
@@ -663,7 +663,7 @@ export default function ProfilePage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-500">No vouches yet. Complete jobs to build your on‑chain reputation.</p>
+            <p className="text-sm text-gray-500 dark:text-muted-foreground">No vouches yet. Complete jobs to build your on‑chain reputation.</p>
           )}
         </CardContent>
       </Card>
@@ -674,20 +674,20 @@ export default function ProfilePage() {
       {/* Danger Zone — users own their data, including the right to leave. */}
       <Card className="border-red-200 dark:border-red-900">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2 text-red-600">
+          <CardTitle className="text-lg flex items-center gap-2 text-red-600 dark:text-red-400">
             <Trash2 className="w-5 h-5" /> Danger Zone
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Delete account</p>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-sm font-medium text-gray-900 dark:text-foreground">Delete account</p>
+            <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5">
               Permanently deletes your profile, jobs, services, messages and vouches. This cannot be undone.
             </p>
           </div>
           <Button
             variant="outline"
-            className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+            className="border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
             onClick={() => setConfirmDeleteAccount(true)}
           >
             <Trash2 className="w-4 h-4 mr-1" /> Delete my account
@@ -768,11 +768,11 @@ function ActivityHistory({ userId }: { userId?: string }) {
     applications: 'Application', vouches: 'Vouch', disputes: 'Dispute'
   }
   const kindColor: Record<string, string> = {
-    jobs_client: 'bg-blue-50 text-blue-700 border-blue-200',
-    jobs_provider: 'bg-purple-50 text-purple-700 border-purple-200',
-    applications: 'bg-amber-50 text-amber-700 border-amber-200',
-    vouches: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-    disputes: 'bg-red-50 text-red-700 border-red-200',
+    jobs_client: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+    jobs_provider: 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400 border-purple-200 dark:border-purple-800',
+    applications: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+    vouches: 'bg-yellow-50 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800',
+    disputes: 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800',
   }
 
   return (
@@ -786,37 +786,37 @@ function ActivityHistory({ userId }: { userId?: string }) {
         <div className="flex flex-wrap gap-2 mb-4">
           {(['all','jobs_client','jobs_provider','applications','vouches','disputes'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${filter === f ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'}`}>
+              className={`text-xs px-3 py-1 rounded-full border transition-colors ${filter === f ? 'bg-black text-white border-black dark:border-foreground' : 'bg-white dark:bg-card text-gray-600 dark:text-muted-foreground border-gray-200 dark:border-border hover:border-gray-400 dark:hover:border-border'}`}>
               {f === 'all' ? 'All' : f === 'jobs_client' ? 'As Client' : f === 'jobs_provider' ? 'As Provider' : f === 'applications' ? 'Applications' : f === 'vouches' ? 'Vouches' : 'Disputes'}
             </button>
           ))}
           <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="text-xs px-2 py-1 rounded-full border border-gray-200 bg-white text-gray-600 focus:outline-none">
+            className="text-xs px-2 py-1 rounded-full border border-gray-200 dark:border-border bg-white dark:bg-card text-gray-600 dark:text-muted-foreground focus:outline-none">
             <option value="all">All Status</option>
             {['open','assigned','funded','in_progress','completed','cancelled','disputed','open','resolved'].map(s => (
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
           <button onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
-            className="text-xs px-3 py-1 rounded-full border border-gray-200 hover:border-gray-400">
+            className="text-xs px-3 py-1 rounded-full border border-gray-200 dark:border-border hover:border-gray-400 dark:hover:border-border">
             {sortDir === 'desc' ? '↓ Newest' : '↑ Oldest'}
           </button>
         </div>
         {isLoading ? (
           <Skeleton className="h-32 w-full" />
         ) : visible.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No activity matching the current filters.</p>
+          <p className="text-sm text-gray-500 dark:text-muted-foreground py-4 text-center">No activity matching the current filters.</p>
         ) : (
           <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
             {visible.map(item => (
-              <div key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100">
+              <div key={`${item.kind}-${item.id}`} className="flex items-start justify-between gap-3 bg-gray-50 dark:bg-background rounded-xl p-3 border border-gray-100 dark:border-border">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <Badge className={`text-[10px] border ${kindColor[item.kind] || ''}`}>{kindLabel[item.kind] || item.kind}</Badge>
                     <span className="text-sm font-medium truncate">{item.title}</span>
                   </div>
-                  {item.detail && <p className="text-xs text-gray-500 mt-0.5 truncate">{item.detail}</p>}
-                  {item.price && <p className="text-xs text-gray-600 mt-0.5">{fmtPrice(parseFloat(item.price))}</p>}
+                  {item.detail && <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5 truncate">{item.detail}</p>}
+                  {item.price && <p className="text-xs text-gray-600 dark:text-muted-foreground mt-0.5">{fmtPrice(parseFloat(item.price))}</p>}
                 </div>
                 <div className="shrink-0 text-right">
                   {item.status && <Badge variant="outline" className="text-[10px] mb-1">{item.status}</Badge>}

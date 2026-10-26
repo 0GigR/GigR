@@ -94,8 +94,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950 px-4 py-8">
-      <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-background px-4 py-8">
+      <Card className="w-full max-w-md bg-white dark:bg-card border-gray-200 dark:border-border shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl font-bold tracking-tight">Create your Gigr account</CardTitle>
           <CardDescription>Fill in your details to get started with trusted local services.</CardDescription>
@@ -147,7 +147,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -170,7 +170,7 @@ export default function RegisterPage() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-muted-foreground focus:outline-none"
                   aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -198,8 +198,8 @@ export default function RegisterPage() {
                 />
               </div>
               {phone && (
-                <p className="text-[11px] text-gray-500 font-mono pl-1">
-                  Format: <span className="text-gray-700 dark:text-gray-300 font-medium">{formattedPhone || 'Invalid format'}</span>
+                <p className="text-[11px] text-gray-500 dark:text-muted-foreground font-mono pl-1">
+                  Format: <span className="text-gray-700 dark:text-muted-foreground font-medium">{formattedPhone || 'Invalid format'}</span>
                 </p>
               )}
             </div>
@@ -215,21 +215,21 @@ export default function RegisterPage() {
             {/* Submit Button */}
             <Button
               type="submit"
-              className="w-full bg-black text-white hover:bg-gray-800 font-semibold"
+              className="w-full bg-black text-white hover:bg-gray-800 dark:hover:bg-muted font-semibold"
               disabled={loading || !isFormValid}
             >
               {loading ? 'Creating account…' : 'Create Account'}
             </Button>
           </form>
 
-          <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-4">
+          <div className="mt-4 border-t border-gray-100 dark:border-border pt-4">
             <GoogleSignInButton
               onToken={handleGoogleSuccess}
               onError={(msg) => setError(msg)}
             />
           </div>
 
-          <p className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+          <p className="mt-4 text-center text-sm text-gray-600 dark:text-muted-foreground">
             Already have an account?{' '}
             <Link to="/login" className="font-medium text-black dark:text-white hover:underline">
               Sign in

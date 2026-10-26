@@ -178,21 +178,21 @@ function PointPopup({ point, ownerName, ownerAvatar }: {
   return (
     <div className="text-sm min-w-[170px]">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <Badge className={isJob ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}>
+        <Badge className={isJob ? 'bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-400' : 'bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400'}>
           {isJob ? 'Open Job' : 'Service Provider'}
         </Badge>
         {point.distanceKm != null && (
-          <span className="text-[11px] font-medium text-gray-500">{point.distanceKm} km</span>
+          <span className="text-[11px] font-medium text-gray-500 dark:text-muted-foreground">{point.distanceKm} km</span>
         )}
       </div>
       <h3 className="font-bold leading-tight">{point.title}</h3>
       {point.description && (
-        <p className="line-clamp-2 text-gray-600 dark:text-gray-300 mt-0.5">{point.description}</p>
+        <p className="line-clamp-2 text-gray-600 dark:text-muted-foreground mt-0.5">{point.description}</p>
       )}
       <p className="font-semibold mt-1">{fmtPrice(point.price)}</p>
       <a
         href={link}
-        className={`inline-flex items-center gap-1 mt-2 font-medium hover:underline ${isJob ? 'text-blue-600' : 'text-green-600'}`}
+        className={`inline-flex items-center gap-1 mt-2 font-medium hover:underline ${isJob ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'}`}
       >
         {ownerAvatar && <img src={ownerAvatar} className="w-4 h-4 rounded-full object-cover" />}
         {ownerName || `View ${isJob ? 'job' : 'provider'}`} →
@@ -509,12 +509,12 @@ export function NeighborhoodMap({
   if (!validCenter) {
     return (
       <div
-        className="w-full rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 flex flex-col items-center justify-center gap-2 text-center px-6"
+        className="w-full rounded-xl border border-dashed border-gray-300 dark:border-border bg-gray-50 dark:bg-card flex flex-col items-center justify-center gap-2 text-center px-6"
         style={{ height }}
       >
         <Layers className="w-8 h-8 text-gray-400" />
-        <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Location needed</p>
-        <p className="text-xs text-gray-500 max-w-xs">
+        <p className="text-sm font-medium text-gray-600 dark:text-muted-foreground">Location needed</p>
+        <p className="text-xs text-gray-500 dark:text-muted-foreground max-w-xs">
           Turn on location access to see jobs and providers around you on the map.
         </p>
       </div>
@@ -531,7 +531,7 @@ export function NeighborhoodMap({
 
   return (
     <div
-      className="w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm relative isolate"
+      className="w-full rounded-xl overflow-hidden border border-gray-200 dark:border-border shadow-sm relative isolate"
       style={{ height }}
     >
       <MapContainer
@@ -603,8 +603,8 @@ export function NeighborhoodMap({
           activeSelectedId ? 'opacity-0 pointer-events-none' : 'opacity-100'
         }`}
       >
-        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+        <div className="bg-white/95 dark:bg-card/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-border px-3 py-2">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-muted-foreground mb-1.5">
             <Navigation className="w-3 h-3" /> Radius
           </div>
           <div className="flex gap-1">
@@ -620,7 +620,7 @@ export function NeighborhoodMap({
                   className={`px-2 py-1 rounded-lg text-xs font-semibold transition-colors ${
                     active
                       ? 'bg-blue-600 text-white shadow'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      : 'bg-gray-100 dark:bg-muted text-gray-600 dark:text-muted-foreground hover:bg-gray-200 dark:hover:bg-secondary'
                   }`}
                 >
                   {km === 0 ? 'All' : km < 1 ? `${Math.round(km * 1000)}m` : `${km}km`}
@@ -630,8 +630,8 @@ export function NeighborhoodMap({
           </div>
         </div>
 
-        <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
-          <div className="flex items-center gap-3 text-gray-500">
+        <div className="bg-white/95 dark:bg-card/95 backdrop-blur rounded-xl shadow-lg border border-gray-200 dark:border-border px-3 py-2 text-xs">
+          <div className="flex items-center gap-3 text-gray-500 dark:text-muted-foreground">
             <span className="flex items-center gap-1.5">
               <span
                 className={showHeat ? 'w-2.5 h-2.5 rounded-full' : 'w-2.5 h-2.5 rounded-[3px]'}
@@ -648,14 +648,14 @@ export function NeighborhoodMap({
               className={`ml-auto px-2 py-0.5 rounded-lg font-semibold transition-colors ${
                 showHeat
                   ? 'bg-amber-500 text-white'
-                  : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  : 'text-gray-500 dark:text-muted-foreground hover:bg-gray-100 dark:hover:bg-muted'
               }`}
             >
               Heat
             </button>
           </div>
           {!loading && visiblePoints.length === 0 && (
-            <p className="mt-1.5 text-gray-500 flex items-center gap-1">
+            <p className="mt-1.5 text-gray-500 dark:text-muted-foreground flex items-center gap-1">
               <Flame className="w-3 h-3 text-amber-500" />
               {loadFailed
                 ? 'Could not load listings for the map. Pull to refresh, or try again shortly.'

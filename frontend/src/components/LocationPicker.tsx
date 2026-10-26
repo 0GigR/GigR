@@ -172,7 +172,7 @@ export function LocationPicker({
                 }}
                 onFocus={() => setShowResults(true)}
                 placeholder="Search an address or area…"
-                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card text-gray-900 dark:text-foreground focus:ring-2 focus:ring-blue-500"
               />
               {searching && (
                 <Loader2 className="w-4 h-4 text-gray-400 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
@@ -182,7 +182,7 @@ export function LocationPicker({
               type="button"
               onClick={useMyLocation}
               title="Use my current location"
-              className="shrink-0 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              className="shrink-0 px-3 rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card text-gray-600 dark:text-muted-foreground hover:bg-gray-50 dark:hover:bg-muted"
             >
               {locating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -193,7 +193,7 @@ export function LocationPicker({
           </div>
 
           {showResults && debounced.length >= 3 && results && results.length > 0 && (
-            <div className="absolute z-[1100] mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl overflow-hidden">
+            <div className="absolute z-[1100] mt-1 w-full rounded-lg border border-gray-200 dark:border-border bg-white dark:bg-card shadow-xl overflow-hidden">
               {results.map((result, index) => (
                 <button
                   key={`${result.latitude}-${result.longitude}-${index}`}
@@ -203,12 +203,12 @@ export function LocationPicker({
                     setQuery(result.label || result.display_name || '')
                     setShowResults(false)
                   }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b last:border-b-0 border-gray-100 dark:border-gray-800"
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-muted border-b last:border-b-0 border-gray-100 dark:border-border"
                 >
-                  <span className="font-medium text-gray-800 dark:text-gray-100">
+                  <span className="font-medium text-gray-800 dark:text-foreground">
                     {result.label || 'Location'}
                   </span>
-                  <span className="block text-xs text-gray-500 truncate">
+                  <span className="block text-xs text-gray-500 dark:text-muted-foreground truncate">
                     {result.display_name}
                   </span>
                 </button>
@@ -219,7 +219,7 @@ export function LocationPicker({
       )}
 
       <div
-        className="w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm relative isolate"
+        className="w-full rounded-xl overflow-hidden border border-gray-200 dark:border-border shadow-sm relative isolate"
         style={{ height }}
       >
         <MapContainer center={position} zoom={15} scrollWheelZoom={false} className="h-full w-full">
@@ -232,7 +232,7 @@ export function LocationPicker({
         </MapContainer>
       </div>
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-gray-500 dark:text-muted-foreground">
         Tap the map or drag the pin to fine-tune the exact spot.
       </p>
     </div>

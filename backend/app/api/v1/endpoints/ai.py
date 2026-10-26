@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -3361,6 +3361,30 @@ async def forget_memory_key(
             detail="We could not find your account. Sign in again to continue.",
         )
     return {"status": "ok", "forgotten": key, "memory": memory}
+
+
+@router.get("/ai/memory/facts")
+async def list_memory_facts_endpoint(
+    query: Optional[str] = Query(default=None, max_length=500),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only: the sentences Walrus Memory holds for the caller.
+
+    Auth is required and nothing is written; the only input is the optional
+    recall query, which selects what is read. With the flag off, the gateway
+    unconfigured, or the relayer unreachable, the service answers with an empty
+    list and a reason, so the page shows a calm state instead of an error.
+    """
+    facts = await build_agent_memory_service(db).review_facts(
+        current_user.id, query=query
+    )
+    return {
+        "facts": [{"text": text} for text in facts.facts],
+        "count": facts.count,
+        "source": facts.source,
+        "reason": facts.reason,
+    }
 
 
 @router.get("/ai/memory/verification")

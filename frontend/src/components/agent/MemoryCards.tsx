@@ -26,6 +26,17 @@ interface MemoryItemProps {
   onUpdate: (key: string, newValue: unknown) => void
 }
 
+/**
+ * A preference counts as saved when it has something to show. An empty array is
+ * the shape the server leaves after a forgotten list, so it is empty too: a
+ * card for it would be a slot pretending to be memory.
+ */
+function hasValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === '') return false
+  if (Array.isArray(value)) return value.length > 0
+  return true
+}
+
 function MemoryItem({
   label,
   description,
@@ -77,7 +88,7 @@ function MemoryItem({
     setIsEditing(false)
   }
 
-  const isFilled = value !== null && value !== undefined && value !== ''
+  const isFilled = hasValue(value)
 
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 shadow-sm flex flex-col justify-between">
@@ -164,6 +175,14 @@ function MemoryItem({
   )
 }
 
+interface MemoryPreference {
+  label: string
+  description: string
+  memoryKey: string
+  value: unknown
+  icon: React.ReactNode
+}
+
 export default function MemoryCards() {
   const { agentMemory, fetchMemory, updateMemory, forgetMemoryKey } = useAgentStore()
 
@@ -179,61 +198,73 @@ export default function MemoryCards() {
     forgetMemoryKey(key)
   }
 
+  const preferences: MemoryPreference[] = [
+    {
+      label: 'Preferred Location',
+      description: 'Geographic anchor used for radius searches.',
+      memoryKey: 'location_name',
+      value: agentMemory.location_name,
+      icon: <MapPin className="w-4 h-4" />,
+    },
+    {
+      label: 'Typical Job Budget',
+      description: 'Baseline rate used when posting tasks without a price.',
+      memoryKey: 'usual_price_job',
+      value: agentMemory.usual_price_job,
+      icon: <DollarSign className="w-4 h-4" />,
+    },
+    {
+      label: 'Preferred Categories',
+      description: 'Categories of work prioritized during searches.',
+      memoryKey: 'preferred_categories',
+      value: agentMemory.preferred_categories,
+      icon: <Tag className="w-4 h-4" />,
+    },
+    {
+      label: 'Last Search Query',
+      description: 'Most recent service inquiry used for proactive monitoring.',
+      memoryKey: 'last_search',
+      value: agentMemory.last_search,
+      icon: <Search className="w-4 h-4" />,
+    },
+  ]
+
+  const saved = preferences.filter((preference) => hasValue(preference.value))
+
+  // Four empty slots pretending to be memory is worse than no section at all.
+  // This block appears only when a preference actually has a value; the
+  // sentences Walrus Memory holds are on the memory page, which is the page
+  // whose job is to show them.
+  if (saved.length === 0) return null
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-4">
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Brain className="w-5 h-5 text-violet-500" />
-            What Your Agent Knows
+            Saved preferences
           </h3>
           <p className="text-sm text-gray-500 leading-relaxed">
-            Autonomous memory extracted from your tasks and searches. The agent references
-            this context to eliminate repetitive questions.
+            Short values your agent saved to reuse. Forgetting one stops the agent using it.
+            The sentences Gigr stores in Walrus Memory are on the memory page.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
-        <MemoryItem
-          label="Preferred Location"
-          description="Geographic anchor used for radius searches."
-          memoryKey="location_name"
-          value={agentMemory.location_name}
-          icon={<MapPin className="w-4 h-4" />}
-          onForget={handleForget}
-          onUpdate={handleUpdate}
-        />
-
-        <MemoryItem
-          label="Typical Job Budget"
-          description="Baseline rate used when posting tasks without a price."
-          memoryKey="usual_price_job"
-          value={agentMemory.usual_price_job}
-          icon={<DollarSign className="w-4 h-4" />}
-          onForget={handleForget}
-          onUpdate={handleUpdate}
-        />
-
-        <MemoryItem
-          label="Preferred Categories"
-          description="Categories of work prioritized during searches."
-          memoryKey="preferred_categories"
-          value={agentMemory.preferred_categories}
-          icon={<Tag className="w-4 h-4" />}
-          onForget={handleForget}
-          onUpdate={handleUpdate}
-        />
-
-        <MemoryItem
-          label="Last Search Query"
-          description="Most recent service inquiry used for proactive monitoring."
-          memoryKey="last_search"
-          value={agentMemory.last_search}
-          icon={<Search className="w-4 h-4" />}
-          onForget={handleForget}
-          onUpdate={handleUpdate}
-        />
+        {saved.map((preference) => (
+          <MemoryItem
+            key={preference.memoryKey}
+            label={preference.label}
+            description={preference.description}
+            memoryKey={preference.memoryKey}
+            value={preference.value}
+            icon={preference.icon}
+            onForget={handleForget}
+            onUpdate={handleUpdate}
+          />
+        ))}
       </div>
 
       <div className="pt-1">

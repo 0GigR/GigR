@@ -84,14 +84,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
     const details = showDetails ? (
       <div className="mt-4 text-left">
-        <pre className="max-h-56 overflow-auto rounded-lg bg-gray-900 text-gray-100 text-[11px] leading-relaxed p-3 whitespace-pre-wrap">
+        <pre className="max-h-56 overflow-auto rounded-lg bg-gray-900 dark:bg-card text-gray-100 text-[11px] leading-relaxed p-3 whitespace-pre-wrap">
           {error.name}: {error.message}
           {info ? `\n${info}` : ''}
         </pre>
         <button
           type="button"
           onClick={this.copyDetails}
-          className="mt-2 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white"
+          className="mt-2 text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white"
         >
           Copy details
         </button>
@@ -103,7 +103,7 @@ export class ErrorBoundary extends Component<Props, State> {
         type="button"
         onClick={() => this.setState((s) => ({ showDetails: !s.showDetails }))}
         aria-expanded={showDetails}
-        className="inline-flex items-center gap-1 text-sm font-medium text-gray-500 hover:text-black dark:hover:text-white"
+        className="inline-flex items-center gap-1 text-sm font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white"
       >
         Details
         <ChevronDown className={`w-4 h-4 transition-transform ${showDetails ? 'rotate-180' : ''}`} />
@@ -118,14 +118,14 @@ export class ErrorBoundary extends Component<Props, State> {
               <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-gray-900 dark:text-gray-100">
+              <p className="font-semibold text-gray-900 dark:text-foreground">
                 {label ? `${label} could not load` : 'This part of the page could not load'}
               </p>
-              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+              <p className="mt-1 text-sm text-gray-600 dark:text-muted-foreground">
                 The rest of the app still works — you can carry on or try again.
               </p>
               <div className="mt-3 flex items-center gap-4">
-                <Button size="sm" onClick={this.reset} className="bg-black text-white hover:bg-gray-800">
+                <Button size="sm" onClick={this.reset} className="bg-black text-white hover:bg-gray-800 dark:hover:bg-muted">
                   <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> Try again
                 </Button>
                 {toggleDetails}
@@ -138,15 +138,15 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950 p-6">
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-background p-6">
         <div className="text-center max-w-md">
           <div className="w-16 h-16 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-foreground mb-2">
             Something went wrong
           </h1>
-          <p className="text-gray-500 mb-6 text-sm">{error.message || 'An unexpected error occurred.'}</p>
+          <p className="text-gray-500 dark:text-muted-foreground mb-6 text-sm">{error.message || 'An unexpected error occurred.'}</p>
           <div className="flex gap-3 justify-center">
             <Button onClick={() => window.location.reload()} className="bg-black text-white">
               <RefreshCw className="w-4 h-4 mr-2" /> Reload

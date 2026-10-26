@@ -103,14 +103,14 @@ export default function HomePage() {
         <h1 className="text-3xl font-bold tracking-tight">
           Welcome back, {user?.display_name?.split(' ')[0]}
         </h1>
-        <p className="text-gray-500 mt-1">Your neighborhood trusted marketplace</p>
+        <p className="text-gray-500 dark:text-muted-foreground mt-1">Your neighborhood trusted marketplace</p>
       </div>
 
       {/* Global Proximity & Search Radius HUD (Collapsible & Minimalist) */}
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm transition-all duration-200">
+      <div className="rounded-2xl border border-gray-100 dark:border-border bg-white dark:bg-card p-4 shadow-sm transition-all duration-200">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-700 dark:text-gray-300 shrink-0">
+            <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-muted border border-gray-200 dark:border-border flex items-center justify-center text-gray-700 dark:text-muted-foreground shrink-0">
               <Navigation className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -120,7 +120,7 @@ export default function HomePage() {
                   {formatRadiusLabel(radiusKm)}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-0.5 truncate">
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-0.5 truncate">
                 {formatRadiusDescription(radiusKm)}
               </p>
             </div>
@@ -130,7 +130,7 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={() => setRadiusKm(0)}
-                className="hidden sm:inline-block text-xs text-gray-500 hover:text-black dark:hover:text-white underline"
+                className="hidden sm:inline-block text-xs text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white underline"
               >
                 Worldwide
               </button>
@@ -139,7 +139,7 @@ export default function HomePage() {
               type="button"
               onClick={() => setShowRadiusPresets((prev) => !prev)}
               aria-expanded={showRadiusPresets}
-              className="text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+              className="text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white inline-flex items-center gap-1"
             >
               {showRadiusPresets ? 'Less' : 'Adjust radius'}
               <ChevronDown
@@ -151,7 +151,7 @@ export default function HomePage() {
 
         {/* Collapsible Presets and Range Slider */}
         {showRadiusPresets && (
-          <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 space-y-3 animate-in fade-in duration-200">
+          <div className="pt-3 mt-3 border-t border-gray-100 dark:border-border space-y-3 animate-in fade-in duration-200">
             <div className="flex flex-wrap items-center gap-1.5">
               {RADIUS_PRESETS.map((preset) => {
                 const isActive = radiusKm === preset.value
@@ -163,11 +163,11 @@ export default function HomePage() {
                     className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors ${
                       isActive
                         ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white shadow-sm'
-                        : 'bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        : 'bg-gray-50 dark:bg-muted/60 text-gray-700 dark:text-muted-foreground border-gray-200 dark:border-border hover:bg-gray-100 dark:hover:bg-muted'
                     }`}
                   >
                     {preset.label}{' '}
-                    <span className={`text-[10px] ml-0.5 ${isActive ? 'text-gray-300 dark:text-gray-600' : 'text-gray-400'}`}>
+                    <span className={`text-[10px] ml-0.5 ${isActive ? 'text-gray-300 dark:text-muted-foreground/80' : 'text-gray-400'}`}>
                       ({preset.detail})
                     </span>
                   </button>
@@ -178,7 +178,7 @@ export default function HomePage() {
             <div className="pt-1">
               <div className="flex justify-between text-[11px] text-gray-400 mb-1">
                 <span>Street (100 m)</span>
-                <span className="font-mono text-gray-700 dark:text-gray-300 font-medium">
+                <span className="font-mono text-gray-700 dark:text-muted-foreground font-medium">
                   {radiusKm === 0 ? 'Worldwide (No Limit)' : `${radiusKm} km`}
                 </span>
                 <span>500 km</span>
@@ -200,23 +200,23 @@ export default function HomePage() {
 
       {/* Your numbers. Two figures a newcomer actually acts on are always
           visible; the rest stay one tap away rather than filling the screen. */}
-      <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+      <div className="rounded-2xl border border-gray-100 dark:border-border bg-white dark:bg-card p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-6 sm:gap-10">
             <div>
               <p className="text-2xl font-bold leading-none">{activeJobs.length}</p>
-              <p className="text-xs text-gray-500 mt-1">Active jobs</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Active jobs</p>
             </div>
             <div>
               <p className="text-2xl font-bold leading-none">{pendingApplications}</p>
-              <p className="text-xs text-gray-500 mt-1">Pending applications</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">Pending applications</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setShowAllStats((value) => !value)}
             aria-expanded={showAllStats}
-            className="shrink-0 text-xs font-medium text-gray-500 hover:text-black dark:hover:text-white inline-flex items-center gap-1"
+            className="shrink-0 text-xs font-medium text-gray-500 dark:text-muted-foreground hover:text-black dark:hover:text-white inline-flex items-center gap-1"
           >
             {showAllStats ? 'Less' : 'More stats'}
             <ChevronDown
@@ -226,7 +226,7 @@ export default function HomePage() {
         </div>
 
         {showAllStats && (
-          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 animate-in fade-in duration-200">
+          <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-border animate-in fade-in duration-200">
             {[
               { label: 'Vouches', value: myVouches?.length || 0 },
               { label: 'Services listed', value: myServices?.length || 0 },
@@ -234,7 +234,7 @@ export default function HomePage() {
             ].map((stat) => (
               <div key={stat.label}>
                 <p className="text-lg font-bold leading-none">{stat.value}</p>
-                <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -244,14 +244,14 @@ export default function HomePage() {
       {/* Quick Actions */}
       <div className="grid md:grid-cols-3 gap-6">
         <Link to="/dashboard/jobs?tab=open">
-          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100">
+          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100 dark:border-border">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Search className="w-5 h-5" /> Find Work
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-500">Browse open jobs in your area</p>
+              <p className="text-sm text-gray-500 dark:text-muted-foreground">Browse open jobs in your area</p>
               <div className="mt-4 flex justify-between items-center">
                 <span className="text-xs text-gray-400">{openJobs?.length || 0} open</span>
                 <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -261,14 +261,14 @@ export default function HomePage() {
         </Link>
 
         <Link to="/dashboard/services">
-          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100">
+          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100 dark:border-border">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <MapPin className="w-5 h-5" /> Hire a Pro
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-500">Discover trusted providers near you</p>
+              <p className="text-sm text-gray-500 dark:text-muted-foreground">Discover trusted providers near you</p>
               <div className="mt-4 flex justify-between items-center">
                 <span className="text-xs text-gray-400">{nearbyServices?.length || 0} nearby</span>
                 <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -278,14 +278,14 @@ export default function HomePage() {
         </Link>
 
         <Link to="/dashboard/activity">
-          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100">
+          <Card className="hover:shadow-lg transition-all duration-300 transform hover:-translate-y-1 cursor-pointer h-full border-gray-100 dark:border-border">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Clock className="w-5 h-5" /> My Activity
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-gray-500">Track your jobs and reputation</p>
+              <p className="text-sm text-gray-500 dark:text-muted-foreground">Track your jobs and reputation</p>
               <div className="mt-4 flex justify-between items-center">
                 <span className="text-xs text-gray-400">{activeJobs.length} active</span>
                 <ArrowRight className="w-4 h-4 text-gray-400" />
@@ -302,7 +302,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Recent Jobs</h2>
             <Link to="/dashboard/activity">
-              <Button variant="ghost" size="sm" className="text-gray-500">
+              <Button variant="ghost" size="sm" className="text-gray-500 dark:text-muted-foreground">
                 View all <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </Link>
@@ -315,11 +315,11 @@ export default function HomePage() {
           ) : myJobs?.length ? (
             <div className="space-y-3">
               {myJobs.slice(0, 5).map(job => (
-                <Card key={job.id} className="border-gray-100">
+                <Card key={job.id} className="border-gray-100 dark:border-border">
                   <CardContent className="flex items-center justify-between p-4">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{job.title}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-muted-foreground">
                         {fmtPrice(parseFloat(job.price as string))} · {job.status}
                       </p>
                     </div>
@@ -331,11 +331,11 @@ export default function HomePage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+            <div className="text-center py-12 border border-dashed border-gray-200 dark:border-border rounded-xl bg-gray-50 dark:bg-background">
               <Briefcase className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">No jobs yet</p>
+              <p className="text-gray-500 dark:text-muted-foreground">No jobs yet</p>
               <Link to="/dashboard/jobs">
-                <Button variant="link" className="text-black mt-2">
+                <Button variant="link" className="text-black dark:text-foreground mt-2">
                   <Plus className="w-4 h-4 mr-1" /> Post your first job
                 </Button>
               </Link>
@@ -348,7 +348,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold">Recent Vouches</h2>
             <Link to="/dashboard/profile">
-              <Button variant="ghost" size="sm" className="text-gray-500">
+              <Button variant="ghost" size="sm" className="text-gray-500 dark:text-muted-foreground">
                 View all <ArrowRight className="w-3 h-3 ml-1" />
               </Button>
             </Link>
@@ -361,7 +361,7 @@ export default function HomePage() {
           ) : myVouches?.length ? (
             <div className="space-y-3">
               {myVouches.slice(0, 5).map(vouch => (
-                <Card key={vouch.id} className="border-gray-100">
+                <Card key={vouch.id} className="border-gray-100 dark:border-border">
                   <CardContent className="flex items-center justify-between p-4">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
@@ -371,7 +371,7 @@ export default function HomePage() {
                         <p className="text-sm font-medium">
                           {vouchProof(vouch.cnf_nft_id).tone === 'paypal' ? 'Verified vouch received' : 'On‑chain vouch received'}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 dark:text-muted-foreground">
                           {vouchProof(vouch.cnf_nft_id).tone === 'paypal'
                             ? `PayPal payout ${vouch.cnf_nft_id?.slice(7, 17)}...`
                             : `cNFT: ${vouch.cnf_nft_id?.slice(0, 10)}...`}
@@ -386,9 +386,9 @@ export default function HomePage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl bg-gray-50">
+            <div className="text-center py-12 border border-dashed border-gray-200 dark:border-border rounded-xl bg-gray-50 dark:bg-background">
               <Star className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-500">No vouches yet</p>
+              <p className="text-gray-500 dark:text-muted-foreground">No vouches yet</p>
               <p className="text-xs text-gray-400 mt-1">Complete jobs to build your reputation</p>
             </div>
           )}

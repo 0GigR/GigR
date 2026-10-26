@@ -35,7 +35,7 @@ type Message = {
 const statusBadge = (status: string) => {
   switch (status) {
     case 'open':
-      return <Badge className="bg-yellow-100 text-yellow-800">Open for voting</Badge>
+      return <Badge className="bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-400">Open for voting</Badge>
     case 'resolved':
       return <Badge className="bg-black text-white">Resolved</Badge>
     default:
@@ -138,7 +138,7 @@ export default function DisputesPage() {
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <Gavel className="w-7 h-7" /> Disputes & Courtroom
         </h1>
-        <p className="text-gray-500">Review cases, vote as a juror, or manage your disputes.</p>
+        <p className="text-gray-500 dark:text-muted-foreground">Review cases, vote as a juror, or manage your disputes.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'jury' | 'mine')}>
@@ -151,13 +151,13 @@ export default function DisputesPage() {
           {juryLoading ? (
             <Skeleton className="h-24 w-full" />
           ) : !juryDisputes || juryDisputes.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">You have no jury duties right now.</div>
+            <div className="text-center py-12 text-gray-500 dark:text-muted-foreground">You have no jury duties right now.</div>
           ) : (
             <div className="space-y-3">
               {juryDisputes.map((d) => {
                 const closed = d.status === 'resolved' || d.has_voted
                 return (
-                  <Card key={d.id} className="bg-white border border-gray-100">
+                  <Card key={d.id} className="bg-white dark:bg-card border border-gray-100 dark:border-border">
                     <CardHeader className="pb-2">
                       <div className="flex justify-between items-start">
                         <CardTitle className="text-base">{d.job_title || 'Untitled job'}</CardTitle>
@@ -165,12 +165,12 @@ export default function DisputesPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="text-sm space-y-3">
-                      <p className="text-gray-600"><strong>Reason:</strong> {d.reason}</p>
+                      <p className="text-gray-600 dark:text-muted-foreground"><strong>Reason:</strong> {d.reason}</p>
 
                       {d.status === 'resolved' ? (
-                        <p className="text-xs text-gray-500">Resolved{d.resolution ? ` — ${d.resolution}` : ''}.</p>
+                        <p className="text-xs text-gray-500 dark:text-muted-foreground">Resolved{d.resolution ? ` — ${d.resolution}` : ''}.</p>
                       ) : d.has_voted ? (
-                        <p className="text-xs text-green-600">You have voted. Awaiting the rest of the panel.</p>
+                        <p className="text-xs text-green-600 dark:text-green-400">You have voted. Awaiting the rest of the panel.</p>
                       ) : (
                         <div className="flex gap-2 flex-wrap">
                           <Button size="sm" onClick={() => openCourtroom(d)} variant="outline">
@@ -206,24 +206,24 @@ export default function DisputesPage() {
           {myLoading ? (
             <Skeleton className="h-24 w-full" />
           ) : !myDisputes || myDisputes.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">You have no active disputes.</div>
+            <div className="text-center py-12 text-gray-500 dark:text-muted-foreground">You have no active disputes.</div>
           ) : (
             <div className="space-y-3">
               {(myDisputes as any[]).map((d: any) => (
-                <Card key={d.id} className="bg-white border border-gray-100">
+                <Card key={d.id} className="bg-white dark:bg-card border border-gray-100 dark:border-border">
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
                       <CardTitle className="text-base">{d.job_title || 'Untitled'}</CardTitle>
-                      <Badge className="bg-red-100 text-red-800">Disputed</Badge>
+                      <Badge className="bg-red-100 dark:bg-red-950/50 text-red-800 dark:text-red-400">Disputed</Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm space-y-2">
-                    <p className="text-gray-600"><strong>Reason:</strong> {d.reason}</p>
-                    <p className="text-gray-600">
+                    <p className="text-gray-600 dark:text-muted-foreground"><strong>Reason:</strong> {d.reason}</p>
+                    <p className="text-gray-600 dark:text-muted-foreground">
                       <strong>With:</strong> {d.client_name} (client) ↔ {d.provider_name} (provider)
                     </p>
                     {d.escrow_address && (
-                      <p className="text-xs text-green-600">Escrow: {d.escrow_address.slice(0, 8)}...</p>
+                      <p className="text-xs text-green-600 dark:text-green-400">Escrow: {d.escrow_address.slice(0, 8)}...</p>
                     )}
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => {
@@ -267,7 +267,7 @@ export default function DisputesPage() {
       {/* Courtroom Dialog */}
       {selectedDispute && (
         <Dialog open={courtroomOpen} onOpenChange={setCourtroomOpen}>
-          <DialogContent className="sm:max-w-2xl bg-white text-black max-h-[85vh] flex flex-col">
+          <DialogContent className="sm:max-w-2xl bg-white dark:bg-card text-black dark:text-foreground max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Gavel className="w-5 h-5" /> Courtroom — {selectedDispute.job_title}
@@ -275,20 +275,20 @@ export default function DisputesPage() {
             </DialogHeader>
 
             {/* Case details */}
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm space-y-2">
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-lg p-4 text-sm space-y-2">
               <p><strong>Dispute Reason:</strong> {selectedDispute.reason}</p>
               <p><strong>Status:</strong> {statusBadge(selectedDispute.status)}</p>
-              <p className="text-xs text-gray-500">Both parties and selected jurors can present arguments and evidence here.</p>
+              <p className="text-xs text-gray-500 dark:text-muted-foreground">Both parties and selected jurors can present arguments and evidence here.</p>
             </div>
 
             {/* AI neutral summary for jurors */}
             {selectedDispute.ai_summary && (
-              <div className="bg-violet-50 border border-violet-200 rounded-lg p-4 text-sm">
-                <p className="flex items-center gap-1.5 font-semibold text-violet-800 mb-2">
+              <div className="bg-violet-50 dark:bg-violet-950/40 border border-violet-200 dark:border-violet-800 rounded-lg p-4 text-sm">
+                <p className="flex items-center gap-1.5 font-semibold text-violet-800 dark:text-violet-400 mb-2">
                   <Sparkles className="w-4 h-4" /> AI Case Summary
                   <span className="text-[10px] font-normal text-violet-500 ml-1">(neutral brief — verify against the evidence below)</span>
                 </p>
-                <p className="text-gray-700 whitespace-pre-line leading-relaxed">{selectedDispute.ai_summary}</p>
+                <p className="text-gray-700 dark:text-muted-foreground whitespace-pre-line leading-relaxed">{selectedDispute.ai_summary}</p>
               </div>
             )}
 
@@ -296,7 +296,7 @@ export default function DisputesPage() {
             <div className="flex-1 overflow-y-auto space-y-2 py-2">
               {courtroomMessages?.map((msg: Message) => (
                 <div key={msg.id} className={`flex ${msg.sender_id === user?.id ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 text-black'}`}>
+                  <div className={`max-w-[75%] rounded-lg p-3 ${msg.sender_id === user?.id ? 'bg-black text-white' : 'bg-gray-100 dark:bg-muted text-black dark:text-foreground'}`}>
                     <ChatMessageContent content={msg.content} />
 
                     <span className="text-xs opacity-70">{new Date(msg.created_at).toLocaleTimeString()}</span>

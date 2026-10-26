@@ -40,11 +40,11 @@ export function PayoutAccountCard() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3">
-        <Landmark className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-        <div className="text-sm text-blue-900">
+      <div className="flex items-start gap-3 rounded-xl border border-blue-100 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-950/40 p-3">
+        <Landmark className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+        <div className="text-sm text-blue-900 dark:text-blue-400">
           <p className="font-medium">Get paid through PayPal</p>
-          <p className="text-xs text-blue-800/80">
+          <p className="text-xs text-blue-800/80 dark:text-blue-400">
             Clients pay into escrow held in PayPal. When they release it (or the review window ends)
             it's sent straight to the PayPal account below
             {feePercent > 0 ? ` — less Gigr's ${feePercent}% fee` : ''}.
@@ -52,7 +52,7 @@ export function PayoutAccountCard() {
         </div>
       </div>
 
-      <label className="block text-xs font-medium text-gray-600" htmlFor="paypal-email">
+      <label className="block text-xs font-medium text-gray-600 dark:text-muted-foreground" htmlFor="paypal-email">
         PayPal account email
       </label>
       <div className="flex gap-2">
@@ -71,11 +71,11 @@ export function PayoutAccountCard() {
       </div>
 
       {linked && !dirty ? (
-        <p className="flex items-center gap-1.5 text-xs text-green-700">
+        <p className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
           <CheckCircle2 className="h-3.5 w-3.5" /> Payouts go to {user?.paypal_email}
         </p>
       ) : (
-        <p className="text-xs text-amber-700">
+        <p className="text-xs text-amber-700 dark:text-amber-400">
           Add the PayPal email you want payouts sent to — clients can't fund your jobs until you do.
         </p>
       )}

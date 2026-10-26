@@ -2,9 +2,11 @@
  * MemoryPage.tsx - the user-facing surface for what the agent remembers.
  *
  * Reachable at /dashboard/memory from the sidebar, the agent panel and the AI
- * settings page. It lists every memory key the server holds, grouped by kind,
- * with a confirmed Forget action and an advisory Sui verification badge for
- * values that are Sui object ids.
+ * settings page. Its primary content is the sentences Walrus Memory holds for
+ * the signed-in user, read-only from GET /ai/memory/facts. The JSONB preference
+ * keys are a secondary section, shown only when at least one has a value: they
+ * are what Forget acts on, and forgetting one never deletes a Walrus sentence.
+ * Sui verification stays on the preference entries, unchanged.
  *
  * House standard: zero emojis, zero decorative unicode, confirmation before a
  * destructive action, and an honest state for empty, loading, error and
@@ -35,9 +37,12 @@ import { useAuthStore } from '@/store/authStore'
 import { useAgentStore } from '@/store/agentStore'
 import {
   useAgentMemory,
+  useAgentMemoryFacts,
   forgetAgentMemoryKey,
   verifyMemoryReference,
   type AgentMemorySnapshot,
+  type MemoryFact,
+  type MemoryFactsReason,
 } from '@/hooks/useAgentMemory'
 import {
   failedVerification,
@@ -75,7 +80,7 @@ export default function MemoryPage() {
   const queryClient = useQueryClient()
 
   const accountEnabled = user?.ai_enabled !== false
-  const { data: snapshot, isLoading, isError, error, refetch, isFetching } =
+  const { data: snapshot, isError, error, refetch, isFetching } =
     useAgentMemory(accountEnabled)
 
   const [pendingKey, setPendingKey] = useState<string | null>(null)
@@ -113,45 +118,70 @@ export default function MemoryPage() {
   const forbidden = isError && httpStatus(error) === 403
   const memory = snapshot?.memory ?? {}
   const groups = groupMemory(memory)
-  const count = Object.keys(memory).length
-  const environmentDisabled = forbidden || snapshot?.agentEnabled === false
-  const busy = isFetching || forgetMutation.isPending
+  const preferenceCount = Object.keys(memory).length
+  const environmentDisabled = snapshot?.agentEnabled === false
 
-  let body: ReactNode
+  const {
+    data: factsSnapshot,
+    isLoading: factsLoading,
+    isError: factsError,
+    refetch: refetchFacts,
+    isFetching: factsFetching,
+  } = useAgentMemoryFacts(accountEnabled)
+
+  const facts = factsSnapshot?.facts ?? []
+  const factsReason: MemoryFactsReason = factsSnapshot?.reason ?? 'unavailable'
+  const busy = isFetching || factsFetching || forgetMutation.isPending
+
+  const refreshAll = () => {
+    void refetch()
+    void refetchFacts()
+  }
+
+  let content: ReactNode
   if (!accountEnabled) {
-    body = <DisabledState reason="account" />
-  } else if (isLoading) {
-    body = <LoadingState />
-  } else if (isError && !forbidden) {
-    body = (
-      <ErrorState
-        retrying={isFetching}
-        onRetry={() => {
-          void refetch()
-        }}
-      />
-    )
+    content = <DisabledState reason="account" />
   } else if (forbidden) {
-    body = <DisabledState reason="forbidden" />
+    content = <DisabledState reason="forbidden" />
   } else {
-    body = (
-      <div className="space-y-4">
+    content = (
+      <div className="space-y-8">
         {environmentDisabled && (
           <DisabledState
             reason="environment"
-            hasStoredEntries={count > 0}
-            checking={isFetching}
-            onCheckAgain={() => {
-              void refetch()
-            }}
+            hasStoredEntries={preferenceCount > 0 || facts.length > 0}
+            checking={busy}
+            onCheckAgain={refreshAll}
           />
         )}
 
-        {count > 0 ? (
-          <>
+        <MemoryFactsSection
+          facts={facts}
+          reason={factsReason}
+          source={factsSnapshot?.source ?? 'none'}
+          loading={factsLoading}
+          failed={factsError}
+          retrying={factsFetching}
+          onRetry={() => {
+            void refetchFacts()
+          }}
+          onOpenAgent={openAgentPanel}
+        />
+
+        {!factsLoading && preferenceCount > 0 ? (
+          <section className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Saved preferences
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Short values your agent saved to reuse. Forgetting one stops the agent using
+                it, but any sentence it already wrote to Walrus Memory remains: Walrus Memory
+                is append-only and has no delete.
+              </p>
+            </div>
             <p className="text-xs text-gray-500">
-              {count} {count === 1 ? 'memory' : 'memories'}. You can forget any entry, and the
-              agent stops using it in future tasks.
+              {preferenceCount} saved {preferenceCount === 1 ? 'preference' : 'preferences'}.
             </p>
             {groups.map((group) => (
               <MemoryGroupSection
@@ -163,10 +193,32 @@ export default function MemoryPage() {
             <p className="text-[11px] leading-relaxed text-gray-400">
               Entries do not carry a separate update time. This list is what your agent holds now.
             </p>
-          </>
-        ) : environmentDisabled ? null : (
-          <EmptyState onOpenAgent={openAgentPanel} />
-        )}
+          </section>
+        ) : null}
+
+        {isError && !forbidden ? (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              We could not load your saved preferences. The sentences above are not affected.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                void refetch()
+              }}
+              disabled={isFetching}
+            >
+              {isFetching ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
+              Try again
+            </Button>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -180,25 +232,23 @@ export default function MemoryPage() {
             Memory
           </h1>
           <p className="text-gray-500 mt-2 text-sm">
-            What Gigr remembers about you between conversations. The agent uses these notes to
-            avoid asking the same questions twice.
+            What Gigr remembers about you between conversations, read from Walrus Memory. The
+            agent uses these notes to avoid asking the same questions twice.
           </p>
         </div>
         <Button
           variant="outline"
           size="sm"
           className="mt-1"
-          onClick={() => {
-            void refetch()
-          }}
+          onClick={refreshAll}
           disabled={busy || !accountEnabled}
         >
-          <RefreshCw className={cn('w-3.5 h-3.5', isFetching && 'animate-spin')} />
+          <RefreshCw className={cn('w-3.5 h-3.5', isFetching || factsFetching ? 'animate-spin' : '')} />
           Refresh
         </Button>
       </div>
 
-      {body}
+      {content}
 
       <ConfirmDialog
         open={pendingKey !== null}
@@ -208,14 +258,14 @@ export default function MemoryPage() {
         title={
           pendingKey !== null
             ? `Forget "${humanizeMemoryKey(pendingKey)}"?`
-            : 'Forget this memory?'
+            : 'Forget this preference?'
         }
         description={
           pendingKey !== null
-            ? `This removes the "${pendingKey}" memory from what Gigr remembers about you. The agent stops using it in future tasks. This cannot be undone.`
+            ? `This removes the "${pendingKey}" saved preference, and the agent stops reusing it. Any sentence already written to Walrus Memory stays there, because Walrus Memory is append-only and has no delete. This cannot be undone.`
             : ''
         }
-        confirmLabel="Forget memory"
+        confirmLabel="Forget preference"
         cancelLabel="Cancel"
         loading={forgetMutation.isPending}
         onConfirm={() => {
@@ -228,6 +278,156 @@ export default function MemoryPage() {
           })
         }}
       />
+    </div>
+  )
+}
+
+function MemoryFactsSection({
+  facts,
+  reason,
+  source,
+  loading,
+  failed,
+  retrying,
+  onRetry,
+  onOpenAgent,
+}: {
+  facts: MemoryFact[]
+  reason: MemoryFactsReason
+  source: 'walrus' | 'none'
+  loading: boolean
+  failed: boolean
+  retrying: boolean
+  onRetry: () => void
+  onOpenAgent: () => void
+}) {
+  if (loading) return <LoadingState />
+
+  if (failed) {
+    return (
+      <MemoryNotice
+        warning
+        title="We could not read Walrus Memory"
+        body="Nothing has changed. The sentences Gigr stores are safe. Check your connection, then try again."
+        action={
+          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
+            {retrying ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+            Try again
+          </Button>
+        }
+      />
+    )
+  }
+
+  if (reason === 'feature_disabled' || reason === 'not_configured') {
+    return (
+      <MemoryNotice
+        title="Memory is not enabled"
+        body={
+          reason === 'feature_disabled'
+            ? 'Walrus Memory is turned off in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
+            : 'Walrus Memory is not set up in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
+        }
+        action={
+          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
+            {retrying ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+            Check again
+          </Button>
+        }
+      />
+    )
+  }
+
+  if (reason !== 'ok') {
+    return (
+      <MemoryNotice
+        warning
+        title="We could not read Walrus Memory"
+        body="Nothing has changed. The sentences Gigr stores are safe. Try again in a moment."
+        action={
+          <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
+            {retrying ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+            Try again
+          </Button>
+        }
+      />
+    )
+  }
+
+  if (facts.length === 0) {
+    return <EmptyState onOpenAgent={onOpenAgent} />
+  }
+
+  const count = facts.length
+  return (
+    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-gray-900 dark:text-gray-100">What Gigr remembers</h2>
+        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+          {count}
+        </span>
+      </div>
+      <p className="text-sm text-gray-500 mt-1">
+        {count} {count === 1 ? 'thing' : 'things'} Gigr remembers
+      </p>
+      <ol className="mt-4 divide-y divide-gray-100 dark:divide-gray-800">
+        {facts.map((fact, index) => (
+          <li
+            key={`${index}-${fact.text}`}
+            className="py-3.5 first:pt-0 last:pb-0 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
+          >
+            {fact.text}
+          </li>
+        ))}
+      </ol>
+      <p className="text-[11px] leading-relaxed text-gray-400 mt-4">
+        {source === 'walrus'
+          ? 'Read from Walrus Memory, most relevant first. This is what one memory recall returned.'
+          : 'This is what one memory recall returned.'}
+      </p>
+    </section>
+  )
+}
+
+function MemoryNotice({
+  title,
+  body,
+  action,
+  warning = false,
+}: {
+  title: string
+  body: string
+  action?: ReactNode
+  warning?: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-6">
+      <div className="flex gap-3">
+        <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center shrink-0">
+          {warning ? (
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+          ) : (
+            <Bot className="w-5 h-5 text-gray-500" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          <p className="text-sm text-gray-500 mt-1">{body}</p>
+          {action && <div className="mt-3">{action}</div>}
+        </div>
+      </div>
     </div>
   )
 }
@@ -408,26 +608,6 @@ function LoadingState() {
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-14 w-full" />
       </div>
-    </div>
-  )
-}
-
-function ErrorState({ onRetry, retrying }: { onRetry: () => void; retrying: boolean }) {
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 text-center">
-      <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
-      <p className="font-medium mt-3">We could not load your memory</p>
-      <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
-        Your memories are not lost. Check your connection, then try again.
-      </p>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onRetry} disabled={retrying}>
-        {retrying ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-        ) : (
-          <RefreshCw className="w-3.5 h-3.5" />
-        )}
-        Try again
-      </Button>
     </div>
   )
 }

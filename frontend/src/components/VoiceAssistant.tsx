@@ -203,7 +203,7 @@ export default function VoiceAssistant() {
           className={`relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 pointer-events-auto ${
             isListening
               ? 'bg-red-600 text-white shadow-red-500/50 ring-4 ring-red-500/30'
-              : 'bg-black text-white hover:bg-gray-900 border border-white/10 shadow-xl'
+              : 'bg-black text-white hover:bg-gray-900 dark:hover:bg-card border border-white/10 shadow-xl'
           }`}
           title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening... Click to send') : 'Gigidy AI — Tap to speak (Drag anywhere)'}
           aria-label={isListening ? 'Stop recording voice command' : 'Start recording voice command'}
@@ -226,12 +226,12 @@ export default function VoiceAssistant() {
             transition={{ duration: 0.18 }}
             className="fixed bottom-36 right-4 md:bottom-24 md:right-6 z-[9999] w-84 max-w-[calc(100vw-2rem)]"
           >
-            <div className="bg-white dark:bg-gray-950 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="bg-white dark:bg-background rounded-2xl shadow-2xl border border-gray-200 dark:border-border overflow-hidden">
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/80 dark:bg-gray-900/80">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 dark:border-border bg-gray-50/80 dark:bg-card/80">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${isListening ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className="text-xs font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+                  <span className="text-xs font-semibold tracking-tight text-gray-900 dark:text-foreground">
                     Gigidy AI
                   </span>
                   <span className="text-[10px] font-mono text-gray-400">
@@ -241,7 +241,7 @@ export default function VoiceAssistant() {
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-foreground hover:bg-gray-100 dark:hover:bg-muted transition-colors"
                   aria-label="Close assistant"
                 >
                   <X className="w-3.5 h-3.5" />
@@ -251,12 +251,12 @@ export default function VoiceAssistant() {
               {/* Live speech typing display */}
               <div className="p-4 min-h-[96px] flex flex-col justify-center">
                 {isProcessing ? (
-                  <div className="flex items-center justify-center gap-2 py-4 text-gray-700 dark:text-gray-300">
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-900 dark:text-gray-100" />
+                  <div className="flex items-center justify-center gap-2 py-4 text-gray-700 dark:text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin text-gray-900 dark:text-foreground" />
                     <span className="text-xs font-medium">Processing command...</span>
                   </div>
                 ) : transcript ? (
-                  <div className="text-xs text-gray-900 dark:text-gray-100 font-medium leading-relaxed bg-gray-50 dark:bg-gray-900 p-3 rounded-xl border border-gray-200 dark:border-gray-800">
+                  <div className="text-xs text-gray-900 dark:text-foreground font-medium leading-relaxed bg-gray-50 dark:bg-card p-3 rounded-xl border border-gray-200 dark:border-border">
                     "{transcript}"
                   </div>
                 ) : isListening ? (
@@ -266,7 +266,7 @@ export default function VoiceAssistant() {
                       <span className="w-2 h-2 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-2 h-2 bg-red-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                     </div>
-                    <span className="text-xs text-gray-500">Listening to your voice... speak now</span>
+                    <span className="text-xs text-gray-500 dark:text-muted-foreground">Listening to your voice... speak now</span>
                   </div>
                 ) : (
                   <p className="text-xs text-gray-400 text-center py-2">
@@ -289,12 +289,12 @@ export default function VoiceAssistant() {
                   onChange={(e) => setTypedCommand(e.target.value)}
                   placeholder="Or type a command..."
                   disabled={isProcessing}
-                  className="flex-1 text-xs bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-3 py-2 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  className="flex-1 text-xs bg-gray-100 dark:bg-card border border-gray-200 dark:border-border rounded-xl px-3 py-2 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder:text-muted-foreground/80 focus:outline-none focus:ring-1 focus:ring-gray-400 dark:focus:ring-border"
                 />
                 <button
                   type="submit"
                   disabled={!typedCommand.trim() || isProcessing}
-                  className="h-8 w-8 rounded-xl bg-black hover:bg-gray-800 text-white flex items-center justify-center shrink-0 disabled:opacity-40 transition-colors"
+                  className="h-8 w-8 rounded-xl bg-black hover:bg-gray-800 dark:hover:bg-muted text-white flex items-center justify-center shrink-0 disabled:opacity-40 transition-colors"
                   title="Send"
                 >
                   <Send className="w-3.5 h-3.5" />

@@ -18,9 +18,9 @@ export interface AiRecommendation {
 }
 
 const OUTCOME_COPY: Record<AiRecommendation['outcome'], { title: string; tone: string }> = {
-  release: { title: 'Pay the provider in full', tone: 'bg-green-100 text-green-800' },
-  refund: { title: 'Refund the client in full', tone: 'bg-purple-100 text-purple-800' },
-  split: { title: 'Split the escrow', tone: 'bg-amber-100 text-amber-800' },
+  release: { title: 'Pay the provider in full', tone: 'bg-green-100 dark:bg-green-950/50 text-green-800 dark:text-green-400' },
+  refund: { title: 'Refund the client in full', tone: 'bg-purple-100 dark:bg-purple-950/50 text-purple-800 dark:text-purple-400' },
+  split: { title: 'Split the escrow', tone: 'bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-400' },
 }
 
 /**
@@ -87,7 +87,7 @@ export function AiArbiterPanel({
         <div className="flex items-center gap-2 font-semibold text-blue-900 dark:text-blue-200">
           <Bot className="h-4 w-4" /> AI arbiter
           {rec && (
-            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:bg-gray-800">
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-gray-600 dark:text-muted-foreground dark:bg-muted">
               {rec.source === 'ai' ? 'AI-reviewed' : 'rule-based fallback'}
             </span>
           )}
@@ -98,7 +98,7 @@ export function AiArbiterPanel({
         </Button>
       </div>
 
-      {!rec && <p className="mt-2 text-xs text-gray-500">No recommendation yet. Run the AI review to get one.</p>}
+      {!rec && <p className="mt-2 text-xs text-gray-500 dark:text-muted-foreground">No recommendation yet. Run the AI review to get one.</p>}
 
       {rec && (
         <div className="mt-2 space-y-2">
@@ -109,18 +109,18 @@ export function AiArbiterPanel({
                 ? ` — ${rec.provider_percent}% provider / ${100 - rec.provider_percent}% client${money(rec.provider_percent)}`
                 : ''}
             </span>
-            <span className="text-xs text-gray-500">confidence {Math.round(rec.confidence * 100)}%</span>
+            <span className="text-xs text-gray-500 dark:text-muted-foreground">confidence {Math.round(rec.confidence * 100)}%</span>
           </div>
-          <p className="text-gray-700 dark:text-gray-300">{rec.rationale}</p>
+          <p className="text-gray-700 dark:text-muted-foreground">{rec.rationale}</p>
           {rec.key_facts.length > 0 && (
-            <ul className="list-disc space-y-0.5 pl-5 text-xs text-gray-600 dark:text-gray-400">
+            <ul className="list-disc space-y-0.5 pl-5 text-xs text-gray-600 dark:text-muted-foreground">
               {rec.key_facts.map((f, i) => (
                 <li key={i}>{f}</li>
               ))}
             </ul>
           )}
           {rec.evidence_gaps.length > 0 && (
-            <p className="text-xs text-amber-700">Missing evidence: {rec.evidence_gaps.join('; ')}</p>
+            <p className="text-xs text-amber-700 dark:text-amber-400">Missing evidence: {rec.evidence_gaps.join('; ')}</p>
           )}
           <Button size="sm" onClick={() => apply.mutate()} disabled={busy || paymentState === 'released'}>
             {apply.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Check className="mr-1 h-3.5 w-3.5" />}
@@ -130,8 +130,8 @@ export function AiArbiterPanel({
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-blue-100 pt-3 dark:border-blue-900/40">
-        <Scale className="h-4 w-4 text-gray-500" />
-        <span className="text-xs text-gray-600">Decide yourself — provider gets</span>
+        <Scale className="h-4 w-4 text-gray-500 dark:text-muted-foreground" />
+        <span className="text-xs text-gray-600 dark:text-muted-foreground">Decide yourself — provider gets</span>
         <input
           type="range"
           min={1}

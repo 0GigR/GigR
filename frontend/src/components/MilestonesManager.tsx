@@ -343,14 +343,14 @@ export function MilestonesManager({
                           variant="outline"
                           className={
                             isReleased
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : isUnderReview
-                              ? 'bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 font-semibold'
+                              ? 'bg-amber-50 text-amber-700 border-amber-300 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold'
                               : isFunded
-                              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300'
+                              ? 'bg-blue-50 text-blue-700 border-blue-200 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300'
                               : m.status === 'disputed'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300'
-                              : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                              : 'bg-gray-100 text-gray-700 dark:bg-muted dark:text-muted-foreground'
                           }
                         >
                           {isUnderReview
@@ -423,7 +423,7 @@ export function MilestonesManager({
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                            className="h-7 text-xs border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
                             onClick={() => navigate(`/dashboard/disputes?job=${jobId}`)}
                           >
                             Dispute

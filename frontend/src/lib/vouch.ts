@@ -12,7 +12,7 @@ export function vouchProof(cnfNftId?: string | null): VouchProof {
 }
 
 export const VOUCH_TONE_CLASS: Record<VouchProof['tone'], string> = {
-  paypal: 'bg-blue-50 text-blue-700 border-blue-200',
-  onchain: 'bg-purple-50 text-purple-600 border-purple-200',
-  pending: 'bg-gray-50 text-gray-500 border-gray-200',
+  paypal: 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+  onchain: 'bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800',
+  pending: 'bg-gray-50 dark:bg-background text-gray-500 dark:text-muted-foreground border-gray-200 dark:border-border',
 }

@@ -85,13 +85,13 @@ export default function CallSettingsCard() {
   }
 
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-5">
+    <div className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl p-5 shadow-sm space-y-5">
       <div className="space-y-1">
-        <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+        <h3 className="font-semibold text-gray-900 dark:text-foreground flex items-center gap-2">
           <PhoneCall className="w-5 h-5 text-violet-500" />
           Phone Call Alerts
         </h3>
-        <p className="text-sm text-gray-500 leading-relaxed">
+        <p className="text-sm text-gray-500 dark:text-muted-foreground leading-relaxed">
           Let your AI assistant call you when it finishes working in the background — so you
           don’t have to keep the app open.
         </p>
@@ -110,7 +110,7 @@ export default function CallSettingsCard() {
 
       {/* Phone number */}
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-muted-foreground flex items-center gap-2">
           <Phone className="w-4 h-4 text-gray-400" /> Your phone number
         </label>
         <div className="flex gap-2">
@@ -131,10 +131,10 @@ export default function CallSettingsCard() {
       </div>
 
       {/* Master toggle */}
-      <div className="flex items-start justify-between border-t border-gray-100 dark:border-gray-800 pt-4">
+      <div className="flex items-start justify-between border-t border-gray-100 dark:border-border pt-4">
         <div className="space-y-1 pr-4">
-          <h4 className="font-medium text-gray-900 dark:text-gray-100">Allow the AI to call me</h4>
-          <p className="text-sm text-gray-500">
+          <h4 className="font-medium text-gray-900 dark:text-foreground">Allow the AI to call me</h4>
+          <p className="text-sm text-gray-500 dark:text-muted-foreground">
             Master switch for all phone alerts below.
           </p>
         </div>
@@ -146,7 +146,7 @@ export default function CallSettingsCard() {
             disabled={!hasPhone}
             onChange={(e) => toggleEnabled(e.target.checked)}
           />
-          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 dark:peer-focus:ring-violet-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-violet-600 peer-disabled:opacity-40" />
+          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-violet-300 dark:peer-focus:ring-violet-800 rounded-full peer dark:bg-secondary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 dark:after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-border peer-checked:bg-violet-600 peer-disabled:opacity-40" />
         </label>
       </div>
       {!hasPhone && (
@@ -155,7 +155,7 @@ export default function CallSettingsCard() {
 
       {/* Trigger checkboxes */}
       <div className={`space-y-3 transition-opacity ${call?.enabled ? '' : 'opacity-50 pointer-events-none'}`}>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Call me when the AI…</p>
+        <p className="text-sm font-medium text-gray-700 dark:text-muted-foreground">Call me when the AI…</p>
         {(Object.keys(TRIGGER_LABELS) as (keyof CallTriggers)[]).map((key) => (
           <label key={key} className="flex items-start gap-3 cursor-pointer">
             <input
@@ -165,10 +165,10 @@ export default function CallSettingsCard() {
               onChange={(e) => toggleTrigger(key, e.target.checked)}
             />
             <span>
-              <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">
+              <span className="block text-sm font-medium text-gray-900 dark:text-foreground">
                 {TRIGGER_LABELS[key].title}
               </span>
-              <span className="block text-xs text-gray-500">{TRIGGER_LABELS[key].desc}</span>
+              <span className="block text-xs text-gray-500 dark:text-muted-foreground">{TRIGGER_LABELS[key].desc}</span>
             </span>
           </label>
         ))}
@@ -185,7 +185,7 @@ export default function CallSettingsCard() {
         </div>
       )}
 
-      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-gray-800 pt-4">
+      <div className="flex items-center gap-3 border-t border-gray-100 dark:border-border pt-4">
         <Button variant="outline" onClick={runTestCall} disabled={!configured || !hasPhone || testing}>
           <PhoneCall className="w-4 h-4 mr-2" />
           {testing ? 'Calling…' : 'Send me a test call'}

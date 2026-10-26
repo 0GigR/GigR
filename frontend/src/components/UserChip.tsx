@@ -34,12 +34,12 @@ export default function UserChip({
           className={`${avatarSize} rounded-full object-cover shrink-0`}
         />
       ) : (
-        <span className={`${avatarSize} rounded-full bg-gray-200 flex items-center justify-center font-medium text-gray-600 shrink-0`}>
+        <span className={`${avatarSize} rounded-full bg-gray-200 dark:bg-secondary flex items-center justify-center font-medium text-gray-600 dark:text-muted-foreground shrink-0`}>
           {initials}
         </span>
       )}
       {name && (
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[120px]">
+        <span className="text-sm font-medium text-gray-800 dark:text-foreground truncate max-w-[120px]">
           {name}
         </span>
       )}

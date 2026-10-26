@@ -46,7 +46,7 @@ export default function PremiumGate({
       </div>
 
       {/* Lock overlay */}
-      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-gray-950/70 backdrop-blur-md text-center">
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-6 bg-gray-950/70 dark:bg-background/70 backdrop-blur-md text-center">
         <div className="w-10 h-10 rounded-full bg-violet-950/80 border border-violet-500/40 flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(124,58,237,0.3)]">
           <Lock className="w-5 h-5 text-violet-400" />
         </div>

@@ -82,14 +82,14 @@ export function MapExplorer({
     <div className="space-y-3">
       {/* Agent Live Search & Overlay Banners */}
       {isAgentSearching && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-200 text-xs animate-pulse">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-900 dark:bg-card border border-gray-800 dark:border-border text-gray-200 text-xs animate-pulse">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
           <span className="font-semibold text-white">Assistant Active</span>
           <span className="text-gray-400 truncate">Scanning providers for &quot;{activeSearchQuery}&quot;</span>
         </div>
       )}
       {hasAgentResults && (
-        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-900 border border-gray-800 text-gray-100 text-xs shadow-xs">
+        <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gray-900 dark:bg-card border border-gray-800 dark:border-border text-gray-100 text-xs shadow-xs">
           <div className="flex items-center gap-2 min-w-0">
             <Sparkles className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
             <span className="font-semibold text-white shrink-0">Assistant Search Results</span>
@@ -160,7 +160,7 @@ export function MapExplorer({
 
       {/* Target reticle HUD panel — shows when a pin or list item is active */}
       {reticlePoint && (
-        <div className="p-3 rounded-xl bg-gray-950/95 border border-gray-800 text-xs space-y-2">
+        <div className="p-3 rounded-xl bg-gray-950/95 dark:bg-background/95 border border-gray-800 dark:border-border text-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-white truncate max-w-[70%]">
               {reticlePoint.title}
@@ -168,7 +168,7 @@ export function MapExplorer({
             <button
               type="button"
               onClick={() => setReticlePoint(null)}
-              className="text-gray-400 hover:text-gray-200 p-0.5 rounded-md hover:bg-gray-800 transition-colors"
+              className="text-gray-400 hover:text-gray-200 p-0.5 rounded-md hover:bg-gray-800 dark:hover:bg-muted transition-colors"
               aria-label="Dismiss reticle"
             >
               <X className="w-3.5 h-3.5" />
@@ -198,7 +198,7 @@ export function MapExplorer({
                 submitCommand(`Request ${reticlePoint.title}`)
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1.5 px-3 rounded-lg bg-white hover:bg-gray-200 text-black text-xs font-semibold transition-colors"
+              className="flex-1 py-1.5 px-3 rounded-lg bg-white dark:bg-card hover:bg-gray-200 dark:hover:bg-secondary text-black dark:text-foreground text-xs font-semibold transition-colors"
             >
               Request
             </button>
@@ -211,7 +211,7 @@ export function MapExplorer({
                 )
                 setReticlePoint(null)
               }}
-              className="flex-1 py-1.5 px-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-white border border-gray-700 text-xs font-medium transition-colors"
+              className="flex-1 py-1.5 px-3 rounded-lg bg-gray-800 dark:bg-muted hover:bg-gray-700 dark:hover:bg-secondary text-white border border-gray-700 dark:border-border text-xs font-medium transition-colors"
             >
               Auto-Negotiate
             </button>
@@ -221,25 +221,25 @@ export function MapExplorer({
       </div>
 
       <div
-        className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-y-auto"
+        className="rounded-xl border border-gray-200 dark:border-border bg-white dark:bg-card overflow-y-auto"
         style={{ maxHeight: height }}
       >
-        <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+        <div className="px-4 py-3 border-b border-gray-100 dark:border-border flex items-center justify-between sticky top-0 bg-white/95 dark:bg-card/95 backdrop-blur">
+          <span className="text-sm font-semibold text-gray-800 dark:text-foreground">
             Nearby
           </span>
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-gray-500 dark:text-muted-foreground">
             {sorted.length} {sorted.length === 1 ? 'result' : 'results'}
           </span>
         </div>
 
         {sorted.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-500">
+          <div className="p-6 text-center text-sm text-gray-500 dark:text-muted-foreground">
             <MapPin className="w-6 h-6 mx-auto mb-2 text-gray-300" />
             Nothing in this area yet. Try a wider radius.
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <ul className="divide-y divide-gray-100 dark:divide-border">
             {sorted.map((point) => {
               const isJob = point.kind === 'job'
               const active = point.id === selectedId
@@ -257,7 +257,7 @@ export function MapExplorer({
                     className={`w-full text-left px-4 py-3 transition-colors ${
                       active
                         ? 'bg-blue-50 dark:bg-blue-950/40'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-800/60'
+                        : 'hover:bg-gray-50 dark:hover:bg-muted/60'
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -272,25 +272,25 @@ export function MapExplorer({
                         {isJob ? 'Job' : 'Service'}
                       </span>
                       {point.distanceKm != null && (
-                        <span className="text-[11px] text-gray-500">{point.distanceKm} km</span>
+                        <span className="text-[11px] text-gray-500 dark:text-muted-foreground">{point.distanceKm} km</span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-1">
+                    <p className="mt-1 text-sm font-medium text-gray-900 dark:text-foreground line-clamp-1">
                       {point.title}
                     </p>
                     {point.description && (
-                      <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">
+                      <p className="text-xs text-gray-500 dark:text-muted-foreground line-clamp-2 mt-0.5">
                         {point.description}
                       </p>
                     )}
                     <div className="mt-1 flex items-center justify-between">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-foreground">
                         {fmtPrice(point.price)}
                       </span>
                       <Link
                         to={isJob ? `/dashboard/jobs?jobId=${point.id}` : `/dashboard/services/${point.id}`}
                         className={`text-xs font-medium hover:underline ${
-                          isJob ? 'text-blue-600' : 'text-green-600'
+                          isJob ? 'text-blue-600 dark:text-blue-400' : 'text-green-600 dark:text-green-400'
                         }`}
                       >
                         View

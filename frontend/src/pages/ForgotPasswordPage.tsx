@@ -46,8 +46,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-950 px-4 py-8">
-      <Card className="w-full max-w-md bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-background px-4 py-8">
+      <Card className="w-full max-w-md bg-white dark:bg-card border-gray-200 dark:border-border shadow-sm">
         <CardHeader>
           <CardTitle className="text-2xl font-bold tracking-tight">Reset your password</CardTitle>
           <CardDescription>
@@ -61,8 +61,8 @@ export default function ForgotPasswordPage() {
                 <MailCheck className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-semibold text-base text-gray-900 dark:text-gray-100">Check your inbox</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                <h3 className="font-semibold text-base text-gray-900 dark:text-foreground">Check your inbox</h3>
+                <p className="text-xs text-gray-500 dark:text-muted-foreground mt-1 max-w-sm mx-auto leading-relaxed">
                   If that account exists, a reset link has been dispatched to your email address. The link expires in 1 hour.
                 </p>
               </div>
@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
 
               <Button
                 type="submit"
-                className="w-full bg-black text-white hover:bg-gray-800 font-semibold"
+                className="w-full bg-black text-white hover:bg-gray-800 dark:hover:bg-muted font-semibold"
                 disabled={loading || !identifier.trim()}
               >
                 {loading ? 'Sending link…' : 'Send Reset Link'}
@@ -107,7 +107,7 @@ export default function ForgotPasswordPage() {
               <div className="text-center pt-2">
                 <Link
                   to="/login"
-                  className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+                  className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-muted-foreground hover:text-gray-800 dark:hover:text-foreground"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Back to sign in
                 </Link>

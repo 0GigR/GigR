@@ -34,7 +34,7 @@ export default function AISettingsPage() {
           <Bot className="w-8 h-8 text-violet-600 dark:text-violet-400" />
           AI Agent Settings
         </h1>
-        <p className="text-gray-500 mt-2 text-sm">
+        <p className="text-gray-500 dark:text-muted-foreground mt-2 text-sm">
           Customize how your background AI agent behaves and handles your tasks.
         </p>
       </div>
@@ -49,14 +49,14 @@ export default function AISettingsPage() {
         {engineInfo ? (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Agent Status</span>
-              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${engineInfo.agent_enabled ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              <span className="text-sm font-medium text-gray-700 dark:text-muted-foreground">Agent Status</span>
+              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${engineInfo.agent_enabled ? 'bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-400'}`}>
                 {engineInfo.agent_enabled ? 'Active' : 'Disabled globally'}
               </span>
             </div>
             
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">NLP Engine</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-muted-foreground">NLP Engine</span>
               <div className="flex items-center gap-2">
                 {engineInfo.nlp_engine === 'groq' ? (
                   <>
@@ -79,19 +79,19 @@ export default function AISettingsPage() {
             )}
           </div>
         ) : (
-          <div className="text-sm text-gray-500">Loading engine info...</div>
+          <div className="text-sm text-gray-500 dark:text-muted-foreground">Loading engine info...</div>
         )}
       </div>
 
       <div className="space-y-6">
         {/* Autonomy Level */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm space-y-4">
+        <div className="bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl p-5 shadow-sm space-y-4">
           <div className="space-y-1">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900 dark:text-foreground flex items-center gap-2">
               <Bot className="w-5 h-5 text-violet-500" />
               Agent Autonomy Level
             </h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
+            <p className="text-sm text-gray-500 dark:text-muted-foreground leading-relaxed">
               Set how much control the AI has to act on your behalf in the background. 
               <strong> Higher levels allow the AI to make legally binding agreements and spend funds.</strong>
             </p>
@@ -101,7 +101,7 @@ export default function AISettingsPage() {
             <select
               value={aiSettings.autonomyLevel}
               onChange={(e) => updateAISetting('autonomyLevel', e.target.value as any)}
-              className="w-full p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-violet-500"
+              className="w-full p-3 bg-gray-50 dark:bg-muted border border-gray-200 dark:border-border rounded-lg text-gray-900 dark:text-foreground focus:ring-2 focus:ring-violet-500"
             >
               <option value="off">Off - No background autonomy</option>
               <option value="low">Low - Auto-reply to messages only</option>
@@ -158,13 +158,13 @@ export default function AISettingsPage() {
         <MemoryCards />
 
         {/* Toggle: Voice Button */}
-        <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
+        <div className="flex items-start justify-between bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl p-5 shadow-sm">
           <div className="space-y-1">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Mic className="w-4 h-4 text-gray-500" />
+            <h3 className="font-semibold text-gray-900 dark:text-foreground flex items-center gap-2">
+              <Mic className="w-4 h-4 text-gray-500 dark:text-muted-foreground" />
               Floating Voice Assistant Button
             </h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
+            <p className="text-sm text-gray-500 dark:text-muted-foreground leading-relaxed">
               Show the microphone button on all dashboard pages for quick access.
             </p>
           </div>
@@ -175,18 +175,18 @@ export default function AISettingsPage() {
               checked={aiSettings.voiceEnabled}
               onChange={(e) => updateAISetting('voiceEnabled', e.target.checked)}
             />
-            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-secondary peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 dark:after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-border peer-checked:bg-blue-600"></div>
           </label>
         </div>
 
         {/* Sound Design Card */}
-        <div className="flex items-start justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 shadow-sm">
+        <div className="flex items-start justify-between bg-white dark:bg-card border border-gray-200 dark:border-border rounded-xl p-5 shadow-sm">
           <div className="space-y-1">
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+            <h3 className="font-semibold text-gray-900 dark:text-foreground flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-gray-700 dark:text-muted-foreground" />
               Sound Design
             </h3>
-            <p className="text-sm text-gray-500 leading-relaxed">
+            <p className="text-sm text-gray-500 dark:text-muted-foreground leading-relaxed">
               Synthetic audio feedback synthesised in-browser via Web Audio API. Radar pings, task completion chimes, and sonar pulses.
             </p>
           </div>
@@ -200,7 +200,7 @@ export default function AISettingsPage() {
             }}
             className={cn(
               'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 mt-1',
-              aiSettings.soundEnabled ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-gray-700',
+              aiSettings.soundEnabled ? 'bg-black dark:bg-white' : 'bg-gray-200 dark:bg-secondary',
             )}
             aria-pressed={aiSettings.soundEnabled}
             aria-label="Toggle agent sound effects"
@@ -208,15 +208,15 @@ export default function AISettingsPage() {
             <span
               className={cn(
                 'inline-block h-4 w-4 transform rounded-full shadow transition-transform',
-                aiSettings.soundEnabled ? 'translate-x-6 bg-white dark:bg-black' : 'translate-x-1 bg-white',
+                aiSettings.soundEnabled ? 'translate-x-6 bg-white dark:bg-black' : 'translate-x-1 bg-white dark:bg-card',
               )}
             />
           </button>
         </div>
 
         {/* Danger Zone */}
-        <div className="pt-6 mt-8 border-t border-gray-200 dark:border-gray-800">
-          <h3 className="font-semibold text-red-600 mb-4 flex items-center gap-2">
+        <div className="pt-6 mt-8 border-t border-gray-200 dark:border-border">
+          <h3 className="font-semibold text-red-600 dark:text-red-400 mb-4 flex items-center gap-2">
             <Trash2 className="w-5 h-5" />
             Danger Zone
           </h3>

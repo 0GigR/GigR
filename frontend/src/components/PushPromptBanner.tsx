@@ -166,7 +166,7 @@ export default function PushPromptBanner({
   const signedOut = state === 'signedout'
 
   return (
-    <div className={`${positionClassName} z-[60] bg-gray-900 px-4 py-3 text-white flex items-center justify-between gap-3 text-sm shadow-sm`}>
+    <div className={`${positionClassName} z-[60] bg-gray-900 dark:bg-card px-4 py-3 text-white flex items-center justify-between gap-3 text-sm shadow-sm`}>
       <div className="flex items-center gap-2 min-w-0">
         {iosBrowser ? (
           <Smartphone className="w-4 h-4 shrink-0 text-violet-300" />
@@ -199,7 +199,7 @@ export default function PushPromptBanner({
           <button
             onClick={handleEnable}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 bg-white text-gray-900 px-3 py-1.5 rounded font-medium hover:bg-gray-100 transition-colors disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 bg-white dark:bg-foreground text-gray-900 dark:text-background px-3 py-1.5 rounded font-medium hover:bg-gray-100 dark:hover:bg-foreground/90 transition-colors disabled:opacity-60"
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bell className="w-3.5 h-3.5" />}
             {busy ? 'Enabling...' : disconnected ? 'Reconnect' : 'Enable'}
@@ -208,7 +208,7 @@ export default function PushPromptBanner({
         {signedOut && onSignIn && (
           <button
             onClick={onSignIn}
-            className="inline-flex items-center gap-1.5 bg-white text-gray-900 px-3 py-1.5 rounded font-medium hover:bg-gray-100 transition-colors"
+            className="inline-flex items-center gap-1.5 bg-white dark:bg-foreground text-gray-900 dark:text-background px-3 py-1.5 rounded font-medium hover:bg-gray-100 dark:hover:bg-foreground/90 transition-colors"
           >
             Sign In
           </button>

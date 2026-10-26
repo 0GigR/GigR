@@ -16,7 +16,7 @@ interface Props {
 export function ConfirmDialog({ open, onOpenChange, title, description, onConfirm, confirmLabel, cancelLabel, loading }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm bg-white text-black">
+      <DialogContent className="sm:max-w-sm bg-white dark:bg-card text-black dark:text-foreground">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
