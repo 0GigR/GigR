@@ -83,7 +83,6 @@ def _history(*facts):
     return UserHistory(
         user_id=USER_ONE,
         display_name="Bola Ade",
-        sides=("client",),
         as_client=1,
         as_provider=0,
         active_listings=0,
@@ -98,7 +97,7 @@ async def test_a_dry_run_prints_the_sentences_and_writes_nothing(
     gateway = FakeGateway()
     histories = {
         USER_ONE: _history(
-            "Bola Ade is a client on Gigr.",
+            "Bola Ade is based in Yaba, Lagos.",
             "Bola Ade has 2 message conversations on Gigr.",
         )
     }
@@ -112,7 +111,7 @@ async def test_a_dry_run_prints_the_sentences_and_writes_nothing(
     assert gateway.calls == []
     assert not state_path.exists()
     assert "mode: DRY RUN" in printed
-    assert "  + Bola Ade is a client on Gigr." in printed
+    assert "  + Bola Ade is based in Yaba, Lagos." in printed
     assert "  + Bola Ade has 2 message conversations on Gigr." in printed
     assert "TOTAL: 1 user, 2 facts: 0 already recorded, 2 would be written" in printed
     assert "Nothing was written" in printed
@@ -124,7 +123,7 @@ async def test_apply_refuses_to_start_with_the_flag_off(tmp_path, monkeypatch, c
     cli = _load_cli(
         monkeypatch,
         gateway=gateway,
-        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        histories={USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")},
     )
     state_path = tmp_path / "state.json"
 
@@ -142,7 +141,7 @@ async def test_apply_writes_and_a_second_run_writes_nothing_new(
 ):
     monkeypatch.setattr(settings, "FEATURE_AGENT_WALRUS_MEMORY", True)
     gateway = FakeGateway()
-    histories = {USER_ONE: _history("Bola Ade is a client on Gigr.")}
+    histories = {USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")}
     cli = _load_cli(monkeypatch, gateway=gateway, histories=histories)
     state_path = tmp_path / "state.json"
 
@@ -165,7 +164,7 @@ async def test_a_corrupt_state_file_stops_the_run_before_anything_is_written(
     cli = _load_cli(
         monkeypatch,
         gateway=gateway,
-        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        histories={USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")},
     )
     state_path = tmp_path / "state.json"
     state_path.write_text("{not json")
@@ -198,14 +197,21 @@ async def test_a_write_failure_reports_where_it_stopped_and_resumes(
     monkeypatch.setattr(settings, "FEATURE_AGENT_WALRUS_MEMORY", True)
 
     class BrokenGateway(FakeGateway):
+        """An unreachable relayer: no write lands and the recall cannot verify."""
+
         async def remember(self, text, namespace, idempotency_key=None):
-            await super().remember(text, namespace, idempotency_key)
+            self.calls.append(
+                {"text": text, "namespace": namespace, "idempotency_key": idempotency_key}
+            )
+            raise RuntimeError("relayer unreachable")
+
+        async def recall(self, query, namespace, limit):
             raise RuntimeError("relayer unreachable")
 
     cli = _load_cli(
         monkeypatch,
         gateway=BrokenGateway(),
-        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        histories={USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")},
     )
     state_path = tmp_path / "state.json"
 
@@ -233,7 +239,7 @@ async def test_the_memory_flag_decides_whether_a_geocoder_is_injected(
     cli_off = _load_cli(
         monkeypatch,
         gateway=FakeGateway(),
-        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        histories={USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")},
         seen=off,
     )
     assert await cli_off.run(["--state-file", str(tmp_path / "off.json")]) == 0
@@ -245,7 +251,7 @@ async def test_the_memory_flag_decides_whether_a_geocoder_is_injected(
     cli_on = _load_cli(
         monkeypatch,
         gateway=FakeGateway(),
-        histories={USER_ONE: _history("Bola Ade is a client on Gigr.")},
+        histories={USER_ONE: _history("Bola Ade is based in Yaba, Lagos.")},
         seen=on,
     )
     assert await cli_on.run(["--state-file", str(tmp_path / "on.json")]) == 0

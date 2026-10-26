@@ -17,6 +17,13 @@ then rename) after every accepted fact, so a killed process loses at most the
 request in flight, and the resumed run skips the users already marked complete as
 well as the individual facts already recorded.
 
+Survives the pooler. One user's rows are loaded through a session of their own,
+and that session is closed before any Walrus write, so no transaction is held
+open across a network call and a pooled connection is never reused for a whole
+run. A user whose rows or writes fail is logged, left incomplete and retried by
+the next run; the run continues with the next user instead of abandoning
+everyone behind them.
+
 Paced. The relayer allows roughly 60 weighted requests per minute per account,
 and this run is not the only thing that account may be doing, so it waits a
 fixed interval before every write. The interval is derived from a configurable
@@ -32,6 +39,7 @@ import asyncio
 import json
 import os
 import time
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
@@ -58,12 +66,15 @@ class BackfillReport:
     ``facts_recorded`` counts facts the state file already held and
     ``facts_written`` counts facts this run stored; in a dry run
     ``facts_written`` is 0 and the difference is what it would have written.
+    ``users_failed`` counts users this run could not finish: they are left
+    incomplete, and the next run starts from their recorded facts.
     """
 
     dry_run: bool
     users: int
     users_complete: int
     users_missing: int
+    users_failed: int
     facts_total: int
     facts_recorded: int
     facts_written: int
@@ -231,16 +242,23 @@ class BackfillState:
 class MemoryBackfillService:
     """Walk every user and store the facts their history supports.
 
-    ``history`` gathers one user's rows (the database is behind it), ``memory``
-    owns the namespace, the fact keys and the relayer call, and ``state`` is the
-    resume point. ``emit`` receives one already-formatted line at a time so the
-    dry run reads like a report without the service knowing about stdout.
+    ``open_history`` opens one fact source of its own for each read: the caller
+    owns the database lifecycle, and calling it must yield a
+    :class:`UserHistoryService` bound to a fresh session that is closed when the
+    block exits. Opening one per read, rather than holding one for the run, is
+    what keeps a long run from sitting on a connection the pooler will close.
+    ``memory`` owns the namespace, the fact keys and the relayer call, and
+    ``state`` is the resume point. ``emit`` receives one already-formatted line
+    at a time so the dry run reads like a report without the service knowing
+    about stdout.
     """
 
     def __init__(
         self,
         *,
-        history: UserHistoryService,
+        open_history: Callable[
+            [], AbstractAsyncContextManager[UserHistoryService]
+        ],
         memory: FactMemoryService,
         namespace_prefix: str,
         state: Optional[BackfillState] = None,
@@ -249,7 +267,7 @@ class MemoryBackfillService:
         sleep: Optional[Callable[[float], Any]] = None,
         clock: Optional[Callable[[], float]] = None,
     ) -> None:
-        self._history = history
+        self._open_history = open_history
         self._memory = memory
         self._namespace_prefix = namespace_prefix
         self._state = state
@@ -270,10 +288,13 @@ class MemoryBackfillService:
                     "or MEMWAL credentials are missing (operation=run_backfill)"
                 )
 
-        user_ids = await self._history.user_ids()
+        async with self._open_history() as history:
+            user_ids = await history.user_ids()
+
         total_users = len(user_ids)
         users_complete = 0
         users_missing = 0
+        users_failed = 0
         facts_total = 0
         facts_recorded = 0
         facts_written = 0
@@ -283,50 +304,66 @@ class MemoryBackfillService:
                 users_complete += 1
                 continue
 
-            history = await self._history.history(user_id)
-            if history is None:
-                users_missing += 1
-                self._emit(f"[{index}/{total_users}] {user_id} no longer exists; skipped")
-                continue
-
-            writes = self._memory.plan(user_id, history.facts)
-            facts_total += len(writes)
-            recorded_keys = (
-                self._state.written_keys(user_id) if self._state is not None else set()
-            )
-
-            self._emit(_header_line(index, total_users, history))
-            if not writes:
-                self._emit("  (no facts)")
-
-            user_written = 0
-            user_recorded = 0
-            for write in writes:
-                if write.key in recorded_keys:
-                    facts_recorded += 1
-                    user_recorded += 1
-                    self._emit(f"  = {write.text}")
+            # One user's failure is that user's problem. A connection the pooler
+            # closed, or a relayer that will not answer, must not abandon every
+            # user behind this one: the state file already holds what was
+            # accepted, so the next run resumes exactly here.
+            try:
+                history = await self._read_user(user_id)
+                if history is None:
+                    users_missing += 1
+                    self._emit(
+                        f"[{index}/{total_users}] {user_id} no longer exists; skipped"
+                    )
                     continue
 
-                if dry_run:
+                writes = self._memory.plan(user_id, history.facts)
+                facts_total += len(writes)
+                recorded_keys = (
+                    self._state.written_keys(user_id)
+                    if self._state is not None
+                    else set()
+                )
+
+                self._emit(_header_line(index, total_users, history))
+                if not writes:
+                    self._emit("  (no facts)")
+
+                user_written = 0
+                user_recorded = 0
+                for write in writes:
+                    if write.key in recorded_keys:
+                        facts_recorded += 1
+                        user_recorded += 1
+                        self._emit(f"  = {write.text}")
+                        continue
+
+                    if dry_run:
+                        self._emit(f"  + {write.text}")
+                        continue
+
+                    await self._pacer.wait()
+                    await self._memory.write(user_id, write)
+                    if self._state is not None:
+                        self._state.record(user_id, write.key, write.text)
+                        self._state.save()
+                    facts_written += 1
+                    user_written += 1
                     self._emit(f"  + {write.text}")
-                    continue
 
-                await self._pacer.wait()
-                await self._memory.write(user_id, write)
-                if self._state is not None:
-                    self._state.record(user_id, write.key, write.text)
-                    self._state.save()
-                facts_written += 1
-                user_written += 1
-                self._emit(f"  + {write.text}")
-
-            if not dry_run:
-                if self._state is not None:
-                    self._state.complete(user_id)
-                    self._state.save()
+                if not dry_run:
+                    if self._state is not None:
+                        self._state.complete(user_id)
+                        self._state.save()
+                    self._emit(
+                        f"  wrote {user_written} facts, {user_recorded} already recorded"
+                    )
+            except Exception as exc:  # noqa: BLE001 - one user must not end the run
+                users_failed += 1
                 self._emit(
-                    f"  wrote {user_written} facts, {user_recorded} already recorded"
+                    f"[{index}/{total_users}] {user_id} stopped: "
+                    f"{type(exc).__name__}: {exc}; left incomplete, the next run "
+                    f"resumes from here"
                 )
 
         return BackfillReport(
@@ -334,10 +371,23 @@ class MemoryBackfillService:
             users=total_users,
             users_complete=users_complete,
             users_missing=users_missing,
+            users_failed=users_failed,
             facts_total=facts_total,
             facts_recorded=facts_recorded,
             facts_written=facts_written,
         )
+
+    async def _read_user(self, user_id: UUID) -> Optional[UserHistory]:
+        """Load one user's rows through a session of their own, then close it.
+
+        The session is opened and closed inside this call, so the rows are fully
+        loaded before any Walrus write and no transaction is held open across a
+        network call. That is what a long run against a connection pooler needs:
+        a session kept for the whole run is a connection the pooler will close
+        underneath it.
+        """
+        async with self._open_history() as history:
+            return await history.history(user_id)
 
     def describe_pace(self) -> str:
         """One line describing the pace, for the CLI banner."""
@@ -353,11 +403,15 @@ class MemoryBackfillService:
 
 
 def _header_line(index: int, total: int, history: UserHistory) -> str:
-    """The one-line summary shown before a user's facts."""
+    """The one-line summary shown before a user's facts.
+
+    Counts only: the product has no fixed sides, so the header says what the
+    rows show the user did rather than which side they are on.
+    """
     return (
         f"[{index}/{total}] {history.user_id} {history.display_name} "
-        f"({history.role_label}: {history.as_client} posted, "
-        f"{history.as_provider} hired, {history.active_listings} active listings)"
+        f"({history.as_client} posted, {history.as_provider} hired, "
+        f"{history.active_listings} active listings)"
     )
 
 

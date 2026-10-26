@@ -14,6 +14,9 @@ Two rules hold on every path:
   used, which is why a relayer outage cannot turn a memory save into a 500.
 * A recall reports where its memories actually came from, so the agent activity
   log never claims a Walrus recall that did not happen.
+* A recall collapses exact duplicate texts, keeping the first, because the
+  relayer is append-only and a write that reported an error may still have been
+  stored. Near-duplicates are left alone: they are different facts.
 * A recalled entry keeps the timestamp the relayer returned, and the prompt
   shows that date next to the fact. Recency is then visible to the model, which
   can prefer the newer of two contradicting facts; an entry without a usable
@@ -144,6 +147,31 @@ def _memory_date(created_at: Any) -> Optional[str]:
         return None
 
 
+def _deduplicate_recalled(
+    memories: Iterable["RecalledMemory"],
+) -> tuple["RecalledMemory", ...]:
+    """Collapse entries whose stored text is exactly equal, keeping the first.
+
+    The relayer is append-only: a write that reported an error may still have
+    been stored, so one fact can come back several times, and a namespace has
+    been seen holding fifty recalled entries for forty-four distinct texts.
+    Only exact text equality is collapsed. Two different sentences stay, even
+    when they are near-duplicates, because they are different facts to the
+    model and choosing between them is not this function's decision.
+
+    The first occurrence is kept, which is the relayer's best match for the
+    query, and with it the timestamp that entry carried.
+    """
+    seen: set[str] = set()
+    unique: list["RecalledMemory"] = []
+    for memory in memories:
+        if memory.text in seen:
+            continue
+        seen.add(memory.text)
+        unique.append(memory)
+    return tuple(unique)
+
+
 def _match_recalled(
     memories: Iterable["RecalledMemory"], known_keys: Iterable[str]
 ) -> list[tuple[str, Optional[str]]]:
@@ -209,12 +237,16 @@ class AgentMemoryService:
 
         Every failure is caught here: Walrus Memory must never break a task, so
         the caller falls back to the local store instead of seeing an exception.
+        Exact duplicate texts are collapsed here, before anything is matched
+        against the local keys or reaches the prompt.
         """
         if self._gateway is None:
             return None
         try:
-            return await self._gateway.recall(
-                query, memory_namespace(user_id), MEMORY_RECALL_LIMIT
+            return _deduplicate_recalled(
+                await self._gateway.recall(
+                    query, memory_namespace(user_id), MEMORY_RECALL_LIMIT
+                )
             )
         except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
             logger.warning(

@@ -59,6 +59,11 @@ else:
         pool_size=20 if _is_transaction_pooler else 8,
         max_overflow=10 if _is_transaction_pooler else 4,
         pool_timeout=30,
+        # A pooled connection can be closed by the Supabase pooler between two
+        # uses: pre-ping checks it before handing it out, and recycling retires
+        # it before the server's own idle timeout. Long-running jobs (the Walrus
+        # Memory backfill) depend on both, and open one session per user rather
+        # than holding one for the whole run.
         pool_pre_ping=True,
         pool_recycle=1800,
         connect_args={

@@ -1,15 +1,15 @@
 """Gather one user's marketplace rows and turn them into fact sentences.
 
 This is the only place that knows which rows make a fact about a user, and the
-only place that resolves the two fields the extractor cannot resolve for itself:
+only place that resolves the fields the extractor cannot resolve for itself:
 
 * a job row carries ``category_id``, so the category name is fetched in one
   batched query and passed under the ``category`` key the extractor reads;
-* ``users.role`` holds authorization values ("user", "admin", "postgres", ...),
-  which are not the marketplace side, so the side is derived from what the user
-  actually did: client when they have posted a job, provider when they have an
-  active listing or have been hired. When both are true both role sentences are
-  emitted, because both are true; the side with more jobs is written first.
+* ``users.role`` holds authorization values ("user", "admin", "postgres", ...)
+  and is never read here. Gigr has no fixed sides: the same person can hire and
+  be hired, so no marketplace side is derived and no role sentence is produced.
+  The per-user activity counts kept on :class:`UserHistory` are there for the
+  operator's dry-run header, not to label anyone.
 
 Location is resolved, not copied. ``users.last_location`` and ``jobs.location``
 are PostGIS geography columns, and no column in this schema holds a place name.
@@ -56,34 +56,24 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
 
 logger = logging.getLogger(__name__)
 
-ROLE_CLIENT = "client"
-ROLE_PROVIDER = "provider"
-
 
 @dataclass(frozen=True)
 class UserHistory:
-    """One user's fact sentences plus what they were derived from.
+    """One user's fact sentences plus the counts the dry run reports.
 
-    ``as_client``, ``as_provider`` and ``active_listings`` are the counts the
-    role was derived from, kept so the dry run can show why a user was called a
-    provider and so a test can assert the derivation rather than the wording.
-    ``display_name`` is already cleaned for output.
+    ``as_client``, ``as_provider`` and ``active_listings`` are activity counts
+    for the operator's header line: how many jobs they posted, how many they
+    were hired for, and how many listings are live. They label nobody, because
+    the product has no fixed sides. ``display_name`` is already cleaned for
+    output.
     """
 
     user_id: UUID
     display_name: str
-    sides: tuple[str, ...]
     as_client: int
     as_provider: int
     active_listings: int
     facts: tuple[str, ...]
-
-    @property
-    def role_label(self) -> str:
-        """The marketplace side in words, for a human reading the dry run."""
-        if not self.sides:
-            return "no marketplace activity"
-        return " and ".join(self.sides)
 
 
 class UserHistoryService:
@@ -127,16 +117,10 @@ class UserHistoryService:
         )
 
         display_name = clean_fact_text(user.display_name)
-        sides = _sides(
-            as_client=len(client_jobs),
-            as_provider=len(provider_jobs),
-            active_listings=len(services),
-        )
         user_place = await self._place_name(user.last_location)
         client_places = await self._places_for_jobs(client_jobs)
 
         facts: list[str] = []
-        facts.extend(_role_sentences(display_name, sides))
         facts.extend(
             build_user_facts(
                 {
@@ -162,7 +146,6 @@ class UserHistoryService:
         return UserHistory(
             user_id=user.id,
             display_name=display_name,
-            sides=tuple(sides),
             as_client=len(client_jobs),
             as_provider=len(provider_jobs),
             active_listings=len(services),
@@ -253,43 +236,6 @@ class UserHistoryService:
                 continue
             places[job.id] = await self._place_name(getattr(job, "location", None))
         return places
-
-
-def _sides(*, as_client: int, as_provider: int, active_listings: int) -> list[str]:
-    """The marketplace sides the user has really been on, the heavier one first.
-
-    Client means they have posted a job. Provider means they have an active
-    listing or have been hired for a job. The order only decides which role
-    sentence is written first: both sides produce a sentence when both are true.
-    Provider comes first when they have been hired more often than they have
-    posted, or on an equal count when they also have an active listing;
-    otherwise the client sentence comes first.
-    """
-    sides: list[str] = []
-    if as_client:
-        sides.append(ROLE_CLIENT)
-    if as_provider or active_listings:
-        sides.append(ROLE_PROVIDER)
-    if len(sides) == 2:
-        provider_first = as_provider > as_client or (
-            as_provider == as_client and active_listings > 0
-        )
-        if provider_first:
-            sides.reverse()
-    return sides
-
-
-def _role_sentences(display_name: str, sides: list[str]) -> list[str]:
-    """The role sentences, one extractor call per side.
-
-    The extractor is the only place a sentence is made, so the role is rendered
-    by calling it with a minimal profile: no skills, no location, no rows. That
-    yields exactly the one sentence for that side and nothing else.
-    """
-    sentences: list[str] = []
-    for side in sides:
-        sentences.extend(build_user_facts({"display_name": display_name, "role": side}))
-    return sentences
 
 
 def _job_row(

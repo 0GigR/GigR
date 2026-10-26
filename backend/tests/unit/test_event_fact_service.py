@@ -28,10 +28,18 @@ PREFIX = "gigr-user"
 
 
 class FakeGateway:
+    """The relayer, including the recall a failed write is verified with.
+
+    ``fail`` is an unreachable relayer: nothing lands and the verification
+    recall fails too, which is the worst case the write path has to handle
+    without making a duplicate.
+    """
+
     configured = True
 
     def __init__(self, fail=False):
         self.calls = []
+        self.recall_calls = []
         self.fail = fail
 
     async def remember(self, text, namespace, idempotency_key=None):
@@ -41,6 +49,14 @@ class FakeGateway:
         if self.fail:
             raise RuntimeError("relayer unreachable")
         return "job-1"
+
+    async def recall(self, query, namespace, limit):
+        self.recall_calls.append(
+            {"query": query, "namespace": namespace, "limit": limit}
+        )
+        if self.fail:
+            raise RuntimeError("relayer unreachable")
+        return ()
 
 
 # --- the pure builders -------------------------------------------------------

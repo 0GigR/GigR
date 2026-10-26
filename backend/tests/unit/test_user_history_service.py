@@ -282,7 +282,13 @@ class _BrokenGeocoder:
         raise RuntimeError("geocoder exploded")
 
 
-async def test_a_user_who_did_both_gets_both_role_sentences(monkeypatch):
+async def test_a_user_who_did_both_is_never_given_a_side(monkeypatch):
+    """Gigr has no fixed sides: the same person hires and is hired.
+
+    A user who has posted jobs, been hired, and has a live listing still gets no
+    sentence about being a client or a provider; the rows produce only what they
+    actually show.
+    """
     _patch_crud(
         monkeypatch,
         user=_user(),
@@ -293,52 +299,31 @@ async def test_a_user_who_did_both_gets_both_role_sentences(monkeypatch):
     )
     history = await UserHistoryService(db=None).history(USER_ID)
 
-    assert history.sides == ("client", "provider")
-    assert history.facts[:2] == (
-        "Bola Ade is a client on Gigr.",
-        "Bola Ade is a provider on Gigr.",
+    assert not any("on Gigr." in fact for fact in history.facts)
+    assert "Bola Ade lists Emergency pipe repair at 12000 naira within 7.5 km." in (
+        history.facts
+    )
+    assert (
+        "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
+        "(completed, 2026)."
+    ) in history.facts
+    assert "Bola Ade has completed 1 job as a client and 1 as a provider." in (
+        history.facts
     )
 
 
-async def test_the_side_with_more_jobs_is_written_first(monkeypatch):
-    _patch_crud(
-        monkeypatch,
-        user=_user(),
-        client_jobs=[_job(id=uuid4()), _job(id=uuid4()), _job(id=uuid4())],
-        provider_jobs=[_provider_job(id=uuid4())],
-        category_names={CATEGORY_ID: "Plumbing"},
-    )
-    history = await UserHistoryService(db=object()).history(USER_ID)
-    assert history.sides == ("client", "provider")
-
-
-async def test_an_equal_count_writes_the_provider_side_first_when_a_listing_exists(
-    monkeypatch,
-):
-    _patch_crud(
-        monkeypatch,
-        user=_user(),
-        client_jobs=[_job(id=uuid4())],
-        provider_jobs=[_provider_job(id=uuid4())],
-        services=[_listing()],
-    )
-    history = await UserHistoryService(db=object()).history(USER_ID)
-    assert history.sides == ("provider", "client")
-
-
-async def test_an_active_listing_alone_makes_the_user_a_provider(monkeypatch):
+async def test_an_active_listing_alone_produces_no_side_sentence(monkeypatch):
     _patch_crud(monkeypatch, user=_user(), services=[_listing()])
     history = await UserHistoryService(db=object()).history(USER_ID)
-    assert history.sides == ("provider",)
-    assert "Bola Ade is a provider on Gigr." in history.facts
-    assert "Bola Ade is a client on Gigr." not in history.facts
+    assert history.facts == (
+        "Bola Ade works in plumbing and tiling.",
+        "Bola Ade lists Emergency pipe repair at 12000 naira within 7.5 km.",
+    )
 
 
-async def test_a_user_with_nothing_is_not_given_a_role_sentence(monkeypatch):
+async def test_a_user_with_nothing_gets_no_side_sentence(monkeypatch):
     _patch_crud(monkeypatch, user=_user(skills=["plumbing", "tiling"]))
     history = await UserHistoryService(db=object()).history(USER_ID)
-    assert history.sides == ()
-    assert history.role_label == "no marketplace activity"
     assert history.facts == ("Bola Ade works in plumbing and tiling.",)
 
 
@@ -609,4 +594,4 @@ async def test_a_crashing_geocoder_cannot_fail_the_users_history(monkeypatch):
         "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
         "(completed, 2026)."
     ) in history.facts
-    assert "Bola Ade is a client on Gigr." in history.facts
+    assert not any("on Gigr." in fact for fact in history.facts)

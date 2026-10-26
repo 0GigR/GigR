@@ -121,8 +121,8 @@ def _happy_rows():
     return services, client_jobs, provider_jobs, ratings, disputes
 
 
+# The profile carries role="provider"; no sentence names that side any more.
 EXPECTED_HAPPY_FACTS = [
-    "Chinedu Okafor is a provider on Gigr.",
     "Chinedu Okafor is based in Yaba, Lagos.",
     "Chinedu Okafor works in plumbing, pipe fitting and tiling.",
     "Chinedu Okafor lists Bathroom tiling at 45000 naira within 5 km.",
@@ -154,7 +154,7 @@ def test_full_user_produces_the_expected_sentences():
     assert facts == EXPECTED_HAPPY_FACTS
 
 
-def test_missing_location_and_skills_and_no_jobs_leave_only_the_role_fact():
+def test_missing_everything_produces_no_fact_at_all():
     profile = {
         "id": USER_ID,
         "display_name": "Bola Ade",
@@ -162,7 +162,7 @@ def test_missing_location_and_skills_and_no_jobs_leave_only_the_role_fact():
         "last_location": "",
         "skills": [],
     }
-    assert build_user_facts(profile) == ["Bola Ade is a client on Gigr."]
+    assert build_user_facts(profile) == []
 
 
 def test_one_job_in_a_category_is_not_enough_for_a_budget_habit():
@@ -178,7 +178,6 @@ def test_one_job_in_a_category_is_not_enough_for_a_budget_habit():
         }
     ]
     assert build_user_facts(profile, client_jobs=client_jobs) == [
-        "Bola Ade is a client on Gigr.",
         "Bola Ade has completed 1 job as a client and 0 as a provider.",
     ]
 
@@ -194,7 +193,6 @@ def test_three_jobs_in_a_category_give_the_median_price():
          "category": "Plumbing", "status": "completed"},
     ]
     assert build_user_facts(profile, client_jobs=client_jobs) == [
-        "Bola Ade is a client on Gigr.",
         "Bola Ade usually budgets around 18000 naira for Plumbing.",
         "Bola Ade has completed 3 jobs as a client and 0 as a provider.",
     ]
@@ -207,7 +205,6 @@ def test_identical_sentences_appear_once():
         _service(id="svc-2"),
     ]
     assert build_user_facts(profile, services=services) == [
-        "Bola Ade is a client on Gigr.",
         "Bola Ade lists Emergency pipe repair at 12000 naira within 7.5 km.",
     ]
 
@@ -263,7 +260,7 @@ def test_rows_belonging_to_another_user_produce_no_facts():
         client_jobs=client_jobs,
         ratings=ratings,
         disputes=disputes,
-    ) == ["Bola Ade is a client on Gigr."]
+    ) == []
 
 
 def test_a_bidirectional_override_cannot_reach_the_sentence():
@@ -271,8 +268,9 @@ def test_a_bidirectional_override_cannot_reach_the_sentence():
         "id": USER_ID,
         "display_name": "Bola\u202e Ade",
         "role": "client",
+        "last_location": "Yaba, Lagos",
     }
-    assert build_user_facts(profile) == ["Bola Ade is a client on Gigr."]
+    assert build_user_facts(profile) == ["Bola Ade is based in Yaba, Lagos."]
 
 
 def test_a_single_skill_string_is_not_split_into_letters():
@@ -286,9 +284,7 @@ def test_zero_and_missing_prices_produce_no_price_sentence():
         _service(id="svc-zero", title="Free consult", price=0),
         _service(id="svc-null", title="No price yet", price=None),
     ]
-    assert build_user_facts(profile, services=services) == [
-        "Bola Ade is a provider on Gigr."
-    ]
+    assert build_user_facts(profile, services=services) == []
 
 
 def test_a_fractional_naira_price_is_not_rounded_into_a_sentence():
@@ -296,9 +292,7 @@ def test_a_fractional_naira_price_is_not_rounded_into_a_sentence():
     services = [
         _service(id="svc-cents", title="Tap repair", price=Decimal("12000.50"))
     ]
-    assert build_user_facts(profile, services=services) == [
-        "Bola Ade is a provider on Gigr."
-    ]
+    assert build_user_facts(profile, services=services) == []
 
 
 def test_a_category_id_is_never_printed_as_a_category_name():
@@ -328,7 +322,7 @@ def test_a_missing_row_in_a_collection_is_ignored():
         client_jobs=[None],
         ratings=[None],
         disputes=[None],
-    ) == ["Bola Ade is a client on Gigr."]
+    ) == []
 
 
 def test_a_geometry_value_is_not_a_place_name():
@@ -338,7 +332,7 @@ def test_a_geometry_value_is_not_a_place_name():
         "role": "client",
         "last_location": object(),
     }
-    assert build_user_facts(profile) == ["Bola Ade is a client on Gigr."]
+    assert build_user_facts(profile) == []
 
 
 def test_a_service_without_a_usable_radius_produces_no_listing():
@@ -347,9 +341,7 @@ def test_a_service_without_a_usable_radius_produces_no_listing():
         _service(id="svc-zero", title="Tap repair", radius_km=0),
         _service(id="svc-null", title="Sink repair", radius_km=None),
     ]
-    assert build_user_facts(profile, services=services) == [
-        "Bola Ade is a provider on Gigr."
-    ]
+    assert build_user_facts(profile, services=services) == []
 
 
 def test_a_job_without_a_place_still_produces_its_hiring_sentence():
@@ -371,6 +363,17 @@ def test_a_job_without_a_place_still_produces_its_hiring_sentence():
         "(completed, 2024).",
         "Bola Ade has completed 2 jobs as a client and 0 as a provider.",
     ]
+
+
+@pytest.mark.parametrize("role", ["provider", "client", "admin", "user", ""])
+def test_no_role_value_can_become_a_sentence(role):
+    """Gigr has no fixed sides: the same user can hire and be hired.
+
+    users.role is an authorization value, so no value of it may turn into a
+    sentence about which side of the marketplace the user is on.
+    """
+    profile = {"id": USER_ID, "display_name": "Bola Ade", "role": role}
+    assert build_user_facts(profile) == []
 
 
 def test_a_profile_without_a_name_produces_nothing():

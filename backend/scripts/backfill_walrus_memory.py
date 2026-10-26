@@ -15,8 +15,10 @@ The run is idempotent and resumable: a second run writes nothing new, and a run
 that is killed continues from its state file instead of starting over. The state
 file path, the pace and the database are printed in the banner of every run.
 
-Exit codes: 0 done (or dry run finished), 1 a write failed or the run was
-misconfigured, 2 the run refused to start (flag off, no credentials, bad pace).
+Exit codes: 0 done (or dry run finished), 1 a user could not be finished or the
+run was misconfigured, 2 the run refused to start (flag off, no credentials, bad
+pace). A user that cannot be finished is logged, left incomplete and skipped; the
+rest of the run still happens, and the next run resumes at that user.
 
 Follows house-standard.md: no emoji, ASCII-only output, [OK] / [WARN] / [FAIL]
 status tags, machine-friendly exit codes.
@@ -28,6 +30,7 @@ import argparse
 import asyncio
 import os
 import sys
+from contextlib import asynccontextmanager
 
 # Ensure backend root is on sys.path, the way the other runners here do.
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -120,34 +123,48 @@ async def run(argv: list[str]) -> int:
         print(f"[FAIL] {exc}")
         return EXIT_REFUSED
 
-    async with async_session() as db:
-        # A place name comes from a reverse lookup, so the geocoder is injected
-        # only while the memory feature is on: with the flag off the sentences
-        # are exactly the ones this script produced before it existed.
-        geocoder = geocoding_gateway if agent_feature_enabled(FLAG_NAME) else None
-        service = MemoryBackfillService(
-            history=UserHistoryService(db, geocoder=geocoder),
-            memory=memory,
-            namespace_prefix=namespace_prefix,
-            state=state,
-            requests_per_minute=arguments.requests_per_minute,
-            emit=print,
-        )
-        print(f"  pace: {service.describe_pace()}")
-        print("")
+    # A place name comes from a reverse lookup, so the geocoder is injected only
+    # while the memory feature is on: with the flag off the sentences are exactly
+    # the ones this script produced before it existed.
+    geocoder = geocoding_gateway if agent_feature_enabled(FLAG_NAME) else None
 
-        try:
-            report = await service.run(dry_run=dry_run)
-        except Exception as exc:  # noqa: BLE001 - report the dependency failure plainly
-            print(
-                f"[FAIL] the run stopped after {_progress_note(arguments.state_file)}: "
-                f"{type(exc).__name__}: {exc}"
-            )
-            print(
-                "[WARN] progress is saved; run the same command again to continue "
-                "where it stopped"
-            )
-            return EXIT_FAILED
+    @asynccontextmanager
+    async def open_history():
+        """One fresh database session per read, closed when the read is done.
+
+        The backfill writes the state file between facts and calls the relayer
+        between users, so a session kept for the whole run is a connection the
+        Supabase pooler closes underneath it; that is what stopped an earlier
+        run part-way. The engine's pre-ping replaces any stale connection it
+        hands out. Rows are fully loaded inside this block, so no transaction is
+        open across a Walrus write.
+        """
+        async with async_session() as db:
+            yield UserHistoryService(db, geocoder=geocoder)
+
+    service = MemoryBackfillService(
+        open_history=open_history,
+        memory=memory,
+        namespace_prefix=namespace_prefix,
+        state=state,
+        requests_per_minute=arguments.requests_per_minute,
+        emit=print,
+    )
+    print(f"  pace: {service.describe_pace()}")
+    print("")
+
+    try:
+        report = await service.run(dry_run=dry_run)
+    except Exception as exc:  # noqa: BLE001 - report the dependency failure plainly
+        print(
+            f"[FAIL] the run stopped after {_progress_note(arguments.state_file)}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        print(
+            "[WARN] progress is saved; run the same command again to continue "
+            "where it stopped"
+        )
+        return EXIT_FAILED
 
     print("")
     if dry_run:
@@ -163,6 +180,13 @@ async def run(argv: list[str]) -> int:
                 f"[WARN] {_counted(report.users_missing, 'user')} no longer existed "
                 f"and were skipped"
             )
+        if report.users_failed:
+            print(
+                f"[WARN] {_counted(report.users_failed, 'user')} stopped before "
+                f"finishing; run the same command again to continue from "
+                f"{_progress_note(arguments.state_file)}"
+            )
+            return EXIT_FAILED
         return EXIT_OK
 
     print(
@@ -176,6 +200,13 @@ async def run(argv: list[str]) -> int:
             f"[WARN] {_counted(report.users_missing, 'user')} no longer existed "
             f"and were skipped"
         )
+    if report.users_failed:
+        print(
+            f"[WARN] {_counted(report.users_failed, 'user')} stopped before "
+            f"finishing; run the same command again to continue from "
+            f"{_progress_note(arguments.state_file)}"
+        )
+        return EXIT_FAILED
     return EXIT_OK
 
 
