@@ -352,7 +352,14 @@ def test_a_service_without_a_usable_radius_produces_no_listing():
     ]
 
 
-def test_a_job_missing_a_sentence_field_produces_no_hiring_sentence():
+def test_a_job_without_a_place_still_produces_its_hiring_sentence():
+    """Place is optional; status and date are not.
+
+    users.last_location and jobs.location are PostGIS geography and no text
+    place-name column exists, so requiring a place would drop every job fact.
+    A job with no place keeps its sentence, one with no status or no date does
+    not, because those change what the sentence would claim.
+    """
     profile = {"id": USER_ID, "display_name": "Bola Ade"}
     client_jobs = [
         _client_job(id="job-1", location=None, category=None),
@@ -360,7 +367,9 @@ def test_a_job_missing_a_sentence_field_produces_no_hiring_sentence():
         _client_job(id="job-3", created_at=None, category=None),
     ]
     assert build_user_facts(profile, client_jobs=client_jobs) == [
-        "Bola Ade has completed 2 jobs as a client and 0 as a provider."
+        "Bola Ade hired a provider for Fix leaking sink at 18000 naira "
+        "(completed, 2024).",
+        "Bola Ade has completed 2 jobs as a client and 0 as a provider.",
     ]
 
 

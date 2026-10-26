@@ -1,5 +1,5 @@
 from uuid import UUID
-from typing import List
+from typing import Dict, Iterable, List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.category import Category
@@ -34,3 +34,19 @@ async def search_categories(db: AsyncSession, query: str) -> List[Category]:
         select(Category).where(Category.name.ilike(f"%{query}%")).order_by(Category.name)
     )
     return result.scalars().all()
+
+async def get_category_names(
+    db: AsyncSession, category_ids: Iterable[UUID]
+) -> Dict[UUID, str]:
+    """Map category ids to their names in one query.
+
+    A job row carries ``category_id``; the fact sentence needs the name, so the
+    caller resolves the whole set at once instead of one query per job.
+    """
+    ids = [category_id for category_id in category_ids if category_id is not None]
+    if not ids:
+        return {}
+    result = await db.execute(
+        select(Category.id, Category.name).where(Category.id.in_(ids))
+    )
+    return {row[0]: row[1] for row in result.all()}

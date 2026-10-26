@@ -45,3 +45,20 @@ async def resolve_dispute(db: AsyncSession, dispute: Dispute, resolution: str) -
     await db.commit()
     await db.refresh(dispute)
     return dispute
+
+async def list_disputes_for_user(db: AsyncSession, user_id: UUID) -> List[Dispute]:
+    """Every dispute the user is a party to, oldest first, with no page limit."""
+    result = await db.execute(
+        select(Dispute)
+        .where((Dispute.client_id == user_id) | (Dispute.provider_id == user_id))
+        .order_by(Dispute.created_at.asc().nulls_last(), Dispute.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_disputes_for_jobs(db: AsyncSession, job_ids: List[UUID]) -> List[Dispute]:
+    """Every dispute raised on these jobs, in one query."""
+    if not job_ids:
+        return []
+    result = await db.execute(select(Dispute).where(Dispute.job_id.in_(list(job_ids))))
+    return list(result.scalars().all())

@@ -95,7 +95,7 @@ def build_user_facts(
     if not isinstance(profile, Mapping):
         raise TypeError("profile must be a mapping of user fields")
 
-    display_name = _text(profile.get("display_name"))
+    display_name = clean_fact_text(profile.get("display_name"))
     if not display_name:
         return []
 
@@ -140,15 +140,26 @@ def build_fact_identity(
     return fact_text, stable_key[:_KEY_HEX_LENGTH]
 
 
-def _text(value: Any) -> str:
-    """Return value as one clean line, or "" when it is not usable text."""
+def clean_fact_text(value: Any) -> str:
+    """Return value as one clean line, or "" when it is not usable text.
+
+    Public because every module that renders a fact sentence needs the same
+    answer to "is this real text, and is it safe to put in a sentence": the
+    message fact builder uses it, and a second implementation there would drift
+    from this one. A non-string (a geometry value, a number) is not a place
+    name, a title or a status, so it becomes "" and produces no sentence.
+    """
     if not isinstance(value, str):
         return ""
     return " ".join(value.split()).translate(_UNSAFE_CHARACTERS)
 
 
-def _whole_naira(value: Any) -> int | None:
+def whole_naira(value: Any) -> int | None:
     """Return value as a positive whole naira amount, or None.
+
+    Public for the same reason as :func:`clean_fact_text`: the event sentence
+    builder quotes a price too, and two price rules would eventually disagree
+    about whether 12500.50 can be written down.
 
     Prices are stored as numeric(10, 2). A fraction of a naira is not rendered,
     because the sentence only carries whole naira; such a row is skipped rather
@@ -227,7 +238,7 @@ def _has_identifier(value: Any) -> bool:
 
 def _category(value: Any) -> str:
     """Return a category name, or "" for a missing name or a raw identifier."""
-    label = _text(value)
+    label = clean_fact_text(value)
     return "" if _UUID_PATTERN.match(label) else label
 
 
@@ -270,7 +281,7 @@ def _mappings(rows: Iterable[Any]) -> Iterator[Mapping[str, Any]]:
 
 
 def _role_facts(display_name: str, role: Any) -> list[str]:
-    side = _text(role).casefold()
+    side = clean_fact_text(role).casefold()
     if side == "provider":
         return [f"{display_name} is a provider on Gigr."]
     if side == "client":
@@ -279,7 +290,7 @@ def _role_facts(display_name: str, role: Any) -> list[str]:
 
 
 def _location_facts(display_name: str, last_location: Any) -> list[str]:
-    place = _text(last_location)
+    place = clean_fact_text(last_location)
     if not place:
         return []
     return [f"{display_name} is based in {place}."]
@@ -296,7 +307,7 @@ def _skills_facts(display_name: str, skills: Any) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
     for item in candidates:
-        skill = _text(item)
+        skill = clean_fact_text(item)
         identity = skill.casefold()
         if skill and identity not in seen:
             seen.add(identity)
@@ -320,8 +331,8 @@ def _service_facts(
             continue
         if not _owned_by(row, ("provider_id",), user_id):
             continue
-        title = _text(row.get("title"))
-        price = _whole_naira(row.get("price"))
+        title = clean_fact_text(row.get("title"))
+        price = whole_naira(row.get("price"))
         radius = _quantity(row.get("radius_km"))
         if not title or price is None or radius is None:
             continue
@@ -343,16 +354,17 @@ def _job_facts(
         # "hired a provider" is only true once a provider is on the job.
         if not _has_identifier(row.get("provider_id")):
             continue
-        title = _text(row.get("title"))
-        price = _whole_naira(row.get("price"))
-        place = _text(row.get("location"))
-        status = _text(row.get("status"))
+        title = clean_fact_text(row.get("title"))
+        price = whole_naira(row.get("price"))
+        place = clean_fact_text(row.get("location"))
+        status = clean_fact_text(row.get("status"))
         year = _year(row.get("created_at"))
-        if not title or price is None or not place or not status or year is None:
+        if not title or price is None or not status or year is None:
             continue
+        where = f" in {place}" if place else ""
         sentence = (
-            f"{display_name} hired a provider for {title} at {price} naira "
-            f"in {place} ({status}, {year})."
+            f"{display_name} hired a provider for {title} at {price} naira"
+            f"{where} ({status}, {year})."
         )
         rendered.append(
             ((year, title.casefold(), price, place.casefold(), status.casefold()), sentence)
@@ -380,10 +392,10 @@ def _budget_facts(
         if not _owned_by(row, ("client_id",), user_id):
             continue
         category = _category(row.get("category"))
-        price = _whole_naira(row.get("price"))
+        price = whole_naira(row.get("price"))
         if not category or price is None:
             continue
-        title = _text(row.get("title"))
+        title = clean_fact_text(row.get("title"))
         year = _year(row.get("created_at")) or 0
         grouped.setdefault(category.casefold(), []).append(
             (year, title.casefold(), price, category)
@@ -411,7 +423,7 @@ def _completed_count(
     for row in _mappings(jobs):
         if not _owned_by(row, identity_keys, user_id):
             continue
-        if _text(row.get("status")).casefold() == _COMPLETED_JOB_STATUS:
+        if clean_fact_text(row.get("status")).casefold() == _COMPLETED_JOB_STATUS:
             completed += 1
     return completed
 
@@ -440,7 +452,7 @@ def _rating_facts(
     for row in _mappings(ratings):
         if not _owned_by(row, ("ratee_id",), user_id):
             continue
-        score = _whole_naira(row.get("score"))
+        score = whole_naira(row.get("score"))
         if score is None or score > 5:
             continue
         scores.append(score)
@@ -464,7 +476,7 @@ def _dispute_facts(
     for row in _mappings(disputes):
         if not _owned_by(row, ("client_id", "provider_id"), user_id):
             continue
-        status = _text(row.get("status")).casefold()
+        status = clean_fact_text(row.get("status")).casefold()
         if status == "open":
             in_progress += 1
         elif status == "resolved":

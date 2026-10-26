@@ -36,6 +36,7 @@ from sqlalchemy.orm import selectinload
 from ....core.config import settings
 from ....core.container import (
     build_agent_memory_service,
+    build_event_fact_service,
     build_memory_verification_service,
 )
 from ....core.database import async_session
@@ -484,6 +485,68 @@ async def _save_memory(
     did not happen must never be reported as success.
     """
     return await build_agent_memory_service(db).save(user_id, updates)
+
+
+async def _store_task_memory(
+    db: AsyncSession,
+    task: AgentTask,
+    learned_result: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist what a finished task learned, whatever its final status.
+
+    The JSONB memory patch is built for a completed task only, exactly as it was
+    before facts existed: a failed task's partial search or price is not a
+    memory worth keeping. The fact write after it is deliberately not gated on
+    the status, because a task that failed after it created a job still changed
+    that user's history, and the sentence is true either way. ``learned_result``
+    is what the task had produced before its failure replaced ``task.result``.
+    """
+    if task.status == "completed" and task.result:
+        mem_updates: Dict[str, Any] = {}
+        r = task.result
+        if task.task_type in ("find_service", "negotiate") and task.params:
+            q = task.params.get("query")
+            if q:
+                mem_updates["last_search"] = q
+            if task.params.get("max_price"):
+                mem_updates["usual_price_job"] = task.params["max_price"]
+        if task.task_type == "post_job" and r.get("price"):
+            mem_updates["usual_price_job"] = r["price"]
+        if task.task_type == "post_service" and r.get("price"):
+            mem_updates["usual_price_service"] = r["price"]
+        if r.get("job_id"):
+            mem_updates["last_active_job_id"] = str(r["job_id"])
+        if r.get("service_id"):
+            mem_updates["last_active_service_id"] = str(r["service_id"])
+        if mem_updates:
+            await _save_memory(db, task.user_id, mem_updates)
+
+    await _store_learned_facts(db, learned_result or task.result)
+
+
+async def _store_learned_facts(db: AsyncSession, result: Any) -> list[str]:
+    """Store the fact sentences a task's result now supports.
+
+    The memory block in the task loop only runs for a task that ended in
+    "completed". A fact the user's history supports must not depend on that: a
+    job created before a later step failed is a real job. So this is called for
+    every task, and the service decides whether the result names a job, rating
+    or dispute worth storing.
+
+    Inert when FEATURE_AGENT_WALRUS_MEMORY is off: the service returns before it
+    reads a row. A relayer failure is logged and dropped, because a search index
+    must never be able to fail an agent task.
+    """
+    try:
+        service = build_event_fact_service(db)
+        return await service.refresh_from_result(result)
+    except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+        logger.warning(
+            "[agent] storing learned facts skipped (operation=store_facts): %s: %s",
+            type(exc).__name__,
+            exc,
+        )
+        return []
 
 
 async def _request_service(db: AsyncSession, task: AgentTask, service: ServiceListing) -> str:
@@ -2195,6 +2258,11 @@ async def _execute_task(task_id: str):
             logger.info("[agent] ▶ Executing task %s (type=%s): %r",
                         task_id, task.task_type, task.command_text)
 
+            # Held separately from task.result so a task that fails after it
+            # created a job still has its facts stored: the error below replaces
+            # task.result, and the job row it created is real either way.
+            learned_result: Optional[Dict[str, Any]] = None
+
             # Wrap entire task execution in try-except so an unhandled exception
             # never leaves a task indefinitely stuck in 'running'.
             try:
@@ -2321,6 +2389,8 @@ async def _execute_task(task_id: str):
             except Exception as exc:
                 logger.error("[agent] Task %s failed: %s", task_id, exc, exc_info=True)
                 task.status = "failed"
+                if isinstance(task.result, dict):
+                    learned_result = task.result
                 task.result = {"error": str(exc)}
                 task.completed_at = datetime.now(timezone.utc)
                 try:
@@ -2339,26 +2409,7 @@ async def _execute_task(task_id: str):
                     reply_text = task.logs[-1].message
                 record_session_turn(session_id, task.command_text, reply_text or f"Completed {task.task_type}")
 
-            # Update memory from task results
-            if task.status == "completed" and task.result:
-                mem_updates: Dict[str, Any] = {}
-                r = task.result
-                if task.task_type in ("find_service", "negotiate") and task.params:
-                    q = task.params.get("query")
-                    if q:
-                        mem_updates["last_search"] = q
-                    if task.params.get("max_price"):
-                        mem_updates["usual_price_job"] = task.params["max_price"]
-                if task.task_type == "post_job" and r.get("price"):
-                    mem_updates["usual_price_job"] = r["price"]
-                if task.task_type == "post_service" and r.get("price"):
-                    mem_updates["usual_price_service"] = r["price"]
-                if r.get("job_id"):
-                    mem_updates["last_active_job_id"] = str(r["job_id"])
-                if r.get("service_id"):
-                    mem_updates["last_active_service_id"] = str(r["service_id"])
-                if mem_updates:
-                    await _save_memory(db, task.user_id, mem_updates)
+            await _store_task_memory(db, task, learned_result)
 
             await db.commit()
 

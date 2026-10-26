@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from uuid import UUID
 
 from ..core.agent_features import agent_feature_enabled
-from ..core.config import settings
+from ..core.memory_namespace import FLAG_NAME, memory_namespace
 from ..crud.agent_memory import (
     delete_memory_key,
     load_memory,
@@ -42,7 +42,6 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
 
 logger = logging.getLogger(__name__)
 
-FLAG_NAME = "FEATURE_AGENT_WALRUS_MEMORY"
 MEMORY_RECALL_LIMIT = 5
 MEMORY_TEXT_LIMIT = 2000
 MEMORY_MIRROR_MAX_KEYS = 10
@@ -81,16 +80,6 @@ class MemoryContext:
         """
         noun = "memory" if self.count == 1 else "memories"
         return f"Searching memory: Recalled {self.count} {noun} from {self.source_label}"
-
-
-def _namespace(user_id: UUID) -> str:
-    """The Walrus namespace for one user, prefixed from MEMWAL_NAMESPACE_PREFIX.
-
-    The prefix is configuration, declared in core/config.py and read from
-    settings here; it is not a feature flag and no module in this codebase
-    reads the environment for it directly.
-    """
-    return f"{settings.MEMWAL_NAMESPACE_PREFIX}-{user_id}"
 
 
 def _memory_text(key: str, value: Any) -> str:
@@ -161,7 +150,7 @@ class AgentMemoryService:
             return None
         try:
             return await self._gateway.recall(
-                query, _namespace(user_id), MEMORY_RECALL_LIMIT
+                query, memory_namespace(user_id), MEMORY_RECALL_LIMIT
             )
         except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
             logger.warning(
@@ -243,7 +232,7 @@ class AgentMemoryService:
         """
         if self._gateway is None:
             return
-        namespace = _namespace(user_id)
+        namespace = memory_namespace(user_id)
         mirrored = list(updates.items())[:MEMORY_MIRROR_MAX_KEYS]
         if len(updates) > len(mirrored):
             logger.warning(
