@@ -161,6 +161,32 @@ def _memory_text(key: str, value: Any) -> str:
     return f"{key}: {rendered}"[:MEMORY_TEXT_LIMIT]
 
 
+def _looks_like_stored_entry(text: str) -> bool:
+    """True when text has the shape :func:`_memory_text` gives a memory key.
+
+    Every mirrored entry is ``<key>: <JSON value>``. A recalled text with that
+    shape whose key is no longer in the local memory is the mirror of a key the
+    user forgot, or an entry from another store: the relayer is append-only, so
+    the text survives the delete, and injecting it as a fact would put the
+    forgotten value back in front of the model.
+
+    Backfilled facts are prose sentences and always end with a full stop, so
+    their tail is not JSON and they are not mistaken for a mirror. A sentence
+    that contains a colon, such as ``Kosi posted a job for Fix: sink.``, keeps
+    its tail unparseable and therefore stays a fact. A truncated mirror (text
+    cut at MEMORY_TEXT_LIMIT) is not detectable this way and is treated as a
+    fact; that is the one shape this rule cannot recover.
+    """
+    key, separator, value = text.partition(": ")
+    if not separator or not key:
+        return False
+    try:
+        json.loads(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _memory_date(created_at: Any) -> Optional[str]:
     """The YYYY-MM-DD date of a recalled memory, or None when it has none.
 
@@ -327,6 +353,12 @@ class AgentMemoryService:
                         continue
                     text = memory.text.strip()
                     if not text or text in entries.values():
+                        continue
+                    # A key-shaped text whose key is not local is the mirror of
+                    # a forgotten key (or a foreign entry), not a fact. Walrus
+                    # Memory keeps it after Forget because it is append-only;
+                    # injecting it would silently undo the Forget.
+                    if _looks_like_stored_entry(text):
                         continue
                     ordinal += 1
                     entries[f"known_{ordinal}"] = text
