@@ -271,8 +271,29 @@ class AgentMemoryService:
                 local = await load_memory(self._db, user_id)
                 matched = _match_recalled(memories, local.keys())
                 keys = [key for key, _ in matched]
+                entries = {key: local[key] for key in keys}
+                # Facts written by the backfill are whole sentences, not keys:
+                # "Kosi hired a provider for ... at 15000 naira". Matching them
+                # against the local keys alone would discard every one of them,
+                # which is exactly what happened before this: the relayer held
+                # the facts while the prompt received nothing. Sentence facts
+                # that correspond to no local key are kept under their own
+                # labels so they reach the model.
+                known = set(local.keys())
+                ordinal = 0
+                for memory in memories:
+                    if any(
+                        memory.text == key or memory.text.startswith(f"{key}: ")
+                        for key in known
+                    ):
+                        continue
+                    text = memory.text.strip()
+                    if not text or text in entries.values():
+                        continue
+                    ordinal += 1
+                    entries[f"known_{ordinal}"] = text
                 return MemoryContext(
-                    entries={key: local[key] for key in keys},
+                    entries=entries,
                     source="walrus",
                     semantic=True,
                     dates={key: day for key, day in matched if day is not None},
