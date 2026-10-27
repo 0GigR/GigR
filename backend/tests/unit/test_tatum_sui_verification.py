@@ -11,7 +11,7 @@ import asyncio
 import logging
 import uuid
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.gateways.tatum_sui_gateway import TatumSuiGateway
 from app.core.resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
 from app.services.memory_verification_service import (
@@ -340,3 +340,21 @@ async def test_an_unrecognised_reference_is_reported_without_a_call(monkeypatch)
     assert result.verified is False
     assert result.reason == REASON_UNRECOGNISED
     assert http.calls == []
+
+
+def test_tatum_values_are_trimmed_before_use(monkeypatch):
+    """A pasted key often carries a newline; Tatum answers 404 without a key.
+
+    The hosted gateway returns 404 to an unauthenticated call, so a trailing
+    newline in a dashboard value would look like a wrong endpoint. Trimming the
+    URL and both network keys at startup removes that failure mode.
+    """
+    monkeypatch.setenv("TATUM_SUI_NETWORK", "mainnet")
+    monkeypatch.setenv("TATUM_SUI_RPC_URL", "  https://sui-mainnet.gateway.tatum.io \n")
+    monkeypatch.setenv("TATUM_API_KEY_MAINNET", "  tatum-key-value  \n")
+
+    startup = Settings()
+
+    assert startup.TATUM_SUI_RPC_URL == "https://sui-mainnet.gateway.tatum.io"
+    assert startup.TATUM_API_KEY_MAINNET == "tatum-key-value"
+    assert startup.tatum_sui_api_key == "tatum-key-value"

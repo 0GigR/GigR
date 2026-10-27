@@ -419,6 +419,25 @@ class Settings(BaseSettings):
             raise ValueError("TATUM_SUI_NETWORK must be 'devnet', 'testnet' or 'mainnet'")
         return cleaned
 
+    @field_validator(
+        "TATUM_SUI_RPC_URL",
+        "TATUM_SOLANA_RPC_URL",
+        "TATUM_API_KEY_MAINNET",
+        "TATUM_API_KEY_TESTNET",
+        mode="before",
+    )
+    @classmethod
+    def _trim_tatum_values(cls, v: object) -> object:
+        """Strip surrounding whitespace from Tatum URLs and keys.
+
+        A key pasted into a hosting dashboard often carries a trailing newline
+        or space. The hosted Tatum gateway answers 404 when no usable key
+        reaches it (verified against sui-mainnet.gateway.tatum.io), which reads
+        like a wrong endpoint rather than a value with a stray character.
+        Trimming here turns that into the honest 401, or into the working call.
+        """
+        return v.strip() if isinstance(v, str) else v
+
     @field_validator("TATUM_RPC_TIMEOUT_SECONDS")
     @classmethod
     def _validate_tatum_rpc_timeout(cls, v: float) -> float:

@@ -74,12 +74,33 @@ Solana RPC calls can be routed through Tatum's gateway behind a flag, with a
 short health probe and exactly one fallback to the direct RPC. Escrow writes are
 never replayed.
 
-Sui verification is implemented: a read-only call that confirms a Walrus blob's
-object on Sui through Tatum's Sui RPC, advisory only, incapable of failing a
-memory read or write. It is off in production because Tatum's Sui **JSON-RPC**
-gateway returns 404 for this account on every path while the gRPC host answers
-415, and the free plan's tier is not documented either way. The working Solana
-path is enabled.
+Sui verification is implemented: a read-only `sui_getObject` through Tatum's Sui
+JSON-RPC, advisory only, incapable of failing a memory read or write.
+
+The hosted gateway's answers were measured on 27 October 2026 against
+`sui-mainnet.gateway.tatum.io`: a request with **no** API key gets `404`, a
+request with a rejected key gets `401`, and a JSON request to the gRPC host gets
+`415`. So a 404 is an authentication/configuration answer, not a wrong endpoint;
+that distinction cost us an hour once. The gateways are enabled per network with
+`FEATURE_TATUM_SUI=true`, `TATUM_SUI_NETWORK=mainnet|testnet`,
+`TATUM_SUI_RPC_URL=https://sui-mainnet.gateway.tatum.io`, and the matching
+`TATUM_API_KEY_MAINNET` or `TATUM_API_KEY_TESTNET`. The app trims surrounding
+whitespace from those values, because a newline pasted into a dashboard value
+produces exactly the unauthenticated 404 above.
+
+Sui verification is off in production until the deployed key is confirmed. The
+working Solana Tatum path is enabled alongside it.
+
+To confirm the deployment:
+
+```bash
+cd backend
+python scripts/check_tatum_sui.py
+python scripts/check_tatum_sui.py 0x<walrus-blob-object-id>
+```
+
+The first call proves the key and endpoint; the second proves the exact object
+read the app makes, and says whether the object is a Walrus blob.
 
 ## Evidence
 
