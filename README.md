@@ -8,6 +8,33 @@ All blockchain interactions are hidden from the user, providing a Web2-like seam
 
 ---
 
+## Portable memory on Walrus
+
+Gigr's agent remembers. Each user's history is turned into short factual
+sentences and stored in **Walrus Memory** in that user's own namespace, then
+recalled by meaning before the agent answers.
+
+```
+Kosisochukwu hired a provider for Phone repair at 3000 naira (in_progress, 2026).
+Kosisochukwu has completed 3 jobs as a client and 5 as a provider.
+Kosisochukwu has an average rating of 4.0 from 1 rating.
+```
+
+The memory page at `/dashboard/memory` lists what the agent actually holds,
+grouped by category with an honest count. Facts are extracted from rows by
+templates, never written by a model, so none can be invented and a missing field
+produces nothing rather than a guess. A one-off, resumable backfill gives every
+existing user their history; new facts flow from events afterwards.
+
+Walrus Memory is append-only and the Python SDK has no delete
+(MystenLabs/walrus-memory#1061), so the UI never offers a Forget button on a
+remembered fact. It says plainly that forgetting a preference stops the agent
+using it while the stored sentence remains.
+
+Full write-up: [docs/total-recall-submission.md](docs/total-recall-submission.md)
+
+---
+
 ## 🏗 Architecture
 
 Gigr operates on a split architecture:
