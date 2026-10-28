@@ -1,0 +1,39 @@
+name: Sync from upstream
+
+# Replaces the "Sync fork" button that GitHub removed when the parent repo
+# changed visibility and this repo was detached from its fork relationship.
+# Run it from the Actions tab with "Run workflow", or let it run on a schedule.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Fast-forward this repo from 0GigR/GigR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream main
+        run: |
+          git remote add upstream https://github.com/0GigR/GigR.git
+          git fetch upstream main
+          # Fast-forward only: never rewrite history and never force. If the two
+          # have genuinely diverged this stops and says so instead of guessing.
+          git merge --ff-only upstream/main
+
+      - name: Push
+        run: git push origin main
