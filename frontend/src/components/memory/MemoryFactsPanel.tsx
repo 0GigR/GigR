@@ -617,21 +617,21 @@ function confirmCopy(action: ReconcileAction | null): {
     return {
       title: `Delete every memory in ${action.label}?`,
       description:
-        `This removes every memory in ${action.label}: the ${action.count} listed here, ` +
-        'and any other that belongs to the same group, from Walrus Memory. It cannot be ' +
-        'undone. The memories you keep are rewritten as part of the change, because Walrus ' +
-        'Memory can only delete a whole namespace at a time. The rewritten memories are ' +
-        "saved again with today's date.",
+        `Removes the ${action.count} ${action.count === 1 ? 'memory' : 'memories'} in ` +
+        `${action.label}. It cannot be undone.\n\n` +
+        'Walrus Memory can only delete everything at once, so Gigr saves all your memories ' +
+        'again and leaves these out. The rest stay, but they are stored as new entries dated ' +
+        'today.',
       confirmLabel: `Delete ${action.count} ${noun}`,
     }
   }
   return {
     title: 'Replace this memory?',
     description:
-      'This removes the old sentence and saves the new one in its place. It cannot be ' +
-      'undone. Every other memory is rewritten as part of the change, because Walrus Memory ' +
-      'can only delete a whole namespace at a time. The rewritten memories are saved again ' +
-      "with today's date.",
+      'Replaces the old sentence with the new one. It cannot be undone.\n\n' +
+      'Walrus Memory can only delete everything at once, so Gigr saves all your memories ' +
+      'again with the change applied. The rest stay, but they are stored as new entries ' +
+      'dated today.',
     confirmLabel: 'Replace memory',
   }
 }
