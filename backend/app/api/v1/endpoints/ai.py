@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,6 +38,7 @@ from ....core.agent_features import agent_feature_enabled
 from ....core.container import (
     build_agent_memory_service,
     build_event_fact_service,
+    build_memory_reconcile_service,
     build_memory_verification_service,
 )
 from ....core.database import async_session
@@ -64,6 +65,11 @@ from ....services.agent_session import (
     record_session_turn,
 )
 from ....services.agent_memory_service import MemoryContext
+from ....services.memory_reconcile_service import (
+    MAX_CATEGORY_LENGTH,
+    MAX_FACT_TEXT_LENGTH,
+    MAX_FACTS_PER_OPERATION,
+)
 
 router = APIRouter()
 
@@ -3379,6 +3385,146 @@ async def forget_entire_memory(
         "deleted": result.deleted,
         "reason": result.reason,
     }
+
+
+class MemoryFactsDeleteRequest(BaseModel):
+    """The memories one DELETE removes: exact sentences, or one category.
+
+    Exactly one of the two fields is required. Extra keys are accepted and never
+    read, on purpose: there is no user and no namespace field, because both come
+    from the authenticated session. A request that carries a namespace therefore
+    cannot change whose memory is rewritten.
+
+    The bounds are the ones the service enforces. They are stated here as well so
+    an oversized request is rejected at the boundary, before any memory is read.
+    """
+
+    texts: Optional[List[str]] = None
+    category: Optional[str] = None
+
+    @field_validator("texts")
+    @classmethod
+    def _check_texts(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        """Trim outer whitespace only: the service matches stored text exactly."""
+        if value is None:
+            return None
+        cleaned = [text.strip() for text in value]
+        if not cleaned:
+            raise ValueError("Select at least one memory to delete.")
+        if any(not text for text in cleaned):
+            raise ValueError(
+                "One of those memories was empty. Reload the page and try again."
+            )
+        if len(cleaned) > MAX_FACTS_PER_OPERATION:
+            raise ValueError(
+                f"Select at most {MAX_FACTS_PER_OPERATION} memories at a time."
+            )
+        if any(len(text) > MAX_FACT_TEXT_LENGTH for text in cleaned):
+            raise ValueError(
+                f"One of those memories is longer than {MAX_FACT_TEXT_LENGTH} "
+                f"characters."
+            )
+        return cleaned
+
+    @field_validator("category")
+    @classmethod
+    def _check_category(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Choose a group of memories to delete.")
+        if len(cleaned) > MAX_CATEGORY_LENGTH:
+            raise ValueError("That group is not one this page shows.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def _exactly_one_target(self) -> "MemoryFactsDeleteRequest":
+        if (self.texts is None) == (self.category is None):
+            raise ValueError(
+                "Provide either the memories to delete or one group, not both."
+            )
+        return self
+
+
+class MemoryFactReplaceRequest(BaseModel):
+    """One edit: the stored sentence and the text that replaces it.
+
+    Extra keys are ignored for the same reason as the delete body: the user and
+    the namespace come from the session, never from the request.
+    """
+
+    old_text: str
+    new_text: str
+
+    @field_validator("old_text", "new_text")
+    @classmethod
+    def _check_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Enter the replacement text.")
+        if len(cleaned) > MAX_FACT_TEXT_LENGTH:
+            raise ValueError(
+                f"Keep the text to {MAX_FACT_TEXT_LENGTH} characters or fewer."
+            )
+        return cleaned
+
+
+@router.delete("/ai/memory/facts")
+async def delete_memory_facts_endpoint(
+    request: MemoryFactsDeleteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete named memories, or every memory in one category, for the caller.
+
+    Auth is required, and the namespace is derived from the authenticated user
+    alone: the body has no user or namespace field, and no path or query value
+    names one, so this can only ever rewrite the caller's own memory. It is
+    behind FEATURE_AGENT_WALRUS_MEMORY: with the flag off the route answers 404
+    as if it did not exist and nothing is read or wiped.
+
+    Walrus Memory has no per-fact delete, so the service reads the namespace,
+    wipes it and writes the kept memories back. The answer is a typed result;
+    a restore that did not finish comes back with ``partial`` true and is never
+    reported as a success.
+    """
+    if not agent_feature_enabled(MEMORY_FLAG_NAME):
+        raise HTTPException(
+            status_code=404,
+            detail="Memory is not enabled in this environment.",
+        )
+    service = build_memory_reconcile_service()
+    if request.category is not None:
+        result = await service.delete_category(current_user.id, request.category)
+    else:
+        result = await service.delete_facts(
+            current_user.id, tuple(request.texts or ())
+        )
+    return result.as_response()
+
+
+@router.patch("/ai/memory/facts")
+async def replace_memory_fact_endpoint(
+    request: MemoryFactReplaceRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Replace one stored memory with new text, for the caller only.
+
+    This is a delete plus a re-add over the whole namespace, because Walrus
+    Memory has no per-fact edit either. The page presents it as an edit and says
+    that the remaining memories are rewritten. Auth and the flag gate it exactly
+    as the delete above, and a sentence that is no longer stored is a clean
+    no-op: the new text is not saved on its own.
+    """
+    if not agent_feature_enabled(MEMORY_FLAG_NAME):
+        raise HTTPException(
+            status_code=404,
+            detail="Memory is not enabled in this environment.",
+        )
+    result = await build_memory_reconcile_service().replace_fact(
+        current_user.id, request.old_text, request.new_text
+    )
+    return result.as_response()
 
 
 @router.delete("/ai/memory/{key}")

@@ -5,7 +5,9 @@ Tatum does not serve Sui over JSON-RPC for this account: every path on
 routes do not know Sui either. The host that does answer is the gRPC one,
 ``sui-mainnet-grpc.gateway.tatum.io``, which speaks the Sui v2 LedgerService.
 This gateway therefore uses ``grpclib`` and the generated Sui v2 stubs that
-ship inside ``pysui``, so no proto compilation is needed.
+ship vendored under ``sui_stubs``, so no proto compilation is needed and
+``pysui`` itself is not a dependency: its stub package pulls a websockets
+range that conflicts with the solana SDK and breaks a clean install.
 
 The API key travels as the ``x-api-key`` gRPC metadata pair, never in a URL,
 and is filtered out of every error message before the boundary can log it.
@@ -125,15 +127,15 @@ def _open_channel(grpc_url: str) -> Any:
 
 def _build_stub(channel: Any, api_key: str) -> Any:
     """Build the LedgerService stub with the key as metadata, never a URL."""
-    from pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 import LedgerServiceStub
+    from .sui_stubs.sui.rpc.v2 import LedgerServiceStub
 
     return LedgerServiceStub(channel, metadata=(("x-api-key", api_key),))
 
 
 def _get_object_request(object_id: str) -> Any:
     """The documented GetObject request, with the mask that makes it useful."""
-    from pysui.sui.sui_grpc.suimsgs.google.protobuf import FieldMask
-    from pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 import GetObjectRequest
+    from .sui_stubs.google.protobuf import FieldMask
+    from .sui_stubs.sui.rpc.v2 import GetObjectRequest
 
     return GetObjectRequest(
         object_id=object_id,

@@ -25,6 +25,11 @@ from ..services import osm_geo
 from ..services.agent_memory_service import AgentMemoryService
 from ..services.event_fact_service import EventFactService
 from ..services.fact_memory_service import FactMemoryService
+from ..services.memory_reconcile_service import (
+    KeyedLock,
+    MemoryReconcileJournal,
+    MemoryReconcileService,
+)
 from ..services.memory_verification_service import MemoryVerificationService
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -204,6 +209,9 @@ agent_memory_gateway = build_agent_memory_gateway()
 tatum_solana_boundary = build_tatum_solana_boundary()
 tatum_sui_gateway = build_tatum_sui_gateway()
 geocoding_gateway = build_geocoding_gateway()
+# One registry for the whole process: two reconciles for one user must not
+# interleave, and each request builds its own service from this root.
+memory_reconcile_locks = KeyedLock()
 _log_flag_state()
 
 
@@ -220,6 +228,28 @@ def build_fact_memory_service() -> FactMemoryService:
 def build_event_fact_service(db: "AsyncSession") -> EventFactService:
     """Assemble the event fact service for one request or one background task."""
     return EventFactService(db=db, memory=build_fact_memory_service())
+
+
+def build_memory_reconcile_journal() -> MemoryReconcileJournal:
+    """The durable restore point the per-fact controls write before a wipe.
+
+    The path is configuration, not a flag: it names where state lives and does
+    not change what the code does.
+    """
+    return MemoryReconcileJournal(
+        settings.MEMORY_RECONCILE_JOURNAL_PATH,
+        settings.MEMWAL_NAMESPACE_PREFIX,
+    )
+
+
+def build_memory_reconcile_service() -> MemoryReconcileService:
+    """Assemble the per-fact delete and edit service for one request."""
+    return MemoryReconcileService(
+        memory=build_fact_memory_service(),
+        gateway=agent_memory_gateway,
+        journal=build_memory_reconcile_journal(),
+        locks=memory_reconcile_locks,
+    )
 
 
 def build_memory_verification_service() -> MemoryVerificationService:
