@@ -3,13 +3,17 @@
  *
  * Reachable at /dashboard/memory from the sidebar, the agent panel and the AI
  * settings page. Its primary content is the sentences Walrus Memory holds for
- * the signed-in user, read-only from GET /ai/memory/facts. The JSONB preference
- * keys are a secondary section, shown only when at least one has a value: they
- * are what per-preference Forget acts on, and forgetting one leaves the stored
- * sentence because Walrus Memory has no per-fact delete. The namespace wipe
- * ("Forget everything Gigr remembers about me") is the separate, explicit
- * control that deletes every sentence this user has stored. Sui verification
- * stays on the preference entries, unchanged.
+ * the signed-in user, read from GET /ai/memory/facts and changed one at a time
+ * by MemoryFactsPanel: select sentences to delete, delete a whole category, or
+ * edit one in place. Walrus Memory has no per-fact delete, so each of those
+ * rewrites the namespace; the panel says so in every confirmation.
+ *
+ * The JSONB preference keys are a secondary section, shown only when at least
+ * one has a value: they are what per-preference Forget acts on, and forgetting
+ * one leaves the stored sentence, which the per-fact controls above can remove.
+ * The namespace wipe ("Forget everything Gigr remembers about me") is the
+ * separate, explicit control that deletes every sentence this user has stored.
+ * Sui verification stays on the preference entries, unchanged.
  *
  * House standard: zero emojis, zero decorative unicode, confirmation before a
  * destructive action, and an honest state for empty, loading, error and
@@ -20,27 +24,19 @@ import { useRef, useState, type ReactNode } from 'react'
 import axios from 'axios'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle,
   Bot,
   Brain,
-  Briefcase,
   ChevronDown,
   CircleAlert,
-  FolderOpen,
   Loader2,
-  MessageSquare,
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
-  Star,
-  Tag,
   Trash2,
-  User,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { extractError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/authStore'
@@ -52,14 +48,13 @@ import {
   forgetAgentMemoryNamespace,
   verifyMemoryReference,
   type AgentMemorySnapshot,
-  type MemoryFact,
   type MemoryFactsReason,
 } from '@/hooks/useAgentMemory'
+import { MemoryFactsPanel } from '@/components/memory/MemoryFactsPanel'
 import {
   failedVerification,
   findSuiReference,
   formatMemoryValue,
-  groupFactsByCategory,
   groupMemory,
   humanizeMemoryKey,
   normalizeVerification,
@@ -70,7 +65,6 @@ import {
   type MemoryGroup,
   type MemoryVerification,
   type VerificationTone,
-  type FactCategory,
 } from '@/lib/agentMemory'
 
 const VERIFICATION_STYLES: Record<VerificationTone, string> = {
@@ -80,31 +74,6 @@ const VERIFICATION_STYLES: Record<VerificationTone, string> = {
     'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300',
   unavailable:
     'border-gray-200 bg-gray-100 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300',
-}
-
-// One icon and one restrained accent per category, so a section is recognisable
-// before its heading is read. The accents stay in the palette the rest of the
-// dashboard uses; they are not a status signal.
-const FACT_CATEGORY_ICONS: Record<FactCategory, ReactNode> = {
-  about: <User className="w-4 h-4" />,
-  jobs: <Briefcase className="w-4 h-4" />,
-  services: <Tag className="w-4 h-4" />,
-  messages: <MessageSquare className="w-4 h-4" />,
-  ratings: <Star className="w-4 h-4" />,
-  other: <FolderOpen className="w-4 h-4" />,
-}
-
-const FACT_CATEGORY_ACCENTS: Record<FactCategory, string> = {
-  about:
-    'bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300',
-  jobs: 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
-  services:
-    'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
-  messages:
-    'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
-  ratings: 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300',
-  other:
-    'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
 }
 
 function httpStatus(error: unknown): number | null {
@@ -122,6 +91,7 @@ export default function MemoryPage() {
     useAgentMemory(accountEnabled)
 
   const [pendingKey, setPendingKey] = useState<string | null>(null)
+  const [prefsOpen, setPrefsOpen] = useState(false)
   const forgettingRef = useRef(false)
 
   const forgetMutation = useMutation({
@@ -226,7 +196,7 @@ export default function MemoryPage() {
           />
         )}
 
-        <MemoryFactsSection
+        <MemoryFactsPanel
           facts={facts}
           reason={factsReason}
           source={factsSnapshot?.source ?? 'none'}
@@ -236,35 +206,54 @@ export default function MemoryPage() {
           onRetry={() => {
             void refetchFacts()
           }}
+          onReconciled={() => {
+            void refetchFacts()
+          }}
           onOpenAgent={openAgentPanel}
         />
 
         {!factsLoading && preferenceCount > 0 ? (
-          <section className="space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Saved preferences
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                Short values your agent saved to reuse. Forgetting one stops the agent using
-                it. The sentence already written for that preference can remain, because
-                Walrus Memory has no per-fact delete. Use the control below to remove
-                everything Gigr remembers about you.
-              </p>
-            </div>
-            <p className="text-xs text-gray-500">
-              {preferenceCount} saved {preferenceCount === 1 ? 'preference' : 'preferences'}.
-            </p>
-            {groups.map((group) => (
-              <MemoryGroupSection
-                key={group.id}
-                group={group}
-                onForget={(key) => setPendingKey(key)}
+          <section className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setPrefsOpen((open) => !open)}
+              aria-expanded={prefsOpen}
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800"
+            >
+              <span className="min-w-0">
+                <span className="block text-base font-semibold text-gray-900 dark:text-gray-100">
+                  Saved preferences
+                </span>
+                <span className="mt-0.5 block text-sm text-gray-500">
+                  {preferenceCount} saved {preferenceCount === 1 ? 'preference' : 'preferences'}.
+                  Short values your agent reuses.
+                </span>
+              </span>
+              <ChevronDown
+                className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${prefsOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
               />
-            ))}
-            <p className="text-[11px] leading-relaxed text-gray-400">
-              Entries do not carry a separate update time. This list is what your agent holds now.
-            </p>
+            </button>
+            {prefsOpen ? (
+              <div className="space-y-4">
+                <p className="text-sm text-gray-500">
+                  Forgetting one stops the agent using it. The sentence already written for
+                  that preference can remain: remove it with the per-fact controls above, or
+                  use the control below to remove everything Gigr remembers about you.
+                </p>
+                {groups.map((group) => (
+                  <MemoryGroupSection
+                    key={group.id}
+                    group={group}
+                    onForget={(key) => setPendingKey(key)}
+                  />
+                ))}
+                <p className="text-[11px] leading-relaxed text-gray-400">
+                  Entries do not carry a separate update time. This list is what your agent
+                  holds now.
+                </p>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -361,219 +350,6 @@ export default function MemoryPage() {
   )
 }
 
-function MemoryFactsSection({
-  facts,
-  reason,
-  source,
-  loading,
-  failed,
-  retrying,
-  onRetry,
-  onOpenAgent,
-}: {
-  facts: MemoryFact[]
-  reason: MemoryFactsReason
-  source: 'walrus' | 'none'
-  loading: boolean
-  failed: boolean
-  retrying: boolean
-  onRetry: () => void
-  onOpenAgent: () => void
-}) {
-  // Hooks run before every early return: the section is rendered while loading,
-  // then with facts, and the state must keep its slot across those renders.
-  // Sections start closed: the page opens as a five-card overview with counts,
-  // and one click reveals the sentences. Tracking what is open (not what is
-  // closed) makes that the empty default and survives facts arriving late.
-  const [expandedGroups, setExpandedGroups] = useState<Set<FactCategory>>(
-    new Set(),
-  )
-
-  const retryButton = (label: string) => (
-    <Button variant="outline" size="sm" onClick={onRetry} disabled={retrying}>
-      {retrying ? (
-        <Loader2 className="w-3 h-3 animate-spin" />
-      ) : (
-        <RefreshCw className="w-3 h-3" />
-      )}
-      {label}
-    </Button>
-  )
-
-  if (loading) return <LoadingState />
-
-  if (failed) {
-    return (
-      <MemoryNotice
-        warning
-        title="We could not read Walrus Memory"
-        body="Nothing has changed. The sentences Gigr stores are safe. Check your connection, then try again."
-        action={retryButton('Try again')}
-      />
-    )
-  }
-
-  if (reason === 'feature_disabled' || reason === 'not_configured') {
-    return (
-      <MemoryNotice
-        title="Memory is not enabled"
-        body={
-          reason === 'feature_disabled'
-            ? 'Walrus Memory is turned off in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
-            : 'Walrus Memory is not set up in this environment, so Gigr is not reading or saving memory sentences here. Nothing is wrong with your data.'
-        }
-        action={retryButton('Check again')}
-      />
-    )
-  }
-
-  if (reason === 'relayer_busy') {
-    return (
-      <MemoryNotice
-        warning
-        title="Walrus Memory is busy"
-        body="The relayer is limiting how often it can be read right now. Your facts are safe. Wait a minute, then try again."
-        action={retryButton('Try again')}
-      />
-    )
-  }
-
-  if (reason === 'relayer_timeout') {
-    return (
-      <MemoryNotice
-        warning
-        title="Walrus Memory took too long"
-        body="The recall did not finish in time. Your facts are safe. Try again; a smaller recall often completes."
-        action={retryButton('Try again')}
-      />
-    )
-  }
-
-  if (reason !== 'ok') {
-    return (
-      <MemoryNotice
-        warning
-        title="We could not read Walrus Memory"
-        body="Nothing has changed. The sentences Gigr stores are safe. Try again in a moment."
-        action={retryButton('Try again')}
-      />
-    )
-  }
-
-  if (facts.length === 0) {
-    return <EmptyState onOpenAgent={onOpenAgent} />
-  }
-
-  const count = facts.length
-  const factGroups = groupFactsByCategory(facts)
-  const allExpanded =
-    factGroups.length > 0 && factGroups.every((group) => expandedGroups.has(group.id))
-
-  const toggleGroup = (id: FactCategory) => {
-    setExpandedGroups((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
-  const toggleAll = () => {
-    setExpandedGroups(
-      allExpanded ? new Set() : new Set(factGroups.map((group) => group.id)),
-    )
-  }
-
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            What Gigr remembers
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {count} {count === 1 ? 'thing' : 'things'} Gigr remembers, grouped by what each
-            sentence is about. Open a section to read it.
-          </p>
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleAll}
-          className="h-7 px-2 text-xs text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-300"
-        >
-          {allExpanded ? 'Collapse all' : 'Expand all'}
-        </Button>
-      </div>
-
-      <div className="space-y-3">
-        {factGroups.map((group) => {
-          const isExpanded = expandedGroups.has(group.id)
-          return (
-            <div
-              key={group.id}
-              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-sm overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.id)}
-                aria-expanded={isExpanded}
-                aria-controls={`fact-group-${group.id}`}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-violet-500/40"
-              >
-                <span
-                  className={cn(
-                    'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                    FACT_CATEGORY_ACCENTS[group.id],
-                  )}
-                >
-                  {FACT_CATEGORY_ICONS[group.id]}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">
-                    {group.label}
-                  </span>
-                  <span className="block text-[11px] text-gray-500 mt-0.5">
-                    {group.entries.length}{' '}
-                    {group.entries.length === 1 ? 'thing' : 'things'}
-                  </span>
-                </span>
-                <ChevronDown
-                  className={cn(
-                    'w-4 h-4 text-gray-400 transition-transform duration-200',
-                    !isExpanded && '-rotate-90',
-                  )}
-                />
-              </button>
-              {isExpanded && (
-                <ol
-                  id={`fact-group-${group.id}`}
-                  className="px-4 pb-3 divide-y divide-gray-100 dark:divide-gray-800 animate-in fade-in duration-200"
-                >
-                  {group.entries.map((fact, index) => (
-                    <li
-                      key={`${group.id}-${index}-${fact.text}`}
-                      className="py-3 text-sm leading-relaxed text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words"
-                    >
-                      {fact.text}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      <p className="text-[11px] leading-relaxed text-gray-400">
-        {source === 'walrus'
-          ? 'Read from Walrus Memory. Within each group, the most relevant sentence comes first. This is what one memory recall returned.'
-          : 'This is what one memory recall returned.'}
-      </p>
-    </section>
-  )
-}
-
 /** Why a namespace wipe did not happen, in the page's own words. */
 function forgetFailureText(reason: string): string {
   switch (reason) {
@@ -655,37 +431,6 @@ function MemoryWipeSection({
         }}
       />
     </section>
-  )
-}
-
-function MemoryNotice({
-  title,
-  body,
-  action,
-  warning = false,
-}: {
-  title: string
-  body: string
-  action?: ReactNode
-  warning?: boolean
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-6">
-      <div className="flex gap-3">
-        <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center shrink-0">
-          {warning ? (
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-          ) : (
-            <Bot className="w-5 h-5 text-gray-500" />
-          )}
-        </div>
-        <div className="min-w-0">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
-          <p className="text-sm text-gray-500 mt-1">{body}</p>
-          {action && <div className="mt-3">{action}</div>}
-        </div>
-      </div>
-    </div>
   )
 }
 
@@ -852,26 +597,6 @@ function VerificationResult({ result }: { result: MemoryVerification }) {
   )
 }
 
-function LoadingState() {
-  return (
-    <div className="space-y-4" aria-busy="true">
-      <p className="text-sm text-gray-500">Loading what Gigr remembers...</p>
-      <p className="text-xs text-gray-400">
-        Reading the sentences from Walrus Memory. This can take a few seconds.
-      </p>
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
-      </div>
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 space-y-4">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-14 w-full" />
-      </div>
-    </div>
-  )
-}
-
 function DisabledState({
   reason,
   hasStoredEntries = false,
@@ -924,24 +649,6 @@ function DisabledState({
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-function EmptyState({ onOpenAgent }: { onOpenAgent: () => void }) {
-  return (
-    <div className="text-center py-14 px-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-900/40">
-      <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center mx-auto">
-        <Brain className="w-6 h-6 text-gray-400" />
-      </div>
-      <p className="font-medium mt-3">Nothing remembered yet</p>
-      <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
-        Gigr has not stored anything about you. When the agent learns a preference from a task,
-        or you ask it to remember something, it appears here.
-      </p>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onOpenAgent}>
-        Open the agent
-      </Button>
     </div>
   )
 }
