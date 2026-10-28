@@ -20,6 +20,37 @@ logger = logging.getLogger(__name__)
 DEPENDENCY = "walrus-memory"
 
 
+# The query the forget verification sends. A namespace whose rows were deleted
+# answers with nothing; one that still holds rows usually answers with them. The
+# text names the subjects the fact writer stores, because a recall ranks by
+# similarity and a question about a single topic can miss a namespace that only
+# holds the others.
+FORGET_VERIFY_QUERY = (
+    "this user's preferences, jobs, services, providers, prices, locations, "
+    "payments and past activity"
+)
+
+# How many rows the verification asks for. Two are enough to tell "something
+# remains" from "nothing came back", and they keep the probe inside a single
+# cheap recall.
+FORGET_VERIFY_LIMIT = 2
+
+
+@dataclass(frozen=True)
+class ForgottenNamespace:
+    """The outcome of deleting one namespace's index rows.
+
+    ``deleted`` is the row count the relayer reported, or None when the relayer
+    never got to report one (the call failed and the verification is what proved
+    the rows gone). ``verified`` says the answer came from a verification read
+    rather than from the relayer's own count, so a caller can log the difference.
+    """
+
+    namespace: str
+    deleted: int | None
+    verified: bool = False
+
+
 @dataclass(frozen=True)
 class RecalledMemory:
     """One stored memory and the metadata the relayer returned with it.
@@ -42,9 +73,15 @@ class WalrusMemoryGateway:
 
     Every call crosses a :class:`Boundary`, which supplies the timeout, the
     circuit breaker, the bulkhead and bounded retries. Reads are retried because
-    they are idempotent; writes are not, because the relayer is append-only and
-    an accepted write that timed out may already be stored. Writes carry a
-    deterministic idempotency key instead.
+    they are idempotent; writes are not, because an accepted write that timed out
+    may already be stored and there is no per-fact delete to take a duplicate
+    back. Writes carry a deterministic idempotency key instead.
+
+    ``forget`` deletes one namespace's index rows (memwal 0.2.2 and later). It is
+    a write, so it is never retried blind either: a failure is followed by a
+    verification read, and only a namespace that provably still holds rows is
+    deleted again. Deleting twice would be harmless, but claiming a deletion
+    that did not happen would not be.
     """
 
     def __init__(
@@ -196,3 +233,128 @@ class WalrusMemoryGateway:
             operation,
             outcome_fallback(DEPENDENCY, (), "list_namespaces_degraded"),
         )
+
+    async def forget(self, namespace: str) -> ForgottenNamespace:
+        """Delete every index row in ``namespace`` and report what happened.
+
+        This is the namespace-level delete memwal 0.2.2 added
+        (``MemWal.forget``, MystenLabs/walrus-memory#1061): one user's whole
+        memory, never a single fact. The relayer still has no per-fact delete,
+        so anything that needs one fact removed must rewrite the namespace.
+
+        It is a write, so it is never retried blind. A failure means the outcome
+        is unknown: the rows may have been deleted before the error was
+        returned. The namespace is verified before anything is repeated.
+
+        * provably empty: the delete is treated as applied and
+          ``verified=True`` is returned, with no row count because the relayer
+          never got to report one;
+        * provably still holding rows: the same delete is made once more (it is
+          idempotent, and the verification proved the first one did not land);
+        * not verifiable: the original error is raised and nothing is deleted
+          again, because claiming a deletion nobody confirmed is worse than
+          reporting the failure.
+
+        Raises DependencyUnavailableError when the relayer cannot be reached.
+        The callers that face a user wrap it: see
+        ``AgentMemoryService.forget_namespace``.
+        """
+        if not namespace or not namespace.strip():
+            raise ValueError("forget requires a non-empty namespace (operation=forget)")
+
+        async def operation() -> ForgottenNamespace:
+            result = await self._sdk_client().forget(namespace=namespace)
+            return ForgottenNamespace(
+                namespace=result.namespace,
+                deleted=int(result.deleted),
+                verified=False,
+            )
+
+        try:
+            return await self._write("forget", operation)
+        except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+            empty = await self._namespace_provably_empty(namespace)
+            if empty is True:
+                logger.warning(
+                    "[walrus-memory] forget for namespace=%s reported %s: %s but the "
+                    "namespace holds no rows; treating the delete as applied and not "
+                    "repeating it (operation=forget)",
+                    namespace,
+                    type(exc).__name__,
+                    exc,
+                )
+                return ForgottenNamespace(
+                    namespace=namespace, deleted=None, verified=True
+                )
+            if empty is None:
+                logger.warning(
+                    "[walrus-memory] forget for namespace=%s failed (%s: %s) and the "
+                    "relayer could not say whether the rows are gone; not deleting "
+                    "again (operation=forget)",
+                    namespace,
+                    type(exc).__name__,
+                    exc,
+                )
+                raise
+            logger.warning(
+                "[walrus-memory] forget for namespace=%s failed (%s: %s) and the rows "
+                "are still there; deleting once more (operation=forget)",
+                namespace,
+                type(exc).__name__,
+                exc,
+            )
+            return await self._write("forget", operation)
+
+    async def _namespace_provably_empty(self, namespace: str) -> bool | None:
+        """Whether the namespace holds nothing: True, False, or None if unknown.
+
+        None is not evidence of absence, so the caller must not delete again on
+        it. Two reads are used because one is not conclusive on its own: a recall
+        is similarity-ranked, so it can miss a row that the namespace listing
+        still counts. The count has the final say.
+        """
+        try:
+            memories = await self.recall(
+                FORGET_VERIFY_QUERY, namespace, FORGET_VERIFY_LIMIT
+            )
+        except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+            logger.warning(
+                "[walrus-memory] could not recall namespace=%s to verify a delete "
+                "(operation=forget_verify): %s: %s",
+                namespace,
+                type(exc).__name__,
+                exc,
+            )
+            return None
+        if memories:
+            return False
+        count = await self._reported_row_count(namespace)
+        if count is None:
+            return None
+        return count == 0
+
+    async def _reported_row_count(self, namespace: str) -> int | None:
+        """The relayer's own row count for ``namespace``, or None if unavailable."""
+
+        async def operation() -> int:
+            result = await self._sdk_client().list_namespaces()
+            for summary in result.namespaces:
+                if summary.name == namespace:
+                    return int(getattr(summary, "memory_count", 0) or 0)
+            return 0
+
+        try:
+            return await self._read(
+                "forget_verify",
+                operation,
+                outcome_fallback(DEPENDENCY, 0, "forget_verify_degraded"),
+            )
+        except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+            logger.warning(
+                "[walrus-memory] could not count namespace=%s to verify a delete "
+                "(operation=forget_verify): %s: %s",
+                namespace,
+                type(exc).__name__,
+                exc,
+            )
+            return None

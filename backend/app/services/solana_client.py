@@ -6,21 +6,25 @@ Fixes applied:
   - Retry wrapper (3 attempts, 2 s back-off) on every RPC call.
   - All Context account keys use snake_case (AnchorPy3 requirement).
 
-Tatum RPC gateway (FEATURE_TATUM_RPC, off by default):
-  - When the flag is on, the client is built against TATUM_SOLANA_RPC_URL and
-    the network's Tatum key travels in the ``x-api-key`` request header, never
-    in the URL and never in a log line.
-  - The Tatum attempt is a short read-only probe (TATUM_RPC_TIMEOUT_SECONDS,
-    3-5 s). If it fails or times out, the client falls back once to
-    SOLANA_RPC_URL and logs that it did. Writes are never retried here: the
-    probe is a read, and the escrow instructions stay single-attempt.
-  - With the flag off, the client is constructed exactly as before.
+Tatum RPC gateway (FEATURE_TATUM_RPC, on by default, READS ONLY):
+  - Reads (get_account_info, get_latest_blockhash) use TATUM_SOLANA_RPC_URL
+    when the flag is on, with the network's Tatum key in the ``x-api-key``
+    request header, never in the URL and never in a log line.
+  - Each read is one short attempt (TATUM_RPC_TIMEOUT_SECONDS, 3-5 s) and
+    falls back exactly once to SOLANA_RPC_URL, logging that it did. A read the
+    gateway cannot serve therefore costs one short window and never fails an
+    action on its own.
+  - Writes (send_transaction) NEVER go to Tatum. The only client that can send
+    is built from SOLANA_RPC_URL, and the escrow program's provider holds that
+    client, so fund, release, cancel and ATA creation cannot leave through the
+    gateway. This is structural, not a flag check on the write path.
+  - Read routing assumes TATUM_SOLANA_NETWORK and SOLANA_RPC_URL name the same
+    cluster, which their defaults (devnet and devnet) do.
 """
 import asyncio
 import json
 import logging
 import os
-from dataclasses import dataclass
 from typing import Optional
 
 import httpx
@@ -41,26 +45,12 @@ logger = logging.getLogger(__name__)
 TATUM_SOLANA_DEPENDENCY = "tatum-solana-rpc"
 
 # Today's timeout for the RPC the escrow program talks to. Kept for the primary
-# client and for the client that a successful Tatum probe replaces, so a slow
-# but healthy endpoint is not cut off mid-transaction.
+# client so a slow but healthy endpoint is not cut off mid-transaction.
 _RPC_TIMEOUT_SECONDS = 60
 
 _program: Optional[Program] = None
 _client: Optional[AsyncClient] = None
 _payer: Optional[Keypair] = None
-
-
-@dataclass(frozen=True)
-class RpcConnection:
-    """The RPC client one operation should use, and where it points.
-
-    ``is_tatum`` records which endpoint answered the probe, so the caller logs
-    the endpoint it actually uses instead of always naming the primary one.
-    """
-
-    client: AsyncClient
-    endpoint: str
-    is_tatum: bool
 
 
 def reset_program_singleton() -> None:
@@ -82,8 +72,8 @@ def _redact(secret: str, text: str) -> str:
     return text
 
 
-class TatumProbeError(RuntimeError):
-    """A probe failure whose message is already safe to log.
+class TatumReadError(RuntimeError):
+    """A read failure whose message is already safe to log.
 
     The boundary reports the reason of a failed call to its metric sink, which
     is a log line. Converting the dependency's exception here means the sink
@@ -98,6 +88,11 @@ def _solana_boundary() -> Boundary:
     return tatum_solana_boundary
 
 
+def _primary_client(timeout: float = _RPC_TIMEOUT_SECONDS) -> AsyncClient:
+    """A SOLANA_RPC_URL client. The only kind allowed to send a transaction."""
+    return AsyncClient(settings.SOLANA_RPC_URL, timeout=timeout)
+
+
 def _tatum_client(timeout: float) -> AsyncClient:
     """A client for the Tatum gateway with the key in the header, never the URL."""
     return AsyncClient(
@@ -107,81 +102,113 @@ def _tatum_client(timeout: float) -> AsyncClient:
     )
 
 
-async def open_rpc_client(
-    operation: str, boundary: Optional[Boundary] = None
-) -> RpcConnection:
-    """Return the RPC client for ``operation``, failing over from Tatum once.
+def open_write_client(operation: str) -> AsyncClient:
+    """The client for anything that sends a transaction: always SOLANA_RPC_URL.
 
-    With FEATURE_TATUM_RPC off this is exactly the previous behaviour: a client
-    for ``settings.SOLANA_RPC_URL`` with a 60 second timeout. With it on, a
-    short read-only probe decides the endpoint: Tatum if it answers inside
-    ``TATUM_RPC_TIMEOUT_SECONDS``, the primary RPC otherwise. The probe is a
-    read, so failing over never repeats a write.
+    Deliberately has no branch on the Tatum flag. A write that is routed by a
+    configuration value is one variable away from reaching a gateway that does
+    not settle it, which is the failure that broke escrow before. ``operation``
+    exists for the caller's sake, not to change the answer.
     """
-    if not settings.tatum_solana_enabled:
-        return RpcConnection(
-            client=AsyncClient(
-                settings.SOLANA_RPC_URL, timeout=_RPC_TIMEOUT_SECONDS
-            ),
-            endpoint=settings.SOLANA_RPC_URL,
-            is_tatum=False,
+    return _primary_client()
+
+
+class RoutedRpcClient:
+    """The four RPC calls this app makes, routed by what each one does.
+
+    Reads (:meth:`get_account_info`, :meth:`get_latest_blockhash`) use the Tatum
+    gateway when it is enabled and fall back to SOLANA_RPC_URL exactly once, so a
+    gateway that is slow or broken costs one short window and never fails an
+    action that the primary RPC could serve.
+
+    :meth:`send_transaction` is not routed at all. It is called on the primary
+    client, unconditionally, so no transaction can reach Tatum even when the
+    gateway answers every read.
+
+    :meth:`close` closes the primary client. Each Tatum read builds its own
+    short-lived client and closes it in the same call, so a failed gateway
+    cannot leak a connection.
+    """
+
+    def __init__(
+        self,
+        operation: str,
+        primary: AsyncClient,
+        boundary: Optional[Boundary] = None,
+    ) -> None:
+        self._operation = operation
+        self._primary = primary
+        self._boundary = boundary
+
+    async def get_account_info(self, pubkey: Pubkey, *args, **kwargs):
+        return await self._read(
+            "get_account_info",
+            lambda client: client.get_account_info(pubkey, *args, **kwargs),
         )
 
-    api_key = settings.tatum_solana_api_key
-    probe = _tatum_client(settings.TATUM_RPC_TIMEOUT_SECONDS)
-
-    async def probe_call() -> int:
-        try:
-            return (await probe.get_slot()).value
-        except Exception as exc:  # noqa: BLE001 - report a redacted reason to the boundary
-            raise TatumProbeError(
-                _redact(api_key, f"{type(exc).__name__}: {exc}")
-            ) from None
-
-    try:
-        outcome = await (boundary or _solana_boundary()).call(
-            probe_call,
-            failure_fallback(TATUM_SOLANA_DEPENDENCY, "tatum_solana_unavailable"),
-            idempotent=True,
+    async def get_latest_blockhash(self, *args, **kwargs):
+        return await self._read(
+            "get_latest_blockhash",
+            lambda client: client.get_latest_blockhash(*args, **kwargs),
         )
-    except Exception as exc:  # noqa: BLE001 - the boundary must never break a chain call
-        outcome = None
-        fallback_reason = f"{type(exc).__name__}: {_redact(api_key, str(exc))}"
-    else:
-        fallback_reason = outcome.error or "probe failed"
-    finally:
+
+    async def send_transaction(self, *args, **kwargs):
+        """Send on the primary RPC. There is no Tatum branch on this path."""
+        return await self._primary.send_transaction(*args, **kwargs)
+
+    async def close(self) -> None:
+        await self._primary.close()
+
+    async def _read(self, method: str, call):
+        if not settings.tatum_solana_enabled:
+            return await call(self._primary)
+
+        api_key = settings.tatum_solana_api_key
+        gateway = _tatum_client(settings.TATUM_RPC_TIMEOUT_SECONDS)
+
+        async def attempt():
+            try:
+                return await call(gateway)
+            except Exception as exc:  # noqa: BLE001 - report a redacted reason
+                raise TatumReadError(
+                    _redact(api_key, f"{type(exc).__name__}: {exc}")
+                ) from None
+
         try:
-            await probe.close()
-        except Exception as exc:  # noqa: BLE001 - a failed close must not fail the chain call
-            logger.debug(
-                "[solana_client] probe client close failed for %s: %s",
-                operation,
-                type(exc).__name__,
+            outcome = await (self._boundary or _solana_boundary()).call(
+                attempt,
+                failure_fallback(
+                    TATUM_SOLANA_DEPENDENCY, "tatum_solana_unavailable"
+                ),
+                idempotent=True,
             )
+        except Exception as exc:  # noqa: BLE001 - the boundary must never break a chain call
+            outcome = None
+            fallback_reason = f"{type(exc).__name__}: {_redact(api_key, str(exc))}"
+        else:
+            fallback_reason = outcome.error or "read failed"
+        finally:
+            try:
+                await gateway.close()
+            except Exception as exc:  # noqa: BLE001 - a failed close must not fail the chain call
+                logger.debug(
+                    "[solana_client] Tatum read client close failed for %s.%s: %s",
+                    self._operation,
+                    method,
+                    type(exc).__name__,
+                )
 
-    if outcome is not None and outcome.ok:
-        logger.info(
-            "[solana_client] using the Tatum Solana gateway for %s (network=%s)",
-            operation,
-            settings.TATUM_SOLANA_NETWORK,
-        )
-        return RpcConnection(
-            client=_tatum_client(_RPC_TIMEOUT_SECONDS),
-            endpoint=settings.TATUM_SOLANA_RPC_URL,
-            is_tatum=True,
-        )
+        if outcome is not None and outcome.ok:
+            return outcome.value
 
-    logger.warning(
-        "[solana_client] Tatum Solana gateway unavailable for %s (%s); "
-        "fell back to SOLANA_RPC_URL",
-        operation,
-        _redact(api_key, fallback_reason),
-    )
-    return RpcConnection(
-        client=AsyncClient(settings.SOLANA_RPC_URL, timeout=_RPC_TIMEOUT_SECONDS),
-        endpoint=settings.SOLANA_RPC_URL,
-        is_tatum=False,
-    )
+        logger.warning(
+            "[solana_client] Tatum Solana gateway unavailable for %s.%s (%s); "
+            "fell back to SOLANA_RPC_URL",
+            self._operation,
+            method,
+            _redact(api_key, fallback_reason),
+        )
+        return await call(self._primary)
 
 TOKEN_PROGRAM = Pubkey.from_string("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
 ATA_PROGRAM   = Pubkey.from_string("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
@@ -203,8 +230,12 @@ async def ensure_ata_exists(payer_kp: Keypair, owner: Pubkey, mint: Pubkey) -> P
 
     ata = get_associated_token_address(owner, mint)
 
-    # Check existence
-    rpc_client = (await open_rpc_client("ensure_ata_exists")).client
+    # Check existence. Reads may go through the Tatum gateway; the create that
+    # follows is sent on SOLANA_RPC_URL because RoutedRpcClient.send_transaction
+    # never leaves the primary client.
+    rpc_client = RoutedRpcClient(
+        "ensure_ata_exists", open_write_client("ensure_ata_exists")
+    )
     try:
         info = await rpc_client.get_account_info(ata)
         if info.value is not None:
@@ -252,9 +283,11 @@ def get_platform_payer() -> Keypair:
 async def _get_program() -> Program:
     global _program, _client
     if _program is None:
-        # timeout=60 so Helius cold-starts don't time out mid-request 
-        connection = await open_rpc_client("load_program")
-        _client = connection.client
+        # timeout=60 so Helius cold-starts don't time out mid-request. The
+        # provider holds a SOLANA_RPC_URL client, so every instruction the
+        # program sends - fund, release, cancel - is submitted there and never
+        # to the Tatum gateway.
+        _client = open_write_client("load_program")
         # idl_dict = json.loads(r"""{"version":"0.1.0","name":"baros_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
         idl_dict = json.loads(r"""{"version":"0.1.0","name":"gigr_escrow","instructions":[{"name":"initEscrow","accounts":[{"name":"client","isMut":true,"isSigner":true},{"name":"platform","isMut":true,"isSigner":true},{"name":"provider","isMut":false,"isSigner":false},{"name":"mint","isMut":false,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false},{"name":"systemProgram","isMut":false,"isSigner":false},{"name":"rent","isMut":false,"isSigner":false}],"args":[{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"}]},{"name":"releaseEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"providerAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]},{"name":"cancelEscrow","accounts":[{"name":"client","isMut":false,"isSigner":true},{"name":"platform","isMut":true,"isSigner":false},{"name":"clientAta","isMut":true,"isSigner":false},{"name":"vaultAta","isMut":true,"isSigner":false},{"name":"escrow","isMut":true,"isSigner":false},{"name":"tokenProgram","isMut":false,"isSigner":false}],"args":[]}],"accounts":[{"name":"Escrow","type":{"kind":"struct","fields":[{"name":"client","type":"publicKey"},{"name":"provider","type":"publicKey"},{"name":"jobId","type":"u64"},{"name":"amount","type":"u64"},{"name":"bump","type":"u8"}]}}],"errors":[{"code":6000,"name":"UnauthorizedClient","msg":"Unauthorized: You are not the client."}]}""")
         # idl_path = os.path.join(os.path.dirname(__file__), "baros_program.json")
@@ -281,7 +314,7 @@ async def _get_program() -> Program:
             TxOpts(skip_preflight=False, preflight_commitment=Confirmed),
         )
         _program = Program(idl, Pubkey.from_string(settings.GIGR_PROGRAM_ID), provider)
-        logger.info("[solana_client] Program loaded (embedded IDL). RPC=%s", connection.endpoint)
+        logger.info("[solana_client] Program loaded (embedded IDL). RPC=%s", settings.SOLANA_RPC_URL)
     return _program
 
 

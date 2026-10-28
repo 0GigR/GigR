@@ -14,8 +14,8 @@ Two rules hold on every path:
   used, which is why a relayer outage cannot turn a memory save into a 500.
 * A recall reports where its memories actually came from, so the agent activity
   log never claims a Walrus recall that did not happen.
-* A recall collapses exact duplicate texts, keeping the first, because the
-  relayer is append-only and a write that reported an error may still have been
+* A recall collapses exact duplicate texts, keeping the first, because there is
+  no per-fact delete and a write that reported an error may still have been
   stored. Near-duplicates are left alone: they are different facts.
 * A recalled entry keeps the timestamp the relayer returned, and the prompt
   shows that date next to the fact. Recency is then visible to the model, which
@@ -176,8 +176,31 @@ class RecalledFacts:
         return len(self.facts)
 
 
-def _review_failure_reason(error: BaseException) -> str:
-    """The stable reason code for one failed review recall.
+@dataclass(frozen=True)
+class NamespaceForget:
+    """The outcome of wiping one user's whole Walrus Memory namespace.
+
+    ``ok`` is true only when the relayer deleted the rows, or a verification
+    read proved they were already gone. ``reason`` is ``"ok"`` then, and one of
+    the stable codes otherwise: ``"feature_disabled"``, ``"not_configured"``,
+    ``"relayer_busy"``, ``"relayer_timeout"``, ``"relayer_unavailable"``.
+    ``deleted`` is the row count the relayer reported, or None when it never
+    reported one (the deletion was proven by the verification read instead).
+
+    An answer and never an exception is the point: the page and the chat turn
+    both call this, and neither may fail because a relayer did.
+    """
+
+    ok: bool
+    reason: str = "ok"
+    deleted: Optional[int] = None
+
+
+def _dependency_failure_reason(error: BaseException) -> str:
+    """The stable reason code for one failed memory read or delete.
+
+    It is used by the review recall and by the namespace wipe, which face the
+    same relayer and the same two states the reader can act on.
 
     The gateway raises one typed error for every outbound failure and carries
     the boundary's own outcome in its message: ``rate_limited: ...`` when the
@@ -213,9 +236,9 @@ def _looks_like_stored_entry(text: str) -> bool:
 
     Every mirrored entry is ``<key>: <JSON value>``. A recalled text with that
     shape whose key is no longer in the local memory is the mirror of a key the
-    user forgot, or an entry from another store: the relayer is append-only, so
-    the text survives the delete, and injecting it as a fact would put the
-    forgotten value back in front of the model.
+    user forgot, or an entry from another store: there is no per-fact delete, so
+    the text survives a per-preference Forget, and injecting it as a fact would
+    put the forgotten value back in front of the model.
 
     Backfilled facts are prose sentences and always end with a full stop, so
     their tail is not JSON and they are not mistaken for a mirror. A sentence
@@ -263,8 +286,8 @@ def _deduplicate_recalled(
 ) -> tuple["RecalledMemory", ...]:
     """Collapse entries whose stored text is exactly equal, keeping the first.
 
-    The relayer is append-only: a write that reported an error may still have
-    been stored, so one fact can come back several times, and a namespace has
+    There is no per-fact delete, and a write that reported an error may still
+    have been stored, so one fact can come back several times; a namespace has
     been seen holding fifty recalled entries for forty-four distinct texts.
     Only exact text equality is collapsed. Two different sentences stay, even
     when they are near-duplicates, because they are different facts to the
@@ -402,9 +425,10 @@ class AgentMemoryService:
                     if not text or text in entries.values():
                         continue
                     # A key-shaped text whose key is not local is the mirror of
-                    # a forgotten key (or a foreign entry), not a fact. Walrus
-                    # Memory keeps it after Forget because it is append-only;
-                    # injecting it would silently undo the Forget.
+                    # a key forgotten one at a time (or a foreign entry), not a
+                    # fact. Walrus Memory has no per-fact delete, so that mirror
+                    # survives the per-preference Forget; injecting it would
+                    # silently undo the Forget. A namespace wipe removes it.
                     if _looks_like_stored_entry(text):
                         continue
                     ordinal += 1
@@ -451,7 +475,7 @@ class AgentMemoryService:
         :data:`MEMORY_REVIEW_TIMEOUT_SECONDS` once rather than a deadline that
         would cut off a recall the relayer would have completed.
 
-        Exact duplicate texts collapse, because the relayer is append-only.
+        Exact duplicate texts collapse, because no per-fact delete exists.
         Blank texts are dropped: an empty line is not a memory.
         """
         if not agent_feature_enabled(FLAG_NAME):
@@ -487,7 +511,7 @@ class AgentMemoryService:
                 type(exc).__name__,
                 exc,
             )
-            return RecalledFacts(reason=_review_failure_reason(exc))
+            return RecalledFacts(reason=_dependency_failure_reason(exc))
         return RecalledFacts(facts=facts, source="walrus", reason="ok")
 
     async def save(self, user_id: UUID, updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -506,14 +530,63 @@ class AgentMemoryService:
     async def forget(self, user_id: UUID, key: str) -> Dict[str, Any]:
         """Remove one key from the memory and return the remaining memory.
 
-        The JSONB entry is deleted; Walrus Memory has no delete call, so the
-        text can remain in the append-only relayer. It is never injected again
-        because a recall is filtered against the keys that still exist locally.
+        The JSONB entry is deleted and the agent stops reusing it. This is not
+        the Walrus delete: the relayer has no per-fact delete, so the sentence
+        already written for that key can remain retrievable and is filtered out
+        of the prompt against the keys that still exist locally.
+        :meth:`forget_namespace` is the whole-namespace wipe that does remove it.
         Raises RecordNotFoundError when the user does not exist.
         """
         memory = await delete_memory_key(self._db, user_id, key)
         await self._db.commit()
         return memory
+
+    async def forget_namespace(self, user_id: UUID) -> NamespaceForget:
+        """Delete this user's whole memory from Walrus Memory. Never raises.
+
+        The namespace is derived from ``user_id`` by
+        :func:`core.memory_namespace.memory_namespace`, the same function every
+        other path uses, so a caller cannot widen it: this deletes one user's
+        memory and nothing else. No argument selects the namespace, which is
+        what makes "only the caller's own" a property of the signature rather
+        than of a check.
+
+        Every unavailable state is a typed answer: with the flag off the wipe is
+        ``feature_disabled``, with no usable gateway it is ``not_configured``,
+        and a relayer that is rate limited, times out or otherwise fails is
+        ``relayer_busy``, ``relayer_timeout`` or ``relayer_unavailable``. A
+        relayer outage is therefore unable to turn a page or a chat turn into a
+        500.
+
+        This is not the per-preference Forget (:meth:`forget`): that deletes one
+        JSONB key and leaves the stored sentence, while this deletes the
+        namespace's stored sentences. The two are offered as separate controls.
+        """
+        if not agent_feature_enabled(FLAG_NAME):
+            return NamespaceForget(ok=False, reason="feature_disabled")
+        if self._gateway is None or not self._gateway.configured:
+            return NamespaceForget(ok=False, reason="not_configured")
+        namespace = memory_namespace(user_id)
+        try:
+            result = await self._gateway.forget(namespace)
+        except Exception as exc:  # noqa: BLE001 - an outbound dependency may fail any way
+            logger.warning(
+                "[agent-memory] namespace forget failed for user_id=%s "
+                "(operation=forget_namespace): %s: %s",
+                user_id,
+                type(exc).__name__,
+                exc,
+            )
+            return NamespaceForget(ok=False, reason=_dependency_failure_reason(exc))
+        logger.info(
+            "[agent-memory] forgot namespace=%s for user_id=%s "
+            "(operation=forget_namespace): deleted=%s verified=%s",
+            namespace,
+            user_id,
+            result.deleted,
+            result.verified,
+        )
+        return NamespaceForget(ok=True, deleted=result.deleted)
 
     async def _mirror(self, user_id: UUID, updates: Dict[str, Any]) -> None:
         """Copy each saved entry into Walrus Memory, best effort.

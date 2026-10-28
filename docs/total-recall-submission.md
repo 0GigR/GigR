@@ -57,11 +57,16 @@ from events: a job posted, a job completed, a rating left, a dispute resolved.
 
 ### Two limits we designed around, and say so
 
-**Walrus Memory is append-only.** The Python SDK has no delete, which we filed
-as MystenLabs/walrus-memory#1061. So the UI does not offer a Forget button on a
-remembered fact. It states plainly that forgetting a preference stops the agent
-using it while the stored sentence remains. A control that implied otherwise
-would be a lie.
+**There is no per-fact delete, but a whole namespace can be forgotten.** The
+relayer is append-only for a single fact, so the UI does not offer a Forget
+button that would pretend to remove one remembered sentence. Instead there are
+two controls with different scopes, and the page says which is which: a Forget
+button per saved preference (the JSONB key, which stops the agent reusing it)
+and "Forget everything Gigr remembers about me", which calls the namespace-level
+delete memwal 0.2.2 added (MystenLabs/walrus-memory#1061, fixed upstream in
+PR #1234) and removes that user's entire memory from Walrus Memory, permanently.
+The two are deliberately not one button: a per-fact delete is still impossible,
+and a control that implied otherwise would be a lie.
 
 **Recall is per fact.** Each remembered sentence is a blob that must be fetched
 and decrypted, so a 34-fact page takes seconds where a 5-fact agent recall does
@@ -70,9 +75,14 @@ its failures: busy, slow, unavailable.
 
 ## Tatum
 
-Solana RPC calls can be routed through Tatum's gateway behind a flag, with a
-short health probe and exactly one fallback to the direct RPC. Escrow writes are
-never replayed.
+Solana reads go through Tatum's gateway by default: `get_account_info` and
+`get_latest_blockhash` use `TATUM_SOLANA_RPC_URL` (default
+`https://solana-devnet.gateway.tatum.io`) with the key in the `x-api-key`
+header, on a short deadline, and fall back exactly once to `SOLANA_RPC_URL`.
+Writes never do. `send_transaction` is called on a client built from
+`SOLANA_RPC_URL` only, so fund, release and cancel cannot reach the gateway at
+all; that split is structural, not a flag check on the write path, which is why
+reads can be on by default. Escrow writes are never replayed.
 
 Sui verification is implemented: a read-only `sui_getObject` through Tatum's Sui
 JSON-RPC, advisory only, incapable of failing a memory read or write.
@@ -89,7 +99,9 @@ whitespace from those values, because a newline pasted into a dashboard value
 produces exactly the unauthenticated 404 above.
 
 Sui verification is off in production until the deployed key is confirmed. The
-working Solana Tatum path is enabled alongside it.
+Solana Tatum read path is on by default and needs no extra variable: the flag
+defaults to true and the URL defaults to the devnet gateway, while writes stay
+on `SOLANA_RPC_URL`.
 
 To confirm the deployment:
 
@@ -106,14 +118,15 @@ read the app makes, and says whether the object is a Walrus blob.
 
 | | |
 |---|---|
-| Backend tests | 273 passed, 54 skipped, 0 failed |
-| Frontend tests | 79 passed |
+| Backend tests | 304 passed, 54 skipped, 0 failed |
+| Frontend tests | 84 passed |
 | Facts backfilled | 262 across 27 users |
-| Bugs filed upstream | #1312 (open), #1061 (open), #1062 to #1064 (fixed) |
+| Bugs filed upstream | #1312 (fixed upstream), #1061 (fixed upstream), #1062 to #1064 (fixed) |
 
-`#1312` is this build's find: reusing an `idempotency_key` under a different
-namespace returns `500` instead of a clean `409`, which costs any integrator who
-renames a namespace.
+`#1061` (no delete) was fixed upstream in PR #1234 and shipped in memwal 0.2.2,
+which is what the namespace forget uses. `#1312` (one idempotency key under a
+different namespace answered `500`) was fixed upstream in PR #1320, relayer
+v0.1.0; this build's keys stay namespace-scoped, so the two fixes agree.
 
 ## What the demo shows
 

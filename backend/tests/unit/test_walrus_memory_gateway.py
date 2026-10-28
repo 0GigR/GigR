@@ -280,3 +280,29 @@ async def test_gateway_round_trips_through_the_installed_sdk_mock():
     assert memories[0].created_at is not None
 
     assert (await gateway.list_namespaces()) == ("gigr-user-9",)
+
+
+def test_installed_sdk_offers_the_namespace_level_forget_the_gateway_calls():
+    """Proves the pin, not just our fake: memwal 0.2.1 had no delete at all.
+
+    This is the conformance test for requirements' ``memwal>=0.2.2``. The
+    gateway calls ``forget(namespace=...)``; 0.2.1 answers AttributeError, and
+    0.2.2 answers with a ``ForgetResult``.
+
+    The SDK's in-process mock is deliberately not used here: in 0.2.2
+    ``MemWalMock.forget`` still takes a blob id, so the mock has not caught up
+    with the real client. Asserting on the real class is what keeps this test
+    honest.
+    """
+    import inspect
+
+    memwal = pytest.importorskip("memwal")
+
+    forget = inspect.signature(memwal.MemWal.forget)
+    assert list(forget.parameters) == ["self", "namespace"]
+    assert forget.parameters["namespace"].default is None
+
+    alias = inspect.signature(memwal.MemWal.forget_namespace)
+    assert alias.parameters["namespace"].default is None
+
+    assert "ForgetResult" in dir(memwal)

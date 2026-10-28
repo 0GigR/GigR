@@ -1,14 +1,13 @@
-"""Check the Tatum Sui gateway: configuration, authentication, and one call.
+"""Check the Tatum Sui gRPC gateway: configuration, service info, one object.
 
     cd backend
     python scripts/check_tatum_sui.py
     python scripts/check_tatum_sui.py 0x<walrus-blob-object-id>
 
-The hosted Tatum gateway answers 404 when no usable API key reaches it and 401
-when a key is rejected, so a 404 usually means the request was unauthenticated
-rather than that the endpoint is wrong. A 415 means a JSON request was sent to
-the gRPC host instead of the JSON-RPC host. This script says which of those
-happened and never prints the key.
+Sui is served by Tatum over gRPC only. The JSON-RPC hosts
+(sui-mainnet.gateway.tatum.io) answer 404 on every path for this account; the
+host this script uses is sui-mainnet-grpc.gateway.tatum.io. The key travels in
+the x-api-key gRPC metadata and is never printed.
 
 Exit codes: 0 the gateway answered, 1 configuration is incomplete, 2 the call
 failed.
@@ -19,16 +18,31 @@ from __future__ import annotations
 import asyncio
 import sys
 
-import httpx
-
 # Allow running from the backend/ directory directly.
 sys.path.insert(0, ".")
 
 from app.core.config import settings  # noqa: E402
+from app.core.gateways.tatum_sui_gateway import (  # noqa: E402
+    READ_MASK_PATHS,
+    WALRUS_BLOB_TYPE_SUFFIX,
+    grpc_endpoint,
+)
 
-CHECKPOINT_METHOD = "sui_getLatestCheckpointSequenceNumber"
-OBJECT_METHOD = "sui_getObject"
-WALRUS_JSON_RPC = "https://sui-mainnet.gateway.tatum.io"
+REQUEST_TIMEOUT_SECONDS = 15.0
+
+try:
+    from grpclib.client import Channel
+    from grpclib.exceptions import GRPCError
+    from pysui.sui.sui_grpc.suimsgs.google.protobuf import FieldMask
+    from pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 import (
+        GetObjectRequest,
+        GetServiceInfoRequest,
+        LedgerServiceStub,
+    )
+except ImportError as exc:  # pragma: no cover - the diagnostic still prints
+    print(f"[FAIL] the gRPC client is not installed: {type(exc).__name__}")
+    print("      Run: venv/bin/python -m pip install -r requirements.txt")
+    raise SystemExit(2)
 
 
 def _ok(message: str) -> None:
@@ -57,121 +71,133 @@ def _key_variable() -> str:
     return "TATUM_API_KEY_TESTNET"
 
 
-def _payload(method: str, params: list) -> dict:
-    return {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+def _owner_kind_name(kind: object) -> str:
+    """The owner kind enum as the word the API reports, or ``(unset)``."""
+    name = getattr(kind, "name", None)
+    return name if isinstance(name, str) else "(unset)"
 
 
-def _explain(status: int, body: str, key: str) -> None:
-    """Print the one next action for each status the gateway is known to return."""
-    body = _redact(body, key)
-    if status == 401:
-        _fail("HTTP 401: Tatum rejected the API key.")
+def _status_name(status: object) -> str:
+    name = getattr(status, "name", None)
+    return name if isinstance(name, str) else str(status)
+
+
+def _grpc_message(error: GRPCError) -> str:
+    """The human part of a GRPCError, whichever attribute this version uses."""
+    message = getattr(error, "message", None)
+    return message if isinstance(message, str) and message else str(error)
+
+
+def _explain_grpc_error(status: object, detail: str, key: str) -> None:
+    """Print the one next action for each gRPC status the gateway returns."""
+    name = _status_name(status)
+    detail = _redact(detail, key)
+    if name == "UNAUTHENTICATED":
+        _fail("gRPC UNAUTHENTICATED: Tatum rejected the API key.")
         _info(f"Check {_key_variable()}: it must be the API key from the Tatum")
         _info("dashboard, not the dashboard account ID. Create a fresh key if unsure.")
-    elif status == 403:
-        _fail("HTTP 403: the key is valid but this network or plan is not allowed.")
-        _info("Open the Tatum dashboard and confirm Sui is enabled for the plan.")
-    elif status == 404:
-        _fail("HTTP 404: no API key reached Tatum.")
-        _info("The endpoint is correct; Tatum returns 404 to unauthenticated calls.")
-        _info(f"Confirm {_key_variable()} is set for the selected network and has")
-        _info("no surrounding whitespace (the app trims it, an empty value stays empty).")
-    elif status == 415:
-        _fail("HTTP 415: this host speaks gRPC, not JSON.")
-        _info(f"Set TATUM_SUI_RPC_URL={WALRUS_JSON_RPC} (the JSON-RPC host).")
+    elif name == "PERMISSION_DENIED":
+        _fail("gRPC PERMISSION_DENIED: the key may not use Sui on this plan.")
+        _info("Open the Tatum dashboard and confirm Sui is enabled.")
+    elif name == "NOT_FOUND":
+        _fail("gRPC NOT_FOUND: the object does not exist on this network.")
+        _info("Check the object id and the network. This is not a transport failure.")
+    elif name == "DEADLINE_EXCEEDED":
+        _fail(f"gRPC DEADLINE_EXCEEDED after {REQUEST_TIMEOUT_SECONDS:.0f}s.")
+        _info("The gateway is reachable but slow; try again or raise the timeout.")
+    elif name == "UNAVAILABLE":
+        _fail("gRPC UNAVAILABLE: the gateway did not answer (or rate-limited us).")
+        _info("Check the host and port, and whether a key is being sent.")
+        _info(f"Detail: {detail[:300]}")
+    elif name == "INVALID_ARGUMENT":
+        _fail("gRPC INVALID_ARGUMENT: the gateway rejected the request shape.")
+        _info(f"Detail: {detail[:300]}")
     else:
-        _fail(f"HTTP {status}: {body[:300]}")
+        _fail(f"gRPC {name}: {detail[:300]}")
 
 
-async def main() -> int:
-    print("== Tatum Sui configuration")
+async def _check() -> int:
+    print("== Tatum Sui configuration (gRPC)")
     print(f"  FEATURE_TATUM_SUI   = {settings.FEATURE_TATUM_SUI}")
     print(f"  TATUM_SUI_NETWORK   = {settings.TATUM_SUI_NETWORK}")
-    print(f"  TATUM_SUI_RPC_URL   = {settings.TATUM_SUI_RPC_URL or '(unset)'}")
+    print(f"  TATUM_SUI_GRPC_URL  = {settings.TATUM_SUI_GRPC_URL or '(unset)'}")
     key = settings.tatum_sui_api_key
-    print(f"  {_key_variable():<19} = {'set, ' + str(len(key)) + ' chars' if key else '(unset)'}")
+    key_state = f"set, {len(key)} chars" if key else "(unset)"
+    print(f"  {_key_variable():<19} = {key_state}")
 
     if not settings.FEATURE_TATUM_SUI:
         _fail("FEATURE_TATUM_SUI is off, so the verification endpoint reports")
         _info("feature_disabled and never calls Tatum. Turn the flag on first.")
         return 1
-    if not settings.TATUM_SUI_RPC_URL:
-        _fail("TATUM_SUI_RPC_URL is unset. Use the JSON-RPC host:")
-        _info(WALRUS_JSON_RPC)
+    if not settings.TATUM_SUI_GRPC_URL:
+        _fail("TATUM_SUI_GRPC_URL is unset. Use the gRPC host:")
+        _info("https://sui-mainnet-grpc.gateway.tatum.io")
         return 1
     if not key:
         _fail(f"{_key_variable()} is unset for network {settings.TATUM_SUI_NETWORK}.")
         return 1
 
-    headers = {
-        "x-api-key": key,
-        "content-type": "application/json",
-        "accept": "application/json",
-    }
-
-    print("\n== Checkpoint call")
+    channel = None
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                settings.TATUM_SUI_RPC_URL,
-                json=_payload(CHECKPOINT_METHOD, []),
-                headers=headers,
+        host, port, secure = grpc_endpoint(settings.TATUM_SUI_GRPC_URL)
+        channel = Channel(host, port, ssl=secure)
+        stub = LedgerServiceStub(channel, metadata=(("x-api-key", key),))
+
+        print("\n== Service info")
+        try:
+            info = await stub.get_service_info(
+                GetServiceInfoRequest(), timeout=REQUEST_TIMEOUT_SECONDS
             )
-            body = response.text
-    except Exception as exc:  # noqa: BLE001 - a diagnostic prints, it does not raise
-        _fail(f"Transport error: {type(exc).__name__}: {_redact(str(exc), key)}")
-        return 2
+        except GRPCError as exc:
+            _explain_grpc_error(exc.status, _grpc_message(exc), key)
+            return 2
+        _ok(f"Authenticated and reachable: chain={info.chain}")
+        _info(f"epoch: {info.epoch}")
+        _info(f"checkpoint height: {info.checkpoint_height}")
 
-    print(f"  {CHECKPOINT_METHOD} -> HTTP {response.status_code}")
-    if response.status_code != 200:
-        _explain(response.status_code, body, key)
-        return 2
-    try:
-        result = response.json().get("result")
-    except ValueError:
-        _fail(f"HTTP 200 but the body is not JSON: {_redact(body, key)[:200]}")
-        return 2
-    _ok(f"Authenticated and reachable. Latest checkpoint: {result}")
+        object_id = sys.argv[1].strip() if len(sys.argv) > 1 else ""
+        if not object_id:
+            _info("Pass an object id to test the exact read the app makes:")
+            _info("python scripts/check_tatum_sui.py 0x<walrus-blob-object-id>")
+            return 0
 
-    object_id = sys.argv[1].strip() if len(sys.argv) > 1 else ""
-    if not object_id:
-        _info("Pass an object id to test the exact read the app makes:")
-        _info("python scripts/check_tatum_sui.py 0x<walrus-blob-object-id>")
+        print("\n== Object read (the call the app makes)")
+        request = GetObjectRequest(
+            object_id=object_id,
+            read_mask=FieldMask(paths=list(READ_MASK_PATHS)),
+        )
+        try:
+            response = await stub.get_object(request, timeout=REQUEST_TIMEOUT_SECONDS)
+        except GRPCError as exc:
+            _explain_grpc_error(exc.status, _grpc_message(exc), key)
+            return 2
+
+        obj = response.object
+        if obj is None:
+            _fail("The gateway returned no object.")
+            return 2
+        object_type = obj.object_type or "(unknown)"
+        _ok(f"Object type: {object_type}")
+        _info(f"version: {obj.version}")
+        _info(f"owner kind: {_owner_kind_name(getattr(obj.owner, 'kind', None))}")
+        if object_type.lower().endswith(WALRUS_BLOB_TYPE_SUFFIX.lower()):
+            _info("This is a Walrus blob; the app verifies its certified_epoch.")
+        else:
+            _info("This is not a Walrus blob; the app reports not_a_walrus_blob.")
         return 0
-
-    print("\n== Object read (the call the app makes)")
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                settings.TATUM_SUI_RPC_URL,
-                json=_payload(OBJECT_METHOD, [object_id, {"showContent": True, "showType": True}]),
-                headers=headers,
-            )
-    except Exception as exc:  # noqa: BLE001 - a diagnostic prints, it does not raise
+    except TimeoutError:
+        _fail(f"The gRPC call timed out after {REQUEST_TIMEOUT_SECONDS:.0f}s.")
+        return 2
+    except ValueError as exc:
+        _fail(f"Invalid TATUM_SUI_GRPC_URL: {_redact(str(exc), key)}")
+        return 1
+    except OSError as exc:
         _fail(f"Transport error: {type(exc).__name__}: {_redact(str(exc), key)}")
         return 2
-
-    print(f"  {OBJECT_METHOD} -> HTTP {response.status_code}")
-    if response.status_code != 200:
-        _explain(response.status_code, response.text, key)
-        return 2
-    try:
-        payload = response.json()
-    except ValueError:
-        _fail("HTTP 200 but the body is not JSON.")
-        return 2
-    if payload.get("error"):
-        _fail(f"Sui answered with an RPC error: {payload.get('error')}")
-        return 2
-    data = (payload.get("result") or {}).get("data") or {}
-    object_type = data.get("type") or ((data.get("content") or {}).get("type")) or "(unknown)"
-    _ok(f"Object type: {object_type}")
-    if "blob" in str(object_type).lower():
-        _info("This is a Walrus blob; the app can verify its certified_epoch.")
-    else:
-        _info("This is not a Walrus blob; the app reports 'not_a_walrus_blob'.")
-    return 0
+    finally:
+        if channel is not None:
+            channel.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    raise SystemExit(asyncio.run(_check()))

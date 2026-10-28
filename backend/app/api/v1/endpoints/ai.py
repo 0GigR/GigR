@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ....core.config import settings
+from ....core.agent_features import agent_feature_enabled
 from ....core.container import (
     build_agent_memory_service,
     build_event_fact_service,
@@ -42,6 +43,7 @@ from ....core.container import (
 from ....core.database import async_session
 from ....core.dependencies import get_db, get_current_user, require_ai_enabled
 from ....core.errors import RecordNotFoundError
+from ....core.memory_namespace import FLAG_NAME as MEMORY_FLAG_NAME
 from ....crud.service import search_services_by_text
 from ....crud.message import create_message
 from ....models.user import User
@@ -3344,6 +3346,39 @@ async def update_memory_endpoint(
             detail="We could not find your account. Sign in again to continue.",
         )
     return {"status": "ok", "memory": updated}
+
+
+@router.delete("/ai/memory")
+async def forget_entire_memory(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete the caller's whole Walrus Memory namespace.
+
+    Auth is required, and the namespace is derived from the authenticated user
+    alone: there is no path, query or body parameter that could name another
+    user's memory, so this can only ever delete the caller's own. It is behind
+    FEATURE_AGENT_WALRUS_MEMORY: with the flag off the route answers 404, as if
+    it did not exist, and nothing is deleted.
+
+    This is the namespace wipe, not the per-preference Forget
+    (``DELETE /ai/memory/{key}``): that removes one saved JSONB key and leaves
+    the stored sentence, this removes the stored sentences. A relayer failure is
+    an answer with ``ok`` false and a reason, never a 500 and never an
+    exception into the page.
+    """
+    if not agent_feature_enabled(MEMORY_FLAG_NAME):
+        raise HTTPException(
+            status_code=404,
+            detail="Memory is not enabled in this environment.",
+        )
+    result = await build_agent_memory_service(db).forget_namespace(current_user.id)
+    return {
+        "status": "ok" if result.ok else "failed",
+        "ok": result.ok,
+        "deleted": result.deleted,
+        "reason": result.reason,
+    }
 
 
 @router.delete("/ai/memory/{key}")

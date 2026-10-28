@@ -5,8 +5,11 @@
  * settings page. Its primary content is the sentences Walrus Memory holds for
  * the signed-in user, read-only from GET /ai/memory/facts. The JSONB preference
  * keys are a secondary section, shown only when at least one has a value: they
- * are what Forget acts on, and forgetting one never deletes a Walrus sentence.
- * Sui verification stays on the preference entries, unchanged.
+ * are what per-preference Forget acts on, and forgetting one leaves the stored
+ * sentence because Walrus Memory has no per-fact delete. The namespace wipe
+ * ("Forget everything Gigr remembers about me") is the separate, explicit
+ * control that deletes every sentence this user has stored. Sui verification
+ * stays on the preference entries, unchanged.
  *
  * House standard: zero emojis, zero decorative unicode, confirmation before a
  * destructive action, and an honest state for empty, loading, error and
@@ -46,6 +49,7 @@ import {
   useAgentMemory,
   useAgentMemoryFacts,
   forgetAgentMemoryKey,
+  forgetAgentMemoryNamespace,
   verifyMemoryReference,
   type AgentMemorySnapshot,
   type MemoryFact,
@@ -172,6 +176,39 @@ export default function MemoryPage() {
     void refetchFacts()
   }
 
+  // The namespace wipe is the one action that deletes stored sentences. It is
+  // offered only where the backend would accept it: with the feature off the
+  // route answers 404, so showing the control would promise an action that
+  // cannot run.
+  const memoryWipeAvailable =
+    !environmentDisabled &&
+    factsReason !== 'feature_disabled' &&
+    factsReason !== 'not_configured'
+
+  const wipeMutation = useMutation({
+    mutationFn: forgetAgentMemoryNamespace,
+    onSuccess: (result) => {
+      if (!result.ok) {
+        // The backend answers with a reason instead of failing the page. Show
+        // it and keep the page as it was: nothing was deleted.
+        toast.error(forgetFailureText(result.reason))
+        return
+      }
+      // Every sentence is gone, so the fact list and the preference map are
+      // both re-read rather than guessed at.
+      refreshAll()
+      toast.success('Forgot everything Gigr remembers about you.')
+    },
+    onError: (mutationError: unknown) => {
+      toast.error(
+        extractError(
+          mutationError,
+          'We could not forget your memory. Nothing was deleted.',
+        ),
+      )
+    },
+  })
+
   let content: ReactNode
   if (!accountEnabled) {
     content = <DisabledState reason="account" />
@@ -210,8 +247,9 @@ export default function MemoryPage() {
               </h2>
               <p className="text-sm text-gray-500 mt-1">
                 Short values your agent saved to reuse. Forgetting one stops the agent using
-                it, but any sentence it already wrote to Walrus Memory remains: Walrus Memory
-                is append-only and has no delete.
+                it. The sentence already written for that preference can remain, because
+                Walrus Memory has no per-fact delete. Use the control below to remove
+                everything Gigr remembers about you.
               </p>
             </div>
             <p className="text-xs text-gray-500">
@@ -252,6 +290,13 @@ export default function MemoryPage() {
               Try again
             </Button>
           </div>
+        ) : null}
+
+        {memoryWipeAvailable ? (
+          <MemoryWipeSection
+            busy={wipeMutation.isPending}
+            onConfirm={() => wipeMutation.mutate()}
+          />
         ) : null}
       </div>
     )
@@ -296,7 +341,7 @@ export default function MemoryPage() {
         }
         description={
           pendingKey !== null
-            ? `This removes the "${pendingKey}" saved preference, and the agent stops reusing it. Any sentence already written to Walrus Memory stays there, because Walrus Memory is append-only and has no delete. This cannot be undone.`
+            ? `This removes the "${pendingKey}" saved preference, and the agent stops reusing it. The sentence already written for it can remain, because Walrus Memory has no per-fact delete. To remove every sentence Gigr holds about you, use "Forget everything Gigr remembers about me". This cannot be undone.`
             : ''
         }
         confirmLabel="Forget preference"
@@ -525,6 +570,90 @@ function MemoryFactsSection({
           ? 'Read from Walrus Memory. Within each group, the most relevant sentence comes first. This is what one memory recall returned.'
           : 'This is what one memory recall returned.'}
       </p>
+    </section>
+  )
+}
+
+/** Why a namespace wipe did not happen, in the page's own words. */
+function forgetFailureText(reason: string): string {
+  switch (reason) {
+    case 'feature_disabled':
+      return 'Memory is turned off in this environment, so there is nothing here to forget.'
+    case 'not_configured':
+      return 'Walrus Memory is not set up in this environment, so there is nothing here to forget.'
+    case 'relayer_busy':
+      return 'Walrus Memory is busy right now. Nothing was deleted. Wait a minute, then try again.'
+    case 'relayer_timeout':
+      return 'Walrus Memory took too long to answer. Nothing was deleted. Try again in a moment.'
+    default:
+      return 'We could not reach Walrus Memory. Nothing was deleted. Try again in a moment.'
+  }
+}
+
+/**
+ * The namespace wipe: the one control that deletes stored sentences.
+ *
+ * Kept visually and textually separate from the per-preference Forget so the two
+ * can never be confused: that one drops a saved value and leaves its sentence,
+ * this one deletes every sentence the user has in Walrus Memory. The
+ * confirmation says both things and that the wipe cannot be undone.
+ */
+function MemoryWipeSection({
+  busy,
+  onConfirm,
+}: {
+  busy: boolean
+  onConfirm: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <section className="rounded-xl border border-red-200 bg-red-50/40 p-5 dark:border-red-900/60 dark:bg-red-950/20">
+      <div className="flex gap-3">
+        <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-900 border border-red-200 dark:border-red-900/60 flex items-center justify-center shrink-0">
+          <Trash2 className="w-5 h-5 text-red-600 dark:text-red-400" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+            Forget everything
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+            Removes your entire memory from Walrus Memory: every sentence Gigr has stored
+            about you, in one action. It cannot be undone. Saved preferences above are
+            separate and are not removed by this; forget those one at a time.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="mt-3"
+            disabled={busy}
+            onClick={() => setConfirming(true)}
+          >
+            {busy ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Trash2 className="w-3 h-3" />
+            )}
+            Forget everything Gigr remembers about me
+          </Button>
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={(open) => {
+          if (!open && !busy) setConfirming(false)
+        }}
+        title="Forget everything Gigr remembers about you?"
+        description="This removes your entire memory from Walrus Memory, so none of the sentences Gigr stored about you can be recalled again. It cannot be undone. Saved preferences are not removed by this; forget them one at a time."
+        confirmLabel="Forget everything"
+        cancelLabel="Cancel"
+        loading={busy}
+        onConfirm={() => {
+          setConfirming(false)
+          onConfirm()
+        }}
+      />
     </section>
   )
 }

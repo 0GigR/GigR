@@ -2,7 +2,7 @@
 
 The circuit breaker, the boundary and the gateway are built here, once per
 process, and injected into the service. A service never constructs them and
-never touches the memwal SDK or the Sui JSON-RPC.
+never touches the memwal SDK or the Sui gRPC endpoint.
 
 Nothing here imports an SDK at module level: with no MEMWAL_* credentials the
 gateway is simply None, and the service keeps using the JSONB memory. With no
@@ -35,19 +35,19 @@ logger = logging.getLogger(__name__)
 DEPENDENCY = "walrus-memory"
 
 # One policy for the dependency, not one per call site. Reads are retried with
-# jitter; writes are not, because the relayer is append-only.
+# jitter; writes are not, because there is no per-fact delete to undo one.
 MEMORY_TIMEOUT_SECONDS = 8.0
 MEMORY_FAILURE_THRESHOLD = 4
 MEMORY_RESET_TIMEOUT_SECONDS = 20.0
 MEMORY_MAX_ATTEMPTS = 2
 MEMORY_MAX_CONCURRENCY = 2
 
-# One policy per Tatum dependency. The Tatum Solana probe is the short attempt
+# One policy per Tatum dependency. A Tatum Solana read is the short attempt
 # before falling back, so it is never retried: one attempt, then the primary
 # RPC. The Sui read is advisory, so it is also single-attempt: the caller is a
 # badge, not a transaction, and must not wait twice.
 TATUM_SOLANA_DEPENDENCY = "tatum-solana-rpc"
-TATUM_SUI_DEPENDENCY = "tatum-sui-rpc"
+TATUM_SUI_DEPENDENCY = "tatum-sui-grpc"
 TATUM_FAILURE_THRESHOLD = 4
 TATUM_RESET_TIMEOUT_SECONDS = 20.0
 TATUM_MAX_ATTEMPTS = 1
@@ -95,7 +95,7 @@ def build_geocoding_boundary() -> Boundary:
 
 
 def build_tatum_solana_boundary() -> Boundary:
-    """The boundary around the Tatum Solana failover probe."""
+    """The boundary around one Tatum Solana read attempt."""
     return Boundary(
         ResiliencePolicy(
             dependency=TATUM_SOLANA_DEPENDENCY,
@@ -150,7 +150,7 @@ def build_tatum_sui_gateway() -> TatumSuiGateway | None:
         return None
     return TatumSuiGateway(
         boundary=build_tatum_sui_boundary(),
-        rpc_url=settings.TATUM_SUI_RPC_URL,
+        grpc_url=settings.TATUM_SUI_GRPC_URL,
         api_key=settings.tatum_sui_api_key,
     )
 
@@ -191,7 +191,7 @@ def _log_flag_state() -> None:
         )
     if settings.FEATURE_TATUM_SUI and not settings.tatum_sui_enabled:
         logger.warning(
-            "[tatum] FEATURE_TATUM_SUI is enabled but TATUM_SUI_RPC_URL and the "
+            "[tatum] FEATURE_TATUM_SUI is enabled but TATUM_SUI_GRPC_URL and the "
             "%s key are not both set; verification reports itself unavailable",
             settings.TATUM_SUI_NETWORK,
         )
