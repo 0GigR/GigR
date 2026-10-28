@@ -11,9 +11,10 @@ interface Props {
   confirmLabel?: string
   cancelLabel?: string
   loading?: boolean       // new
+  destructive?: boolean   // red confirm button for a destructive action
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, onConfirm, confirmLabel, cancelLabel, loading }: Props) {
+export function ConfirmDialog({ open, onOpenChange, title, description, onConfirm, confirmLabel, cancelLabel, loading, destructive }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm bg-white dark:bg-card text-black dark:text-foreground">
@@ -25,7 +26,11 @@ export function ConfirmDialog({ open, onOpenChange, title, description, onConfir
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             {cancelLabel || 'Cancel'}
           </Button>
-          <Button onClick={() => { onConfirm(); }} disabled={loading}>
+          <Button
+            variant={destructive ? 'destructive' : 'default'}
+            onClick={() => { onConfirm(); }}
+            disabled={loading}
+          >
             {loading ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : null}
