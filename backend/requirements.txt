@@ -34,9 +34,14 @@ pywebpush==2.3.0
 memwal>=0.2.2
 # Sui gRPC. Tatum serves Sui only on sui-*-grpc.gateway.tatum.io (the JSON-RPC
 # hosts answer 404), so the advisory verification speaks gRPC through grpclib
-# and the generated Sui v2 stubs that ship inside pysui. No proto compilation.
-# betterproto2 is pinned to 0.9.x because pysui 0.92.0's stubs were generated
-# with betterproto2_compiler 0.9.0 and refuse to import under 0.10.x.
+# and the generated Sui v2 stubs vendored under app/core/gateways/sui_stubs.
+# No proto compilation is needed.
+# betterproto2 must match the compiler that generated the vendored Sui stubs
+# under app/core/gateways/sui_stubs (0.10.x). pysui is NOT a dependency: it pins
+# websockets>=15.0.1,<16, which conflicts with solana's <=15.0 and broke a clean
+# install, so only its generated stub package is vendored.
 grpclib==0.4.9
-pysui==0.92.0
-betterproto2==0.9.0
+# pysui removed: its stub package is vendored under app/core/gateways/sui_stubs
+# because pysui pins websockets>=15.0.1,<16 which conflicts with solana's <=15.0
+betterproto2>=0.10,<0.11
+python-dateutil>=2.8

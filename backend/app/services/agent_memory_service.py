@@ -43,6 +43,7 @@ from ..crud.agent_memory import (
     merge_memory,
 )
 from .memory_fact_category import categorize_fact
+from .memory_failure_reason import dependency_failure_reason
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -194,30 +195,6 @@ class NamespaceForget:
     ok: bool
     reason: str = "ok"
     deleted: Optional[int] = None
-
-
-def _dependency_failure_reason(error: BaseException) -> str:
-    """The stable reason code for one failed memory read or delete.
-
-    It is used by the review recall and by the namespace wipe, which face the
-    same relayer and the same two states the reader can act on.
-
-    The gateway raises one typed error for every outbound failure and carries
-    the boundary's own outcome in its message: ``rate_limited: ...`` when the
-    relayer said the budget is spent, ``timeout after ...`` when the deadline
-    expired, and an exception name otherwise. Splitting busy from timeout is
-    what lets the page ask the reader to wait a minute rather than retry into a
-    limit that is still open.
-
-    An unrecognised message is ``relayer_unavailable``: the safe answer when the
-    cause is not one of the two the client can act on.
-    """
-    detail = str(error).casefold()
-    if "rate_limited" in detail or "429" in detail:
-        return "relayer_busy"
-    if "timeout" in detail or "timed out" in detail or "504" in detail:
-        return "relayer_timeout"
-    return "relayer_unavailable"
 
 
 def _memory_text(key: str, value: Any) -> str:
@@ -511,7 +488,7 @@ class AgentMemoryService:
                 type(exc).__name__,
                 exc,
             )
-            return RecalledFacts(reason=_dependency_failure_reason(exc))
+            return RecalledFacts(reason=dependency_failure_reason(exc))
         return RecalledFacts(facts=facts, source="walrus", reason="ok")
 
     async def save(self, user_id: UUID, updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -577,7 +554,7 @@ class AgentMemoryService:
                 type(exc).__name__,
                 exc,
             )
-            return NamespaceForget(ok=False, reason=_dependency_failure_reason(exc))
+            return NamespaceForget(ok=False, reason=dependency_failure_reason(exc))
         logger.info(
             "[agent-memory] forgot namespace=%s for user_id=%s "
             "(operation=forget_namespace): deleted=%s verified=%s",

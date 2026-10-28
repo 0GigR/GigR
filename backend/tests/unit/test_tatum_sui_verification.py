@@ -16,9 +16,10 @@ import grpclib.client
 from grpclib.const import Status
 from grpclib.exceptions import GRPCError
 
-import pysui.sui.sui_grpc.suimsgs.google.protobuf as gp
-import pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 as sui_v2
-from pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 import (
+from app.core.gateways.sui_stubs import google  # noqa: F401
+from app.core.gateways.sui_stubs.google import protobuf as gp
+from app.core.gateways.sui_stubs.sui.rpc import v2 as sui_v2
+from app.core.gateways.sui_stubs.sui.rpc.v2 import (
     GetObjectResponse,
     Object,
     Owner,

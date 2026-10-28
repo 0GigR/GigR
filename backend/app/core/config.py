@@ -366,6 +366,15 @@ class Settings(BaseSettings):
     MEMWAL_NAMESPACE_PREFIX: str = Field(
         default="gigr-user", env="MEMWAL_NAMESPACE_PREFIX"
     )
+    # Where the per-fact reconcile keeps the list of memories it must write back
+    # between the namespace wipe and the rewrite. A file, not a table: it must
+    # outlive the process that wrote it, and it must exist without a schema
+    # change while the feature flag is off. Relative paths resolve from the
+    # directory the server is started in, which is backend/ for this project.
+    MEMORY_RECONCILE_JOURNAL_PATH: str = Field(
+        default=".memory_reconcile_journal.json",
+        env="MEMORY_RECONCILE_JOURNAL_PATH",
+    )
 
     @field_validator("MEMWAL_NAMESPACE_PREFIX")
     @classmethod
