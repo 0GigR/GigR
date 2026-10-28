@@ -375,23 +375,49 @@ class Settings(BaseSettings):
         return cleaned or "gigr-user"
 
     # Tatum (RPC gateway for the Solana and Sui chains)
-    # Both features are OFF by default. With the flags off, no Tatum URL, key
-    # or header is read and every existing chain call is unchanged.
+    # FEATURE_TATUM_RPC is ON by default and governs READS only: with it on, the
+    # Solana client sends get_account_info and get_latest_blockhash through
+    # Tatum's gateway and falls back once to SOLANA_RPC_URL when the gateway is
+    # slow or unavailable. Transactions (send_transaction) never go to Tatum:
+    # they are built and sent on SOLANA_RPC_URL, which is why the flag can be on
+    # by default without putting the escrow path behind a third party. Turning
+    # it off makes every read use SOLANA_RPC_URL too.
+    #
+    # FEATURE_TATUM_SUI is OFF by default; it governs only the advisory Sui
+    # verification read.
     #
     # The network selects the key: TATUM_API_KEY_MAINNET is used only by a
     # mainnet network, TATUM_API_KEY_TESTNET by every other network. The app
     # runs on Solana devnet, so TATUM_SOLANA_NETWORK defaults to "devnet" and
     # pairs with the testnet key. This pairing is explicitly configured, never
     # guessed from the URL.
-    FEATURE_TATUM_RPC: bool = Field(default=False, env="FEATURE_TATUM_RPC")
+    FEATURE_TATUM_RPC: bool = Field(default=True, env="FEATURE_TATUM_RPC")
     FEATURE_TATUM_SUI: bool = Field(default=False, env="FEATURE_TATUM_SUI")
-    # Documented Tatum gateway endpoints (empty means "not configured"):
+    # Documented Tatum gateway endpoints:
     #   Solana devnet   https://solana-devnet.gateway.tatum.io
     #   Solana mainnet  https://solana-mainnet.gateway.tatum.io
-    #   Sui testnet     https://sui-testnet.gateway.tatum.io
-    #   Sui mainnet     https://sui-mainnet.gateway.tatum.io
-    TATUM_SOLANA_RPC_URL: str = Field(default="", env="TATUM_SOLANA_RPC_URL")
+    # The Solana default is the devnet host, paired with the default
+    # TATUM_SOLANA_NETWORK, so reads use Tatum with no new environment variable
+    # and no .env change. A deployment on mainnet sets both the URL and the
+    # network, or leaves it alone and keeps reading from SOLANA_RPC_URL.
+    # Sui is served by Tatum over gRPC only: the sui-*-grpc hosts speak the Sui
+    # v2 LedgerService, while sui-mainnet.gateway.tatum.io answers 404 on every
+    # JSON-RPC path for this account. The default below is the mainnet host
+    # proven end to end; set TATUM_SUI_GRPC_URL when TATUM_SUI_NETWORK is not
+    # mainnet, so the URL and the key belong to the same network.
+    #
+    # TATUM_SUI_RPC_URL is obsolete: the gateway no longer reads it. It stays
+    # declared so a deployment that still sets it does not fail at startup, and
+    # it has no effect.
+    TATUM_SOLANA_RPC_URL: str = Field(
+        default="https://solana-devnet.gateway.tatum.io",
+        env="TATUM_SOLANA_RPC_URL",
+    )
     TATUM_SUI_RPC_URL: str = Field(default="", env="TATUM_SUI_RPC_URL")
+    TATUM_SUI_GRPC_URL: str = Field(
+        default="https://sui-mainnet-grpc.gateway.tatum.io",
+        env="TATUM_SUI_GRPC_URL",
+    )
     TATUM_API_KEY_TESTNET: str = Field(default="", env="TATUM_API_KEY_TESTNET")
     TATUM_API_KEY_MAINNET: str = Field(default="", env="TATUM_API_KEY_MAINNET")
     TATUM_SOLANA_NETWORK: str = Field(default="devnet", env="TATUM_SOLANA_NETWORK")
@@ -420,6 +446,7 @@ class Settings(BaseSettings):
         return cleaned
 
     @field_validator(
+        "TATUM_SUI_GRPC_URL",
         "TATUM_SUI_RPC_URL",
         "TATUM_SOLANA_RPC_URL",
         "TATUM_API_KEY_MAINNET",
@@ -431,8 +458,7 @@ class Settings(BaseSettings):
         """Strip surrounding whitespace from Tatum URLs and keys.
 
         A key pasted into a hosting dashboard often carries a trailing newline
-        or space. The hosted Tatum gateway answers 404 when no usable key
-        reaches it (verified against sui-mainnet.gateway.tatum.io), which reads
+        or space. The hosted Tatum gateway rejects a padded key, which reads
         like a wrong endpoint rather than a value with a stray character.
         Trimming here turns that into the honest 401, or into the working call.
         """
@@ -475,10 +501,10 @@ class Settings(BaseSettings):
 
     @property
     def tatum_sui_enabled(self) -> bool:
-        """True only when the flag is on and a URL and its network's key exist."""
+        """True only when the flag is on and the gRPC URL and its key exist."""
         return bool(
             self.FEATURE_TATUM_SUI
-            and self.TATUM_SUI_RPC_URL
+            and self.TATUM_SUI_GRPC_URL
             and self.tatum_sui_api_key
         )
 

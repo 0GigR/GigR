@@ -13,7 +13,12 @@
  *
  * PATCH /ai/memory and DELETE /ai/memory/{key} do exist and return the whole
  * remaining memory map, which is what lets an entry disappear without a reload.
- * DELETE removes a JSONB key only; Walrus Memory has no delete.
+ * DELETE /ai/memory/{key} removes one JSONB key only: Walrus Memory has no
+ * per-fact delete, so the sentence already written for that key can remain.
+ *
+ * DELETE /ai/memory is the separate namespace wipe. It deletes everything
+ * Walrus Memory holds for the caller, is behind FEATURE_AGENT_WALRUS_MEMORY,
+ * and answers with ok/reason instead of failing the page.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -56,6 +61,53 @@ export async function forgetAgentMemoryKey(key: string): Promise<Record<string, 
     return remaining as Record<string, unknown>
   }
   return null
+}
+
+/**
+ * The outcome of the namespace wipe, as the endpoint reports it.
+ *
+ * "ok" is true only when the relayer deleted the caller's rows (or a
+ * verification read proved they were already gone). Every other case carries a
+ * reason, and the page shows it instead of pretending the wipe happened.
+ */
+export interface NamespaceForgetResult {
+  ok: boolean
+  /** Rows the relayer reported deleting, or null when it reported no count. */
+  deleted: number | null
+  reason: string
+}
+
+const FORGET_REASONS = new Set<string>([
+  'ok',
+  'feature_disabled',
+  'not_configured',
+  'relayer_busy',
+  'relayer_timeout',
+  'relayer_unavailable',
+])
+
+/**
+ * Delete this user's entire Walrus Memory namespace.
+ *
+ * The request carries no user or namespace: the backend derives both from the
+ * authenticated session, so this can only ever delete the caller's own memory.
+ * A slow relayer is bounded by the backend (8s), so the request budget sits
+ * above it.
+ */
+export async function forgetAgentMemoryNamespace(): Promise<NamespaceForgetResult> {
+  const response = await api.delete('/ai/memory', { timeout: 20000 })
+  const raw =
+    response.data && typeof response.data === 'object'
+      ? (response.data as Record<string, unknown>)
+      : {}
+  const reason = typeof raw.reason === 'string' && FORGET_REASONS.has(raw.reason)
+    ? raw.reason
+    : 'relayer_unavailable'
+  return {
+    ok: raw.ok === true,
+    deleted: typeof raw.deleted === 'number' ? raw.deleted : null,
+    reason,
+  }
 }
 
 /** One stored sentence, exactly as Walrus Memory returned it. */

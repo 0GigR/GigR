@@ -26,10 +26,14 @@ templates, never written by a model, so none can be invented and a missing field
 produces nothing rather than a guess. A one-off, resumable backfill gives every
 existing user their history; new facts flow from events afterwards.
 
-Walrus Memory is append-only and the Python SDK has no delete
-(MystenLabs/walrus-memory#1061), so the UI never offers a Forget button on a
-remembered fact. It says plainly that forgetting a preference stops the agent
-using it while the stored sentence remains.
+Walrus Memory has no per-fact delete, so forgetting one saved preference stops
+the agent using it while the sentence already written for it can remain. The
+page therefore offers two separate controls: a Forget button per saved
+preference, and "Forget everything Gigr remembers about me", which deletes the
+user's entire memory namespace in Walrus Memory and cannot be undone. That
+namespace delete is what memwal 0.2.2 added (MystenLabs/walrus-memory#1061,
+fixed upstream); per-fact deletion is still impossible, which is why the two
+controls stay distinct.
 
 Full write-up: [docs/total-recall-submission.md](docs/total-recall-submission.md)
 

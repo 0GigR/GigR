@@ -13,9 +13,9 @@ instead of each of them re-deriving them:
   key, so a retry after a timeout collapses onto the write the relayer already
   accepted instead of storing the sentence twice. The relayer keeps the write it
   accepted first and discards the duplicate;
-* a failed write is never retried blind. The relayer is append-only, so a 5xx
-  does not prove the write was lost: the outcome is unknown until the fact's own
-  text is recalled from the user's namespace. Present means the write succeeded;
+* a failed write is never retried blind. The relayer has no per-fact delete, so
+  a 5xx does not prove the write was lost: the outcome is unknown until the
+  fact's own text is recalled from the user's namespace. Present means the write succeeded;
   provably absent means the one retry is safe; an unanswerable recall means no
   retry at all, because a duplicate cannot be taken back.
 
@@ -122,7 +122,7 @@ class FactMemoryService:
     async def write(self, user_id: UUID, write: FactWrite) -> str:
         """Store one fact and return the relayer's job id.
 
-        A write that fails is not retried blind. The relayer is append-only, so
+        A write that fails is not retried blind. There is no per-fact delete, so
         a server error means the outcome is unknown: the fact may have been
         stored before the error was returned. The fact's own text is recalled
         from the user's namespace first.

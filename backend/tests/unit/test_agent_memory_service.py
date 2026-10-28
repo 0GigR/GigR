@@ -160,7 +160,7 @@ async def test_a_memory_without_a_usable_date_reaches_the_prompt_with_no_date(
 async def test_the_newest_date_wins_when_the_same_fact_was_recalled_twice(
     monkeypatch,
 ):
-    """Walrus is append-only, so one fact can come back several times. The prompt
+    """There is no per-fact delete, so one fact can come back several times. The prompt
     must carry the newest date, which is the one that settles a contradiction."""
     gateway = RecordingGateway(
         memories=(
@@ -183,7 +183,7 @@ async def test_the_newest_date_wins_when_the_same_fact_was_recalled_twice(
 
 
 async def test_duplicate_recalled_texts_collapse_before_the_prompt(monkeypatch):
-    """The relayer is append-only: a write that reported a server error may still
+    """There is no per-fact delete: a write that reported a server error may still
     have been stored, so one fact comes back several times. Exact duplicates must
     collapse to the first occurrence before the prompt is built."""
     gateway = RecordingGateway(
@@ -269,7 +269,7 @@ async def test_a_recalled_mirror_of_a_forgotten_key_never_reaches_the_prompt(
 ):
     """Forget deletes the JSONB key, but Walrus Memory keeps the mirrored text.
 
-    The relayer is append-only, so a recalled ``last_search: "plumber"`` whose
+    There is no per-fact delete, so a recalled ``last_search: "plumber"`` whose
     key is no longer local is the mirror of a forgotten preference. Injecting it
     as a sentence fact would silently undo Forget and hand the model the value
     the user removed.

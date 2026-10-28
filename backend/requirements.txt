@@ -28,4 +28,15 @@ requests
 pywebpush==2.3.0
 # Walrus Memory SDK for the agent memory backend behind
 # FEATURE_AGENT_WALRUS_MEMORY. Imported lazily, so the app runs without it.
-memwal>=0.2.1
+# 0.2.2 is the first release with the namespace-level delete
+# (MemWal.forget / forget_namespace, MystenLabs/walrus-memory#1061), which is
+# what the memory page's "forget everything" control calls.
+memwal>=0.2.2
+# Sui gRPC. Tatum serves Sui only on sui-*-grpc.gateway.tatum.io (the JSON-RPC
+# hosts answer 404), so the advisory verification speaks gRPC through grpclib
+# and the generated Sui v2 stubs that ship inside pysui. No proto compilation.
+# betterproto2 is pinned to 0.9.x because pysui 0.92.0's stubs were generated
+# with betterproto2_compiler 0.9.0 and refuse to import under 0.10.x.
+grpclib==0.4.9
+pysui==0.92.0
+betterproto2==0.9.0

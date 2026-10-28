@@ -24,6 +24,11 @@ from typing import TYPE_CHECKING, Optional
 from uuid import UUID
 
 from ..core.config import settings
+from ..core.gateways.tatum_sui_gateway import (
+    SuiGrpcTimeoutError,
+    SuiGrpcTransportError,
+    WALRUS_BLOB_TYPE_SUFFIX,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     from ..core.gateways.tatum_sui_gateway import TatumSuiGateway
@@ -36,8 +41,8 @@ FEATURE_FLAG = "FEATURE_TATUM_SUI"
 _OBJECT_ID = re.compile(r"^0x[0-9a-fA-F]{1,64}$")
 # A Walrus blob id is a 32-byte value in unpadded base64url: 43 characters.
 _BLOB_ID = re.compile(r"^[A-Za-z0-9_-]{43}$")
-# The on-chain Move type of a Walrus blob object.
-_BLOB_TYPE_MARKER = "::blob::blob"
+# The on-chain Move type of a Walrus blob object, matched as a suffix.
+_BLOB_TYPE_SUFFIX = WALRUS_BLOB_TYPE_SUFFIX.lower()
 
 REASON_FEATURE_DISABLED = "feature_disabled"
 REASON_NOT_CONFIGURED = "tatum_not_configured"
@@ -45,6 +50,8 @@ REASON_EMPTY = "empty_reference"
 REASON_UNRECOGNISED = "unrecognised_reference"
 REASON_BLOB_ID_UNRESOLVED = "blob_id_not_resolvable_without_indexer"
 REASON_UNAVAILABLE = "verification_unavailable"
+REASON_GRPC_TIMEOUT = "grpc_timeout"
+REASON_GRPC_TRANSPORT = "grpc_transport_error"
 REASON_NOT_FOUND = "object_not_found"
 REASON_RPC_ERROR = "rpc_error"
 REASON_NOT_A_BLOB = "not_a_walrus_blob"
@@ -63,6 +70,8 @@ class MemoryVerification:
     reason: str
     object_id: Optional[str] = None
     object_type: Optional[str] = None
+    object_version: Optional[int] = None
+    owner_kind: Optional[str] = None
     certified_epoch: Optional[int] = None
     end_epoch: Optional[int] = None
     deletable: Optional[bool] = None
@@ -82,6 +91,8 @@ class MemoryVerification:
             "reason": self.reason,
             "object_id": self.object_id,
             "object_type": self.object_type,
+            "object_version": self.object_version,
+            "owner_kind": self.owner_kind,
             "certified_epoch": self.certified_epoch,
             "end_epoch": self.end_epoch,
             "deletable": self.deletable,
@@ -113,37 +124,25 @@ def _classify(reference: str) -> tuple[str, str]:
 
 
 def _as_int(value: object) -> Optional[int]:
-    """Read a Move integer that Sui may render as a string or a number."""
+    """Read a Move integer from the JSON the gRPC gateway returns.
+
+    A google.protobuf.Value carries every JSON number as a double, so the node
+    reports a Move ``u32``/``u64`` as a Python float (``25.0``) and the gateway
+    hands it over unchanged. The string and int branches keep the reader
+    tolerant of the other shapes a JSON encoder can produce.
+    """
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
     if isinstance(value, str):
         try:
             return int(value)
         except ValueError:
             return None
     return None
-
-
-def _as_option_int(value: object) -> Optional[int]:
-    """Read a Move ``Option<u32>`` in the shapes Sui's JSON-RPC renders.
-
-    Older nodes wrap the value in ``{"type": ..., "fields": {"vec": [n]}}``;
-    newer ones render the value itself or ``null``. All three mean the same
-    thing here: the epoch, or None when the option is empty.
-    """
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        inner = value.get("fields") if isinstance(value.get("fields"), dict) else value
-        if isinstance(inner, dict) and "vec" in inner:
-            vector = inner["vec"]
-            if isinstance(vector, list) and vector:
-                return _as_int(vector[0])
-            return None
-        return None
-    return _as_int(value)
 
 
 def _field(fields: dict, *names: str) -> object:
@@ -239,7 +238,27 @@ class MemoryVerificationService:
                 reason=REASON_UNRECOGNISED,
             )
 
-        result = await self._verifier.get_object(value)
+        try:
+            result = await self._verifier.get_object(value)
+        except SuiGrpcTimeoutError:
+            return MemoryVerification(
+                reference=cleaned,
+                available=True,
+                checked=True,
+                verified=False,
+                reason=REASON_GRPC_TIMEOUT,
+                object_id=value,
+            )
+        except SuiGrpcTransportError:
+            return MemoryVerification(
+                reference=cleaned,
+                available=True,
+                checked=True,
+                verified=False,
+                reason=REASON_GRPC_TRANSPORT,
+                object_id=value,
+            )
+
         if result.error == "object_not_found":
             return MemoryVerification(
                 reference=cleaned,
@@ -260,7 +279,7 @@ class MemoryVerificationService:
             )
 
         object_type = result.object_type or ""
-        if _BLOB_TYPE_MARKER not in object_type.lower():
+        if not object_type.lower().endswith(_BLOB_TYPE_SUFFIX):
             return MemoryVerification(
                 reference=cleaned,
                 available=True,
@@ -269,21 +288,18 @@ class MemoryVerificationService:
                 reason=REASON_NOT_A_BLOB,
                 object_id=result.object_id,
                 object_type=result.object_type,
+                object_version=result.version,
+                owner_kind=result.owner_kind,
             )
 
         fields = result.fields or {}
-        certified_epoch = _as_option_int(
-            _field(fields, "certified_epoch", "certifiedEpoch")
-        )
+        certified_epoch = _as_int(_field(fields, "certified_epoch", "certifiedEpoch"))
         storage = _field(fields, "storage")
-        end_epoch = None
-        if isinstance(storage, dict):
-            storage_fields = (
-                storage["fields"]
-                if isinstance(storage.get("fields"), dict)
-                else storage
-            )
-            end_epoch = _as_option_int(_field(storage_fields, "end_epoch", "endEpoch"))
+        end_epoch = (
+            _as_int(_field(storage, "end_epoch", "endEpoch"))
+            if isinstance(storage, dict)
+            else None
+        )
         deletable = _field(fields, "deletable")
         deletable_flag = deletable if isinstance(deletable, bool) else None
 
@@ -297,6 +313,8 @@ class MemoryVerificationService:
             ),
             object_id=result.object_id,
             object_type=result.object_type,
+            object_version=result.version,
+            owner_kind=result.owner_kind,
             certified_epoch=certified_epoch,
             end_epoch=end_epoch,
             deletable=deletable_flag,
