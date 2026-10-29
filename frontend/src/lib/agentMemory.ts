@@ -265,6 +265,8 @@ export interface MemoryVerification {
   reason: string
   object_id?: string | null
   object_type?: string | null
+  object_version?: number | null
+  owner_kind?: string | null
   certified_epoch?: number | null
   end_epoch?: number | null
   deletable?: boolean | null
@@ -279,6 +281,8 @@ const UNAVAILABLE_REASONS = new Set([
   'unrecognised_reference',
   'blob_id_not_resolvable_without_indexer',
   'verification_unavailable',
+  'grpc_timeout',
+  'grpc_transport_error',
   'rpc_error',
   'request_failed',
 ])
@@ -312,6 +316,9 @@ const REASON_TEXT: Record<string, string> = {
     'This is a Walrus blob id. Resolving it to a Sui object needs the Walrus indexer, which this check does not use.',
   verification_unavailable:
     'We could not reach Sui just now. The memory is unchanged. Try again in a moment.',
+  grpc_timeout: 'Sui did not answer within the time limit. Nothing was changed. Try again.',
+  grpc_transport_error:
+    'We could not reach the Sui gRPC endpoint. Nothing was changed. Try again in a moment.',
   request_failed:
     'The check could not run just now. The memory is unchanged. Try again in a moment.',
   object_not_found:
@@ -336,7 +343,11 @@ export function verificationReasonText(result: MemoryVerification): string {
   if (result.reason === 'certified_blob') {
     return 'The check did not confirm this reference.'
   }
-  return REASON_TEXT[result.reason] ?? 'The check did not confirm this reference.'
+  const known = REASON_TEXT[result.reason]
+  if (known) return known
+  // A reason this build does not know is still named, so the reader and the
+  // person debugging both see what the backend said instead of a generic line.
+  return `The check did not confirm this reference (reason: ${result.reason}).`
 }
 
 function asOptionalNumber(value: unknown): number | null {
@@ -366,6 +377,8 @@ export function normalizeVerification(
     reason: typeof raw.reason === 'string' ? raw.reason : 'verification_unavailable',
     object_id: typeof raw.object_id === 'string' ? raw.object_id : null,
     object_type: typeof raw.object_type === 'string' ? raw.object_type : null,
+    object_version: asOptionalNumber(raw.object_version),
+    owner_kind: typeof raw.owner_kind === 'string' ? raw.owner_kind : null,
     certified_epoch: asOptionalNumber(raw.certified_epoch),
     end_epoch: asOptionalNumber(raw.end_epoch),
     deletable: typeof raw.deletable === 'boolean' ? raw.deletable : null,
