@@ -1,7 +1,9 @@
 from uuid import UUID
 import uuid
 import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy import select, update, or_, func
 from sqlalchemy.orm import selectinload
@@ -440,3 +442,64 @@ async def list_jobs_by_ids(db: AsyncSession, job_ids: List[UUID]) -> List[Job]:
         return []
     result = await db.execute(select(Job).where(Job.id.in_(list(job_ids))))
     return list(result.scalars().all())
+
+
+# -- Aggregates for the paid agent brief -------------------------------------
+# These read one entity (jobs) and aggregate in the query. The brief combines
+# them with the rating and dispute aggregates in its service; no crud file
+# joins across entities.
+
+
+@dataclass(frozen=True)
+class CompletedJobPrices:
+    """The recorded price range of a set of completed jobs."""
+
+    count: int
+    minimum: Decimal | None
+    maximum: Decimal | None
+    average: Decimal | None
+
+
+async def count_completed_jobs_for_provider(
+    db: AsyncSession, provider_id: UUID
+) -> int:
+    """How many jobs this provider has completed, counted in the query."""
+    result = await db.execute(
+        select(func.count(Job.id)).where(
+            Job.provider_id == provider_id,
+            Job.status == "completed",
+        )
+    )
+    return int(result.scalar_one() or 0)
+
+
+async def summarize_completed_job_prices(
+    db: AsyncSession, category_id: UUID, exclude_job_id: UUID
+) -> CompletedJobPrices:
+    """Count, minimum, maximum and average price of comparable completed jobs.
+
+    Comparable means the same category, completed, with a positive recorded
+    price, excluding the job the brief is about. A job with no recorded price
+    is not a comparable and would distort the range, so it is not counted.
+    """
+    result = await db.execute(
+        select(
+            func.count(Job.id),
+            func.min(Job.price),
+            func.max(Job.price),
+            func.avg(Job.price),
+        ).where(
+            Job.category_id == category_id,
+            Job.status == "completed",
+            Job.id != exclude_job_id,
+            Job.price.isnot(None),
+            Job.price > 0,
+        )
+    )
+    count, minimum, maximum, average = result.one()
+    return CompletedJobPrices(
+        count=int(count or 0),
+        minimum=minimum,
+        maximum=maximum,
+        average=average,
+    )

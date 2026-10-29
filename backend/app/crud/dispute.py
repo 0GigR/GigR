@@ -1,6 +1,7 @@
+from dataclasses import dataclass
 from uuid import UUID
 from typing import List, Optional
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.dispute import Dispute, DisputeStatus
 from ..schemas.dispute import DisputeCreate
@@ -62,3 +63,31 @@ async def list_disputes_for_jobs(db: AsyncSession, job_ids: List[UUID]) -> List[
         return []
     result = await db.execute(select(Dispute).where(Dispute.job_id.in_(list(job_ids))))
     return list(result.scalars().all())
+
+
+@dataclass(frozen=True)
+class ProviderDisputes:
+    """How many disputes a provider has been party to, by status."""
+
+    total: int
+    open: int
+    resolved: int
+
+
+async def summarize_disputes_for_provider(
+    db: AsyncSession, provider_id: UUID
+) -> ProviderDisputes:
+    """Count this provider's disputes, grouped by status, in one query."""
+    result = await db.execute(
+        select(
+            func.count(Dispute.id),
+            func.count(Dispute.id).filter(Dispute.status == DisputeStatus.OPEN),
+            func.count(Dispute.id).filter(Dispute.status == DisputeStatus.RESOLVED),
+        ).where(Dispute.provider_id == provider_id)
+    )
+    total, open_count, resolved_count = result.one()
+    return ProviderDisputes(
+        total=int(total or 0),
+        open=int(open_count or 0),
+        resolved=int(resolved_count or 0),
+    )

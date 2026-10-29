@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator
 from typing import Optional
+import re
 
 
 class Settings(BaseSettings):
@@ -516,7 +517,6 @@ class Settings(BaseSettings):
             and self.TATUM_SUI_GRPC_URL
             and self.tatum_sui_api_key
         )
-
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
