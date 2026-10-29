@@ -33,8 +33,8 @@ REQUEST_TIMEOUT_SECONDS = 15.0
 try:
     from grpclib.client import Channel
     from grpclib.exceptions import GRPCError
-    from pysui.sui.sui_grpc.suimsgs.google.protobuf import FieldMask
-    from pysui.sui.sui_grpc.suimsgs.sui.rpc.v2 import (
+    from app.core.gateways.sui_stubs.google.protobuf import FieldMask
+    from app.core.gateways.sui_stubs.sui.rpc.v2 import (
         GetObjectRequest,
         GetServiceInfoRequest,
         LedgerServiceStub,
