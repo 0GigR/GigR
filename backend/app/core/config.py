@@ -517,6 +517,95 @@ class Settings(BaseSettings):
             and self.TATUM_SUI_GRPC_URL
             and self.tatum_sui_api_key
         )
+
+    # -- x402 paid agent brief ------------------------------------------------
+    # OFF by default. The endpoint is inert until an operator opts in: with the
+    # flag off the route answers 404 and never reads a job, builds a gateway or
+    # writes the signature ledger. Added 2026-10-29; the flag can be deleted once
+    # the endpoint has been on for a full release cycle with no rollback.
+    #
+    # Settlement is Solana Devnet, the cluster this app runs on and a network
+    # x402's testnet facilitator supports. The price is in atomic units of the
+    # configured USDC mint (six decimals), never in whole tokens: 10000 is 0.01
+    # USDC.
+    FEATURE_X402_AGENT_BRIEF: bool = Field(
+        default=False, env="FEATURE_X402_AGENT_BRIEF"
+    )
+    X402_AGENT_BRIEF_PRICE_ATOMIC: int = Field(
+        default=10000, env="X402_AGENT_BRIEF_PRICE_ATOMIC"
+    )
+    # The platform Solana address that receives the payment. Required for the
+    # endpoint to be enabled: with it blank there is nowhere to pay, so the route
+    # stays inert rather than quoting a payment to nobody.
+    X402_AGENT_BRIEF_PAY_TO: str = Field(default="", env="X402_AGENT_BRIEF_PAY_TO")
+    # How long a quoted challenge is offered for. The on-chain payment is what is
+    # verified; the expiry is the life of the quote, not a payment deadline the
+    # server can enforce without storing it.
+    X402_AGENT_BRIEF_EXPIRES_SECONDS: int = Field(
+        default=300, env="X402_AGENT_BRIEF_EXPIRES_SECONDS"
+    )
+
+    @field_validator("X402_AGENT_BRIEF_PAY_TO", mode="before")
+    @classmethod
+    def _trim_agent_brief_pay_to(cls, v: object) -> object:
+        """Trim a pasted address; a padded one is a different address."""
+        return v.strip() if isinstance(v, str) else v
+
+    @field_validator("X402_AGENT_BRIEF_PAY_TO")
+    @classmethod
+    def _validate_agent_brief_pay_to(cls, v: str) -> str:
+        """Reject a recipient that is not shaped like a Solana address.
+
+        An address with a typo cannot receive the payment, and quoting it would
+        ask every agent to send money to nowhere. Blank is allowed because it is
+        how the endpoint is left disabled.
+        """
+        if not v:
+            return v
+        if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", v):
+            raise ValueError(
+                "X402_AGENT_BRIEF_PAY_TO must be a base58 Solana address "
+                "(32-44 characters) or blank"
+            )
+        return v
+
+    @field_validator("X402_AGENT_BRIEF_PRICE_ATOMIC")
+    @classmethod
+    def _validate_agent_brief_price(cls, v: int) -> int:
+        """A price is positive and bounded; 0 would make the brief free."""
+        if not 1 <= int(v) <= 100_000_000_000:
+            raise ValueError(
+                "X402_AGENT_BRIEF_PRICE_ATOMIC must be between 1 and "
+                "100000000000 atomic units (6 decimals)"
+            )
+        return int(v)
+
+    @field_validator("X402_AGENT_BRIEF_EXPIRES_SECONDS")
+    @classmethod
+    def _validate_agent_brief_expiry(cls, v: int) -> int:
+        """Keep a quote short enough to be a quote, long enough to be payable."""
+        if not 60 <= int(v) <= 3600:
+            raise ValueError(
+                "X402_AGENT_BRIEF_EXPIRES_SECONDS must be between 60 and 3600"
+            )
+        return int(v)
+
+    @property
+    def x402_agent_brief_enabled(self) -> bool:
+        """True only when the flag is on and the endpoint has something to quote.
+
+        The mint is the configured devnet USDC mint and the recipient is the
+        configured platform address. With either missing the route stays inert,
+        so no challenge ever names an asset or a wallet the deployment has not
+        chosen.
+        """
+        return bool(
+            self.FEATURE_X402_AGENT_BRIEF
+            and self.USDC_MINT_DEVNET
+            and self.X402_AGENT_BRIEF_PAY_TO
+            and self.X402_AGENT_BRIEF_PRICE_ATOMIC > 0
+        )
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

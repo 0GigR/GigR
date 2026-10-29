@@ -18,10 +18,12 @@ from typing import TYPE_CHECKING
 
 from .config import settings
 from .gateways.geocoding_gateway import GeocodingGateway
+from .gateways.tatum_solana_transaction_gateway import TatumSolanaTransactionGateway
 from .gateways.tatum_sui_gateway import TatumSuiGateway
 from .gateways.walrus_memory_gateway import WalrusMemoryGateway
 from .resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
 from ..services import osm_geo
+from ..services.agent_brief_service import AgentBriefService, BriefPaymentPolicy
 from ..services.agent_memory_service import AgentMemoryService
 from ..services.event_fact_service import EventFactService
 from ..services.fact_memory_service import FactMemoryService
@@ -160,6 +162,36 @@ def build_tatum_sui_gateway() -> TatumSuiGateway | None:
     )
 
 
+def build_agent_brief_gateway() -> TatumSolanaTransactionGateway | None:
+    """The Tatum transaction read the paid brief verifies a payment with.
+
+    Built only when the x402 brief is enabled, and only over the gateway that
+    serves Solana reads. It is a read: the gateway cannot build or send a
+    transaction, so the escrow path and the Tatum write split are untouched.
+
+    With the flag off this returns None. The service then refuses every payment
+    with ``verification_unavailable`` rather than trusting one, and the router
+    has already answered 404 without asking the service anything.
+    """
+    if not settings.x402_agent_brief_enabled:
+        return None
+    return TatumSolanaTransactionGateway(
+        boundary=tatum_solana_boundary,
+        rpc_url=settings.TATUM_SOLANA_RPC_URL,
+        api_key=settings.tatum_solana_api_key,
+    )
+
+
+def build_agent_brief_policy() -> BriefPaymentPolicy:
+    """What one brief costs and where the payment must land, from settings."""
+    return BriefPaymentPolicy(
+        mint=settings.USDC_MINT_DEVNET,
+        pay_to=settings.X402_AGENT_BRIEF_PAY_TO,
+        amount_atomic=settings.X402_AGENT_BRIEF_PRICE_ATOMIC,
+        expires_seconds=settings.X402_AGENT_BRIEF_EXPIRES_SECONDS,
+    )
+
+
 def build_geocoding_gateway() -> GeocodingGateway:
     """The reverse-geocoding gateway over the process's one Nominatim client.
 
@@ -200,6 +232,26 @@ def _log_flag_state() -> None:
             "%s key are not both set; verification reports itself unavailable",
             settings.TATUM_SUI_NETWORK,
         )
+    logger.info(
+        "[x402] FEATURE_X402_AGENT_BRIEF=%s enabled=%s price_atomic=%s",
+        settings.FEATURE_X402_AGENT_BRIEF,
+        settings.x402_agent_brief_enabled,
+        settings.X402_AGENT_BRIEF_PRICE_ATOMIC,
+    )
+    if settings.FEATURE_X402_AGENT_BRIEF and not settings.x402_agent_brief_enabled:
+        logger.warning(
+            "[x402] FEATURE_X402_AGENT_BRIEF is enabled but USDC_MINT_DEVNET or "
+            "X402_AGENT_BRIEF_PAY_TO is not set; the endpoint stays inert"
+        )
+    if settings.x402_agent_brief_enabled and not (
+        settings.TATUM_SOLANA_RPC_URL and settings.tatum_solana_api_key
+    ):
+        logger.warning(
+            "[x402] the endpoint is enabled but TATUM_SOLANA_RPC_URL and the %s "
+            "Tatum key are not both set; every payment will be refused as "
+            "unverifiable",
+            settings.TATUM_SOLANA_NETWORK,
+        )
 
 
 # Built once at import, injected into every service instance. Tests replace these
@@ -208,6 +260,7 @@ def _log_flag_state() -> None:
 agent_memory_gateway = build_agent_memory_gateway()
 tatum_solana_boundary = build_tatum_solana_boundary()
 tatum_sui_gateway = build_tatum_sui_gateway()
+agent_brief_gateway = build_agent_brief_gateway()
 geocoding_gateway = build_geocoding_gateway()
 # One registry for the whole process: two reconciles for one user must not
 # interleave, and each request builds its own service from this root.
@@ -255,3 +308,16 @@ def build_memory_reconcile_service() -> MemoryReconcileService:
 def build_memory_verification_service() -> MemoryVerificationService:
     """Assemble the advisory verification service for one read-only request."""
     return MemoryVerificationService(verifier=tatum_sui_gateway)
+
+
+def build_agent_brief_service(db: "AsyncSession") -> AgentBriefService:
+    """Assemble the paid brief service for one request.
+
+    ``db`` is the request's session: the ledger claim commits on it, so the
+    payment is spent before the router can return any content.
+    """
+    return AgentBriefService(
+        db=db,
+        gateway=agent_brief_gateway,
+        policy=build_agent_brief_policy(),
+    )
