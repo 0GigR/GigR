@@ -1,24 +1,44 @@
 /**
- * AgentPaymentsPanel.tsx - "Agent payments": the x402 challenge, made visible.
+ * AgentPaymentsPanel.tsx - "Agent payments": the x402 challenge, and the purchase.
  *
- * An external agent can buy a brief about a job. It asks, gets a 402 quote in
+ * An external agent can buy a brief about a job: it asks, gets a 402 quote in
  * USDC on Solana, pays, and calls again; Gigr verifies that settlement on chain
- * before it returns anything. This panel shows the first step of that exchange
- * and stops there on purpose.
+ * before it returns anything. This panel shows that exchange and also lets the
+ * signed-in user complete it without a CLI or an external wallet: the server
+ * signs the USDC transfer with the user's custodial wallet, so one tap buys the
+ * brief.
  *
- * It cannot show a purchase. It sends no X-PAYMENT header, has no wallet, and
- * has no outcome kind for a paid brief: a 2xx is labelled unexpected rather
- * than celebrated. What it does show is the quote's real fields, the named
- * reason the endpoint gave, and a plain statement that the round trip needs a
- * funded devnet USDC payment.
+ * Two states are kept apart on purpose. Until a purchase succeeds the card shows
+ * the quote and says so: "quote, not a payment". A purchase answer that is not a
+ * paid brief never replaces that quote card, and the notice around it says what
+ * happened to the money instead: nothing submitted, submitted and unconfirmed,
+ * or confirmed but refused. Only a bought answer replaces the quote, and only it
+ * says the brief was actually bought.
  */
 
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CircleDollarSign, CircleAlert, Loader2, ReceiptText } from 'lucide-react'
+import {
+  CircleAlert,
+  CircleCheck,
+  CircleDollarSign,
+  Loader2,
+  ReceiptText,
+  Wallet,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { fetchAgentBriefJobs, requestAgentBriefQuote } from '@/hooks/useAgentBrief'
+import {
+  fetchAgentBriefJobs,
+  purchaseAgentBrief,
+  requestAgentBriefQuote,
+} from '@/hooks/useAgentBrief'
+import {
+  purchaseHeadline,
+  purchaseMayHaveMoved,
+  settlementSignature,
+  type PurchaseOutcome,
+} from '@/lib/agentBriefPurchase'
 import {
   isJobId,
   type BriefOutcome,
@@ -27,13 +47,21 @@ import {
 
 const INPUT_ID = 'agent-brief-job-id'
 
+/** Touch targets on the payment flow: 44px is the smallest comfortable one. */
+const TOUCH_TARGET = 'h-11 min-h-11'
+
 export function AgentPaymentsPanel() {
   const [jobId, setJobId] = useState('')
   // An answer belongs to the id it was asked for. Editing the id drops the old
   // answer instead of leaving a quote for one job under another job's field.
   const [answer, setAnswer] = useState<{ jobId: string; outcome: BriefOutcome } | null>(null)
+  const [purchase, setPurchase] = useState<{ jobId: string; outcome: PurchaseOutcome } | null>(
+    null,
+  )
   const [requesting, setRequesting] = useState(false)
-  const inFlight = useRef(false)
+  const [buying, setBuying] = useState(false)
+  const quoteInFlight = useRef(false)
+  const purchaseInFlight = useRef(false)
 
   const jobsQuery = useQuery({
     queryKey: ['agent-brief', 'jobs'],
@@ -44,10 +72,14 @@ export function AgentPaymentsPanel() {
   const jobs = jobsQuery.data ?? []
   const pickedJob = jobs.some((job) => job.id === jobId) ? jobId : ''
   const outcome = answer && answer.jobId === jobId.trim() ? answer.outcome : null
+  const purchaseOutcome =
+    purchase && purchase.jobId === jobId.trim() ? purchase.outcome : null
+  const bought =
+    purchaseOutcome && purchaseOutcome.kind === 'paid' ? purchaseOutcome : null
 
   const run = async () => {
     const cleaned = jobId.trim()
-    if (inFlight.current) return
+    if (quoteInFlight.current) return
     if (!cleaned) {
       setAnswer({
         jobId: cleaned,
@@ -67,14 +99,30 @@ export function AgentPaymentsPanel() {
       return
     }
 
-    inFlight.current = true
+    quoteInFlight.current = true
     setRequesting(true)
     try {
       const result = await requestAgentBriefQuote(cleaned)
       setAnswer({ jobId: cleaned, outcome: result })
     } finally {
-      inFlight.current = false
+      quoteInFlight.current = false
       setRequesting(false)
+    }
+  }
+
+  const buy = async () => {
+    const cleaned = jobId.trim()
+    // The ref is the guard that matters on a double tap: state updates are
+    // batched, so two taps in the same frame would both see `buying === false`.
+    if (purchaseInFlight.current || !isJobId(cleaned)) return
+    purchaseInFlight.current = true
+    setBuying(true)
+    try {
+      const result = await purchaseAgentBrief(cleaned)
+      setPurchase({ jobId: cleaned, outcome: result })
+    } finally {
+      purchaseInFlight.current = false
+      setBuying(false)
     }
   }
 
@@ -87,10 +135,9 @@ export function AgentPaymentsPanel() {
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Agent payments</h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            An external agent can buy a brief about a job. The endpoint quotes a price in USDC on
-            Solana and verifies the settlement on chain before it returns any content. This panel
-            asks for the quote and shows the terms: the full round trip needs a funded devnet USDC
-            payment, and no payment is made here.
+            An external agent can buy a brief about a job: the endpoint quotes a price in USDC on
+            Solana and verifies the settlement on chain before it returns any content. You can buy
+            the same brief here in one tap, paid from your Gigr wallet.
           </p>
 
           <form
@@ -111,7 +158,7 @@ export function AgentPaymentsPanel() {
                 aria-label="Pick one of your jobs"
                 value={pickedJob}
                 onChange={(event) => setJobId(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm text-gray-900 focus:ring-2 focus:ring-sky-500 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-100"
+                className={`mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm text-gray-900 focus:ring-2 focus:ring-sky-500 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-100 ${TOUCH_TARGET}`}
               >
                 <option value="">Pick one of your jobs</option>
                 {jobs.map((job) => (
@@ -129,9 +176,14 @@ export function AgentPaymentsPanel() {
                 placeholder="Or paste a job id"
                 spellCheck={false}
                 autoComplete="off"
-                className="font-mono text-xs sm:flex-1"
+                className={`font-mono text-xs sm:flex-1 ${TOUCH_TARGET}`}
               />
-              <Button type="submit" size="sm" disabled={requesting} className="shrink-0">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={requesting}
+                className={`w-full shrink-0 sm:w-auto ${TOUCH_TARGET}`}
+              >
                 {requesting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
@@ -142,15 +194,34 @@ export function AgentPaymentsPanel() {
             </div>
           </form>
 
-          {outcome && <BriefOutcomeView outcome={outcome} />}
+          {bought ? (
+            <PurchasedBriefCard outcome={bought} />
+          ) : (
+            <>
+              {outcome && (
+                <BriefOutcomeView outcome={outcome} onBuy={buy} buying={buying} />
+              )}
+              {purchaseOutcome && <PurchaseNotice outcome={purchaseOutcome} />}
+            </>
+          )}
         </div>
       </div>
     </section>
   )
 }
 
-function BriefOutcomeView({ outcome }: { outcome: BriefOutcome }) {
-  if (outcome.kind === 'quote') return <QuoteCard quote={outcome.quote} />
+function BriefOutcomeView({
+  outcome,
+  onBuy,
+  buying,
+}: {
+  outcome: BriefOutcome
+  onBuy: () => void
+  buying: boolean
+}) {
+  if (outcome.kind === 'quote') {
+    return <QuoteCard quote={outcome.quote} onBuy={onBuy} buying={buying} />
+  }
 
   const copy: Record<Exclude<BriefOutcome['kind'], 'quote'>, { title: string; body: string }> = {
     feature_disabled: {
@@ -190,7 +261,15 @@ function BriefOutcomeView({ outcome }: { outcome: BriefOutcome }) {
   )
 }
 
-function QuoteCard({ quote }: { quote: X402Quote }) {
+function QuoteCard({
+  quote,
+  onBuy,
+  buying,
+}: {
+  quote: X402Quote
+  onBuy: () => void
+  buying: boolean
+}) {
   const amount = quote.amountUsdc
     ? `${quote.amountUsdc} USDC`
     : 'Not stated by the endpoint'
@@ -207,8 +286,8 @@ function QuoteCard({ quote }: { quote: X402Quote }) {
         </span>
       </div>
       <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-        These are the terms the endpoint returned for this job. No money has moved: this panel has
-        no wallet and sends no payment.
+        These are the terms the endpoint returned for this job. No money has moved yet: nothing is
+        paid until you tap Buy this brief and the transfer confirms.
       </p>
 
       <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
@@ -237,12 +316,164 @@ function QuoteCard({ quote }: { quote: X402Quote }) {
         {quote.nonce && <QuoteRow label="Quote nonce" value={quote.nonce} mono wide />}
       </dl>
 
-      <p className="mt-3 border-t border-amber-200 pt-3 text-xs leading-relaxed text-amber-800 dark:border-amber-900/60 dark:text-amber-200">
-        The full round trip needs a funded devnet USDC payment. An agent sends the amount above to
-        the pay-to address, then asks again with the settlement signature in the X-PAYMENT header.
-        Gigr verifies that settlement on chain before it returns the brief. This panel shows the
-        challenge and stops there.
+      <Button
+        type="button"
+        onClick={onBuy}
+        disabled={buying}
+        aria-busy={buying}
+        className={`mt-3 w-full gap-2 bg-sky-600 text-white hover:bg-sky-700 dark:bg-sky-600 dark:hover:bg-sky-500 ${TOUCH_TARGET}`}
+      >
+        {buying ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Wallet className="h-4 w-4" />
+        )}
+        {buying ? 'Paying from your wallet' : 'Buy this brief'}
+      </Button>
+
+      <p className="mt-2 text-[11px] leading-relaxed text-amber-800 dark:text-amber-200">
+        Gigr sends the USDC from your Gigr wallet and checks the settlement on Solana before it
+        shows the brief. One tap buys one brief: tapping twice will not pay twice.
       </p>
+    </div>
+  )
+}
+
+function PurchaseNotice({ outcome }: { outcome: PurchaseOutcome }) {
+  if (outcome.kind === 'paid') return null
+
+  const headline = purchaseHeadline(outcome)
+  const signature = settlementSignature(outcome)
+  const message = outcome.message
+  // The notice speaks for the purchase, not for a payment that does not exist.
+  const tone =
+    purchaseMayHaveMoved(outcome)
+      ? 'border-sky-200 bg-sky-50/60 text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100'
+      : 'border-gray-200 bg-gray-50 text-gray-900 dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100'
+
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-4 ${tone}`}
+      role={outcome.kind === 'pending' ? 'status' : 'alert'}
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-2">
+        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold">{headline}</p>
+          <p className="mt-1 break-words text-xs leading-relaxed">{message}</p>
+          {signature && (
+            <div className="mt-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide opacity-70">
+                Settlement signature
+              </p>
+              <p className="mt-0.5 break-all font-mono text-[11px]">{signature}</p>
+            </div>
+          )}
+          {outcome.kind !== 'no_answer' && outcome.reason === 'insufficient_usdc' && (
+            <p className="mt-2 text-[11px] opacity-80">
+              This job is not marked as paid, so the quote above is still only a quote.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PurchasedBriefCard({ outcome }: { outcome: Extract<PurchaseOutcome, { kind: 'paid' }> }) {
+  const brief = outcome.brief
+  const amount = brief.amountUsdc ? `${brief.amountUsdc} USDC` : 'Not stated'
+
+  return (
+    <div
+      className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20"
+      aria-live="polite"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200">
+          <CircleCheck className="h-3.5 w-3.5" />
+          {outcome.alreadyPurchased ? 'Bought earlier' : 'Bought with x402'}
+        </span>
+        <span className="text-[11px] font-medium text-emerald-800 dark:text-emerald-200">
+          {amount}
+        </span>
+      </div>
+
+      <p className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+        {purchaseHeadline(outcome)}
+      </p>
+      <p className="mt-2 text-sm leading-relaxed text-gray-900 dark:text-gray-100">
+        {brief.summary}
+      </p>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+        <BriefRow label="Job" value={brief.title} wide />
+        <BriefRow label="Job status" value={brief.jobStatus} />
+        <BriefRow
+          label="Posted price"
+          value={brief.postedPrice === null ? 'Not recorded' : brief.postedPrice.toFixed(2)}
+        />
+        <BriefRow
+          label="Ratings"
+          value={
+            brief.ratingsCount === 0
+              ? 'None yet'
+              : `${brief.ratingsCount} at ${brief.ratingsAverage?.toFixed(2) ?? 'n/a'} average`
+          }
+          wide
+        />
+        <BriefRow label="Completed jobs" value={String(brief.completedJobs)} />
+        <BriefRow
+          label="Comparable jobs"
+          value={
+            brief.comparableJobs === 0
+              ? 'None yet'
+              : `${brief.comparableJobs} priced ${brief.comparableMin ?? 'n/a'} to ${
+                  brief.comparableMax ?? 'n/a'
+                }`
+          }
+          wide
+        />
+        <BriefRow
+          label="Disputes"
+          value={brief.disputesTotal === 0 ? 'None' : `${brief.disputesTotal} (${brief.disputesOpen} open)`}
+          wide
+        />
+      </dl>
+
+      <div className="mt-3 border-t border-emerald-200 pt-3 dark:border-emerald-900/60">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-800/80 dark:text-emerald-200/80">
+          Settlement signature
+        </p>
+        <p className="mt-0.5 break-all font-mono text-[11px] text-gray-900 dark:text-gray-100">
+          {outcome.signature}
+        </p>
+        {brief.network && (
+          <p className="mt-2 break-all text-[11px] text-emerald-800 dark:text-emerald-200">
+            {`Verified on ${brief.network}. Paid from your Gigr wallet, so no external wallet or CLI was involved.`}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function BriefRow({
+  label,
+  value,
+  wide = false,
+}: {
+  label: string
+  value: string
+  wide?: boolean
+}) {
+  return (
+    <div className={wide ? 'min-w-0 col-span-2' : 'min-w-0'}>
+      <dt className="text-[11px] uppercase tracking-wide text-emerald-800/70 dark:text-emerald-200/70">
+        {label}
+      </dt>
+      <dd className="mt-0.5 break-words text-sm text-gray-900 dark:text-gray-100">{value}</dd>
     </div>
   )
 }

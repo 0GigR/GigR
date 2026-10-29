@@ -192,3 +192,36 @@ class AgentBriefPaidOut(BaseModel):
     status: Literal["paid"] = "paid"
     payment: PaymentReceipt
     brief: AgentBriefOut
+
+
+class AgentBriefPurchasedOut(AgentBriefPaidOut):
+    """A 200 from the purchase route: the paid brief, plus how it was paid for.
+
+    ``already_purchased`` is true when this tap found a purchase that had already
+    completed and re-served its brief instead of charging again. It is not a
+    failure and not a new payment.
+    """
+
+    already_purchased: bool = False
+
+
+class AgentBriefPurchaseFailure(BaseModel):
+    """A purchase answer that is not paid: typed, and explicit about the money.
+
+    ``payment_state`` is the honest answer about the transfer, not about the
+    purchase: ``none`` means nothing was submitted, ``unknown`` means a send may
+    have reached the network without a signature coming back, ``submitted`` means
+    the node accepted it and it is not confirmed yet, and ``confirmed`` means it
+    is on chain (whether or not it paid for this brief).
+
+    ``message`` is the sentence to show: what happened and what to do next. The
+    amounts are present for the one reason that compares them.
+    """
+
+    status: Literal["failed", "pending"]
+    reason: str
+    message: str
+    payment_state: Literal["none", "unknown", "submitted", "confirmed"]
+    signature: str | None = None
+    required_atomic: int | None = None
+    available_atomic: int | None = None

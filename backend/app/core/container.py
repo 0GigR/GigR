@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING
 
 from .config import settings
 from .gateways.geocoding_gateway import GeocodingGateway
+from .gateways.solana_usdc_transfer_gateway import SolanaUsdcTransferGateway
 from .gateways.tatum_solana_transaction_gateway import TatumSolanaTransactionGateway
 from .gateways.tatum_sui_gateway import TatumSuiGateway
 from .gateways.walrus_memory_gateway import WalrusMemoryGateway
 from .resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
 from ..services import osm_geo
+from ..services.agent_brief_purchase_service import AgentBriefPurchaseService
 from ..services.agent_brief_service import AgentBriefService, BriefPaymentPolicy
 from ..services.agent_memory_service import AgentMemoryService
 from ..services.event_fact_service import EventFactService
@@ -33,6 +35,8 @@ from ..services.memory_reconcile_service import (
     MemoryReconcileService,
 )
 from ..services.memory_verification_service import MemoryVerificationService
+from ..services.solana_client import open_write_client
+from ..services.wallet import get_user_keypair
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -192,6 +196,22 @@ def build_agent_brief_policy() -> BriefPaymentPolicy:
     )
 
 
+def build_agent_brief_transfer_gateway() -> SolanaUsdcTransferGateway | None:
+    """The USDC transfer the in-app purchase sends, or None while the flag is off.
+
+    The client factory is ``open_write_client``: the client bound to
+    SOLANA_RPC_URL, the same function the escrow program's provider is built
+    from. It has no branch on the Tatum flag, so this transfer is written on the
+    path every other transaction in the app uses and cannot reach Tatum.
+    """
+    if not settings.x402_agent_brief_enabled:
+        return None
+    return SolanaUsdcTransferGateway(
+        client_factory=open_write_client,
+        mint=settings.USDC_MINT_DEVNET,
+    )
+
+
 def build_geocoding_gateway() -> GeocodingGateway:
     """The reverse-geocoding gateway over the process's one Nominatim client.
 
@@ -261,6 +281,7 @@ agent_memory_gateway = build_agent_memory_gateway()
 tatum_solana_boundary = build_tatum_solana_boundary()
 tatum_sui_gateway = build_tatum_sui_gateway()
 agent_brief_gateway = build_agent_brief_gateway()
+agent_brief_transfer_gateway = build_agent_brief_transfer_gateway()
 geocoding_gateway = build_geocoding_gateway()
 # One registry for the whole process: two reconciles for one user must not
 # interleave, and each request builds its own service from this root.
@@ -320,4 +341,21 @@ def build_agent_brief_service(db: "AsyncSession") -> AgentBriefService:
         db=db,
         gateway=agent_brief_gateway,
         policy=build_agent_brief_policy(),
+    )
+
+
+def build_agent_brief_purchase_service(db: "AsyncSession") -> AgentBriefPurchaseService:
+    """Assemble the in-app purchase for one request.
+
+    ``briefs`` is the same read service the GET route uses, so the purchase
+    verifies through the existing judge and spends through the existing ledger.
+    ``keypair_for`` is the existing custodial helper: the app signs for the user
+    from the seed already on their row, and no second key store is opened.
+    """
+    return AgentBriefPurchaseService(
+        db,
+        briefs=build_agent_brief_service(db),
+        transfers=agent_brief_transfer_gateway,
+        policy=build_agent_brief_policy(),
+        keypair_for=get_user_keypair,
     )

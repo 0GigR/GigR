@@ -20,3 +20,4 @@ from .payment_event import PaymentEvent
 from .jury_panel import JuryPanel
 from .milestone import JobMilestone
 from .agent_brief_payment import AgentBriefPayment
+from .agent_brief_purchase import AgentBriefPurchase

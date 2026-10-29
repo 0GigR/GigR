@@ -1,23 +1,32 @@
 /**
- * useAgentBrief.test.ts - the paid-brief request must ask, not buy.
+ * useAgentBrief.test.ts - the paid-brief requests, pinned at the boundary.
  *
  * The wrapper is the only place the panel touches the endpoint, so the calls it
  * makes are pinned here: the GET path and job id, a timeout above the recall
  * budget, every status classified instead of thrown, and no payment header. A
  * 402 is the expected answer, not a failure.
+ *
+ * The purchase call is pinned the same way, plus the one thing that makes it
+ * different: its timeout outlasts the server's confirmation window, and a lost
+ * answer says "check this purchase again" rather than "failed".
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }))
+const { getMock, postMock } = vi.hoisted(() => ({
+  getMock: vi.fn(),
+  postMock: vi.fn(),
+}))
 
 vi.mock('@/lib/api', () => ({
-  default: { get: getMock },
+  default: { get: getMock, post: postMock },
 }))
 
 import {
   BRIEF_REQUEST_TIMEOUT_MS,
+  PURCHASE_REQUEST_TIMEOUT_MS,
   fetchAgentBriefJobs,
+  purchaseAgentBrief,
   requestAgentBriefQuote,
 } from './useAgentBrief'
 
@@ -49,6 +58,7 @@ const CHALLENGE = {
 
 beforeEach(() => {
   getMock.mockReset()
+  postMock.mockReset()
 })
 
 describe('requestAgentBriefQuote', () => {
@@ -150,5 +160,127 @@ describe('fetchAgentBriefJobs', () => {
 
     const jobs = await fetchAgentBriefJobs()
     expect(jobs).toEqual([{ id: 'job-c', title: 'Build shelf', status: 'open' }])
+  })
+})
+
+
+const PAID_BODY = {
+  status: 'paid',
+  already_purchased: false,
+  payment: {
+    signature:
+      '5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW',
+    network: 'solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1',
+    mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+    amount_atomic: 10000,
+    pay_to: '9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin',
+  },
+  brief: {
+    job_id: '123e4567-e89b-12d3-a456-426614174000',
+    title: 'Fix the leaking kitchen sink',
+    job_status: 'open',
+    posted_price: 120,
+    provider_id: null,
+    ratings: { count: 0, average: null, distribution: {} },
+    completed_jobs: 3,
+    comparable_jobs: { count: 0, min_price: null, max_price: null, average_price: null },
+    disputes: { total: 0, open: 0, resolved: 0 },
+    has_history: true,
+    summary: 'Provider history: 3 completed jobs, no ratings, no disputes.',
+  },
+}
+
+const NO_USDC_BODY = {
+  status: 'failed',
+  reason: 'insufficient_usdc',
+  message:
+    'Your Gigr wallet holds 0 USDC and this brief costs 0.01 USDC. Add USDC to your wallet and tap Buy this brief again. Nothing was charged.',
+  payment_state: 'none',
+  signature: null,
+  required_atomic: 10000,
+  available_atomic: 0,
+}
+
+describe('purchaseAgentBrief', () => {
+  it('posts the job id to the purchase route and accepts every status', async () => {
+    postMock.mockResolvedValue({ status: 200, data: PAID_BODY })
+
+    const outcome = await purchaseAgentBrief(JOB_ID)
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    const [path, body, options] = postMock.mock.calls[0]
+    expect(path).toBe('/agent/brief/purchase')
+    expect(body).toBeNull()
+    expect(options.params).toEqual({ job_id: JOB_ID })
+    // The server waits for a confirmation (up to 30s) before it answers.
+    expect(options.timeout).toBe(PURCHASE_REQUEST_TIMEOUT_MS)
+    expect(options.timeout).toBeGreaterThan(30000)
+    // No X-PAYMENT header and no key: the server signs for the signed-in user.
+    expect(options.headers).toBeUndefined()
+    // A 402 is "you have no USDC", a typed answer, not a thrown error.
+    expect(options.validateStatus(402)).toBe(true)
+    expect(options.validateStatus(504)).toBe(true)
+    expect(options.validateStatus(500)).toBe(true)
+
+    expect(outcome.kind).toBe('paid')
+    if (outcome.kind === 'paid') {
+      expect(outcome.brief.summary).toContain('3 completed jobs')
+      expect(outcome.signature).toBe(PAID_BODY.payment.signature)
+    }
+  })
+
+  it('returns the no-USDC refusal as a failure that charged nothing', async () => {
+    postMock.mockResolvedValue({ status: 402, data: NO_USDC_BODY })
+
+    const outcome = await purchaseAgentBrief(JOB_ID)
+
+    expect(outcome.kind).toBe('failed')
+    if (outcome.kind !== 'failed') return
+    expect(outcome.reason).toBe('insufficient_usdc')
+    expect(outcome.paymentState).toBe('none')
+    expect(outcome.signature).toBeNull()
+    expect(outcome.message).toContain('holds 0 USDC')
+  })
+
+  it('keeps the signature of a submitted transfer on a timeout', async () => {
+    postMock.mockResolvedValue({
+      status: 504,
+      data: {
+        status: 'pending',
+        reason: 'confirmation_timeout',
+        message:
+          'The transfer has not been confirmed yet. Do not pay again: tap Buy this brief again to check this same transfer. The transfer was submitted and may still confirm; its signature is below.',
+        payment_state: 'submitted',
+        signature: PAID_BODY.payment.signature,
+      },
+    })
+
+    const outcome = await purchaseAgentBrief(JOB_ID)
+
+    expect(outcome.kind).toBe('pending')
+    if (outcome.kind !== 'pending') return
+    expect(outcome.signature).toBe(PAID_BODY.payment.signature)
+    expect(outcome.paymentState).toBe('submitted')
+  })
+
+  it('does not call a client timeout a failure', async () => {
+    postMock.mockRejectedValue(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }))
+
+    const outcome = await purchaseAgentBrief(JOB_ID)
+
+    expect(outcome.kind).toBe('no_answer')
+    if (outcome.kind !== 'no_answer') return
+    expect(outcome.message).toContain('Do not pay again')
+    expect(outcome.message).not.toContain('Nothing was charged')
+  })
+
+  it('does not call an unreachable endpoint a failure either', async () => {
+    postMock.mockRejectedValue(new Error('Network Error'))
+
+    const outcome = await purchaseAgentBrief(JOB_ID)
+
+    expect(outcome.kind).toBe('no_answer')
+    if (outcome.kind !== 'no_answer') return
+    expect(outcome.message).toContain('check your wallet activity')
   })
 })

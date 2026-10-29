@@ -1,11 +1,18 @@
 /**
- * useAgentBrief.ts - the two reads the Agent payments panel needs.
+ * useAgentBrief.ts - the reads the Agent payments panel needs, and the purchase.
  *
  * `requestAgentBriefQuote` asks the paid-brief endpoint for its terms and stops
- * there. It never sends an X-PAYMENT header, so it cannot buy anything: the
- * 402 challenge is the answer this panel is built around. A 402 or 404 is a
- * normal answer, not an exception, which is why the request accepts every
- * status and classifies the body instead of letting axios throw.
+ * there. It never sends an X-PAYMENT header, so it cannot buy anything: the 402
+ * challenge is the answer this panel is built around. A 402 or 404 is a normal
+ * answer, not an exception, which is why the request accepts every status and
+ * classifies the body instead of letting axios throw.
+ *
+ * `purchaseAgentBrief` is the one call that spends money. The server signs the
+ * USDC transfer with the caller's custodial wallet, so no wallet, key or
+ * X-PAYMENT header crosses this boundary: the authenticated POST is the whole
+ * request. Its timeout is generous because the server waits for a confirmation
+ * before it answers, and every status is classified for the same reason as
+ * above: a 402 here is "you have no USDC", a typed answer, not an exception.
  *
  * `fetchAgentBriefJobs` lists the caller's own jobs so a job id can be picked,
  * and is best effort: pasting an id must keep working when the list cannot be
@@ -13,10 +20,20 @@
  */
 
 import api from '@/lib/api'
+import {
+  classifyPurchaseResponse,
+  type PurchaseOutcome,
+} from '@/lib/agentBriefPurchase'
 import { classifyBriefResponse, type BriefOutcome } from '@/lib/x402Challenge'
 
 /** A brief recall does a database read; the shared 15s timeout is close. */
 export const BRIEF_REQUEST_TIMEOUT_MS = 20000
+
+/**
+ * A purchase waits for a Solana confirmation before it answers, and the server
+ * stops waiting after 30 seconds, so the client must outlast that window.
+ */
+export const PURCHASE_REQUEST_TIMEOUT_MS = 60000
 
 export interface AgentBriefJob {
   id: string
@@ -57,6 +74,39 @@ export async function requestAgentBriefQuote(jobId: string): Promise<BriefOutcom
     return {
       kind: 'error',
       detail: 'We could not reach the agent brief endpoint. Check your connection and try again.',
+    }
+  }
+}
+
+/**
+ * Buy one brief from the caller's custodial wallet. Returns the classified
+ * answer, never throws.
+ *
+ * The request carries no payment header and no key: the server signs the USDC
+ * transfer for the signed-in user. A timeout is not "failed" here, because the
+ * request may have been handled: the message says to check the same purchase
+ * again, which the server answers from its own record instead of paying twice.
+ */
+export async function purchaseAgentBrief(jobId: string): Promise<PurchaseOutcome> {
+  try {
+    const response = await api.post('/agent/brief/purchase', null, {
+      params: { job_id: jobId },
+      timeout: PURCHASE_REQUEST_TIMEOUT_MS,
+      validateStatus: () => true,
+    })
+    return classifyPurchaseResponse(response.status, response.data)
+  } catch (error) {
+    if (isTimeout(error)) {
+      return {
+        kind: 'no_answer',
+        message:
+          'The purchase took too long to answer. Do not pay again: tap Buy this brief again to check this purchase, and check your wallet activity before trying another one.',
+      }
+    }
+    return {
+      kind: 'no_answer',
+      message:
+        'We could not reach the purchase endpoint. Do not pay again: tap Buy this brief again to check this purchase, and check your wallet activity before trying another one.',
     }
   }
 }
