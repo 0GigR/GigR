@@ -13,7 +13,9 @@
  * one leaves the stored sentence, which the per-fact controls above can remove.
  * The namespace wipe ("Forget everything Gigr remembers about me") is the
  * separate, explicit control that deletes every sentence this user has stored.
- * Sui verification stays on the preference entries, unchanged.
+ * Sui verification also has a panel of its own ("Prove it on chain"), where the
+ * known-good Walrus blob can be checked without a saved preference, and the
+ * x402 paid-brief challenge is shown read-only in "Agent payments".
  *
  * House standard: zero emojis, zero decorative unicode, confirmation before a
  * destructive action, and an honest state for empty, loading, error and
@@ -51,6 +53,8 @@ import {
   type MemoryFactsReason,
 } from '@/hooks/useAgentMemory'
 import { MemoryFactsPanel } from '@/components/memory/MemoryFactsPanel'
+import { OnChainProofPanel } from '@/components/memory/OnChainProofPanel'
+import { AgentPaymentsPanel } from '@/components/memory/AgentPaymentsPanel'
 import {
   failedVerification,
   findSuiReference,
@@ -211,6 +215,10 @@ export default function MemoryPage() {
           }}
           onOpenAgent={openAgentPanel}
         />
+
+        <OnChainProofPanel />
+
+        <AgentPaymentsPanel />
 
         {!factsLoading && preferenceCount > 0 ? (
           <section className="space-y-3">

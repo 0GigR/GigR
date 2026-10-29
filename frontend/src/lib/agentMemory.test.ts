@@ -139,6 +139,45 @@ describe('normalizeVerification', () => {
     )
     expect(verificationTone(result)).toBe('unavailable')
   })
+
+  it('carries the object version and owner kind a certified answer returns', () => {
+    // The panel prints these two facts for the demo, so the normaliser must not
+    // drop fields it does not otherwise use.
+    const result = normalizeVerification(
+      {
+        reference: OBJECT_ID,
+        available: true,
+        checked: true,
+        verified: true,
+        reason: 'certified_blob',
+        object_type: '0x2::blob::Blob',
+        object_version: 810023862,
+        owner_kind: 'address',
+        certified_epoch: 25,
+      },
+      OBJECT_ID,
+    )
+    expect(result.object_version).toBe(810023862)
+    expect(result.owner_kind).toBe('address')
+    expect(result.certified_epoch).toBe(25)
+  })
+
+  it('keeps a malformed version and a non-string owner kind out of the result', () => {
+    const result = normalizeVerification(
+      {
+        reference: OBJECT_ID,
+        available: true,
+        checked: true,
+        verified: false,
+        reason: 'object_not_found',
+        object_version: '810023862',
+        owner_kind: 7,
+      },
+      OBJECT_ID,
+    )
+    expect(result.object_version).toBeNull()
+    expect(result.owner_kind).toBeNull()
+  })
 })
 
 describe('verificationTone', () => {
@@ -174,6 +213,12 @@ describe('verificationTone', () => {
     ).toBe('unavailable')
   })
 
+  it('treats a Sui transport failure as unavailable, not as a negative answer', () => {
+    // A timeout checked nothing, so it must not read as "not a Walrus blob".
+    expect(verificationTone(verification({ reason: 'grpc_timeout' }))).toBe('unavailable')
+    expect(verificationTone(verification({ reason: 'grpc_transport_error' }))).toBe('unavailable')
+  })
+
   it('treats a failed request as unavailable', () => {
     expect(verificationTone(failedVerification(OBJECT_ID))).toBe('unavailable')
   })
@@ -202,6 +247,20 @@ describe('verificationReasonText', () => {
   it('does not echo a certified reason when the answer is not verified', () => {
     const text = verificationReasonText(verification({ verified: false, reason: 'certified_blob' }))
     expect(text).toBe('The check did not confirm this reference.')
+  })
+
+  it('names a Sui timeout and a transport failure in their own words', () => {
+    expect(verificationReasonText(verification({ reason: 'grpc_timeout' }))).toContain(
+      'did not answer within the time limit',
+    )
+    expect(verificationReasonText(verification({ reason: 'grpc_transport_error' }))).toContain(
+      'could not reach the Sui gRPC endpoint',
+    )
+  })
+
+  it('prints a reason this build does not know instead of a generic line', () => {
+    const text = verificationReasonText(verification({ reason: 'new_backend_answer' }))
+    expect(text).toContain('new_backend_answer')
   })
 })
 
