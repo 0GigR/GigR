@@ -1,42 +1,52 @@
 # Demo script
 
-Everything here is real behaviour that exists in the deployed build. Do not claim
-anything this file does not list.
+Every claim here is real behaviour in the deployed build. If you cannot show
+something, say it exists and why it is not on screen rather than implying you
+did show it.
 
 ## Before you record
 
-1. Check the Koyeb build says Healthy for the newest commit.
+1. Koyeb shows Healthy for the newest commit; Vercel shows the same commit.
 2. Open `/dashboard/memory` ONCE and wait for it to finish. The first recall
-   decrypts one Walrus blob per fact and takes several seconds. The result is
-   cached for five minutes, so the on-camera load is instant. Do not refresh
-   repeatedly during the demo: the public relayer rate-limits and the page will
-   say "busy" for a minute.
-3. Confirm the agent panel says "from Walrus", not "from local storage".
+   decrypts one Walrus blob per fact and takes several seconds; the result is
+   cached for five minutes so the on-camera load is instant.
+3. Do not refresh repeatedly while recording. The public relayer rate-limits and
+   the page will say "busy" for a minute.
+4. Confirm the agent panel says **from Walrus**, not "from local storage". That
+   one word is the submission.
 
-If it says local storage, the relayer is rate limited. Wait a minute and reload.
+### Optional beats, only if the flags are on
+
+- **Sui verification**: needs `FEATURE_TATUM_SUI=true` and a saved preference
+  whose value is a Walrus blob object id, so the Verify control has something to
+  sit on. If it is off, do not show it; mention it in words instead.
+- **x402 paid brief**: needs `FEATURE_X402_AGENT_BRIEF=true`,
+  `X402_AGENT_BRIEF_PAY_TO` set to your Solana address, and a real devnet USDC
+  payment to demo live. Without those the endpoint returns 404 by design. The
+  curl transcript below is honest evidence without a live payment.
 
 ## The flow, two phones
 
 Phone A: `johnskipo4@gmail.com` (provider). Phone B: `kokafor893@gmail.com`
 (client, the one on camera).
 
-### Beat 1 - the problem (10s, no screen needed)
+### Beat 1 - the problem (10s, no screen)
 
 "A plumber fixes your sink. Six months later it leaks again and you have no idea
 who you hired, what you paid, or whether they were any good. That history exists
 in the platform and it dies with the session."
 
-### Beat 2 - what it already knows (20s, on the memory page)
+### Beat 2 - what it already knows (20s, memory page)
 
-Open `/dashboard/memory`. Five collapsed categories with counts.
+Open `/dashboard/memory`. Categories with counts, collapsed.
 
-"This is what Gigr remembers about me, and it was not typed in. It was extracted
-from my real history: jobs, messages, ratings, disputes. Thirty-four things."
+"This is what Gigr remembers about me, and none of it was typed in. It was
+extracted from my real history: jobs, messages, ratings, disputes. Thirty-four
+things."
 
-Expand one category. Point at a sentence.
+Expand a category. Point at a sentence.
 
-"'Hired a provider for Phone repair at 3000 naira, in progress, 2026.' That is my
-actual record."
+"'Hired a provider for Phone repair at 3000 naira.' That is my actual record."
 
 ### Beat 3 - recall (25s, agent panel)
 
@@ -44,15 +54,11 @@ Ask by voice, on the phone where the mic works:
 
 "I need a plumber in Akoka, budget around fifteen thousand."
 
-Then expand the steps.
+Expand the steps.
 
-"Look at this line: Recalled 5 memories from Walrus. It searched my memory on
-Walrus, by meaning, before it answered."
-
-Point at the answer.
-
-"It knows my budget and my area because it remembered them, not because I said
-them again."
+"Recalled 5 memories from Walrus. It searched my memory on Walrus, by meaning,
+before it answered." Point at the answer. "It knows my budget and my area because
+it remembered them, not because I said them again."
 
 ### Beat 4 - the work happens (30s, both phones)
 
@@ -63,42 +69,71 @@ Phone B: fund escrow, then release when work is submitted.
 "Client funds escrow, provider delivers, client releases. The money moves on
 Solana and the blockchain is invisible to both of them."
 
-### Beat 5 - it learned (20s, back on the memory page)
+### Beat 5 - it learned (20s, memory page)
 
-Refresh the memory page.
+Refresh. "There is a new fact. It learned from that job without being told to."
 
-"Now there is a new fact. It learned from that job without being told to."
+### Beat 6 - control and honesty (25s, memory page)
 
-### Beat 6 - honesty and control (20s, still on the page)
+Hover a fact: checkbox, Edit, and a Delete category control per group. Then
+scroll to the red section.
 
-Scroll to the red section.
+"Two kinds of forget. This one removes a single memory, and this one removes my
+entire memory. Walrus Memory can only delete a whole namespace, so a single
+delete saves everything again without that one sentence. It is honest about what
+it does."
 
-"One thing worth being straight about: Walrus Memory deletes a whole namespace,
-not a single fact. So this button removes everything Gigr holds about me, and it
-cannot be undone. Deleting one sentence is not something the SDK supports, and we
-say so rather than pretending."
+## The technical beats, for a longer cut or a text overlay
 
-## The technical mentions, in one breath
+### Tatum on Solana
 
-Have these ready for questions or a text overlay:
+"Solana reads go through Tatum's RPC gateway with a fast fallback to Helius.
+Writes never do, because routing a transaction through a third party is how you
+break escrow. Reads are the integration; writes are the part that must not fail."
 
-- Memory is stored on Walrus Memory mainnet, one namespace per user
-  (`gigr-<user-id>`), and recalled by meaning with the Python SDK.
-- 262 facts were backfilled from the existing database across 27 users. The
-  backfill is idempotent and resumable; re-running it cannot duplicate a fact.
+### Tatum on Sui
+
+"Walrus stores its blobs on Sui, so a memory can be verified on-chain. We read
+the blob object through Tatum's Sui gateway and report its certified epoch. That
+had to be gRPC: Tatum's Sui JSON-RPC endpoint does not exist, only the gRPC host
+answers."
+
+If `FEATURE_TATUM_SUI` is on and a preference carries a blob id, click Verify and
+show the badge.
+
+### x402 agent payments
+
+"An external agent can buy a brief about a job. It gets a 402 with x402 terms,
+pays USDC on Solana Devnet, and we verify the settlement through Tatum before
+returning anything. One signature buys one brief; a replay is refused."
+
+If you cannot demo a live payment, show the challenge:
+
+```
+GET /api/v1/agent/brief?job_id=<id>
+  -> 402 with scheme exact, network solana devnet, asset = USDC mint,
+     maxAmountRequired 10000, and an error of payment_missing
+```
+
+Say plainly: "the full round trip needs a funded devnet USDC payment, so I am
+showing the challenge rather than staging a fake transaction."
+
+### The engineering
+
+- 396 backend tests, 95 frontend tests, zero failures.
+- 262 facts backfilled from the existing database across 27 users. The backfill
+  is idempotent and resumable; re-running it cannot duplicate a fact.
 - Facts are extracted from rows by templates, never generated by a model, so a
   missing field produces no fact rather than a guess.
-- Solana reads route through Tatum's RPC gateway with a fast fallback; writes
-  never do, so escrow cannot be broken by a third party outage.
-- Sui verification is real and live: it reads a Walrus blob object through
-  Tatum's Sui gRPC endpoint and reports the certified epoch.
-- 352 backend tests and 84 frontend tests pass.
-- Two upstream bugs we filed were fixed by Mysten: no `forget` in the Python SDK
-  (#1061) and an idempotency key scoped across namespaces (#1312).
+- Five bugs filed upstream against Mysten's SDK and relayer, and all five are
+  now closed: no forget method, no scoring weights, dropped timestamps, a
+  localhost default in the Python SDK, and an idempotency key that collided
+  across namespaces and returned a 500. They shipped fixes in memwal 0.2.2 and
+  relayer v0.1.0.
 
 ## If something fails on camera
 
 Say what it says. The page and the agent panel name their failures now: "busy"
 means rate limited, "took too long" means the recall was slow, "local storage"
 means the relayer did not answer and it fell back. A demo that explains a failure
-is worth more than one that hides it.
+reads as competence; one that hides it reads as luck.
