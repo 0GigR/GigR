@@ -184,6 +184,11 @@ app.include_router(push.router, prefix="/api/v1/push", tags=["push"])
 from .api.v1.endpoints import admin
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 
+# The paid agent brief. Inert unless FEATURE_X402_AGENT_BRIEF is on and the
+# endpoint has a mint and a recipient; with the flag off the route answers 404.
+from .api.v1.endpoints import agent_brief
+app.include_router(agent_brief.router, prefix="/api/v1/agent", tags=["agent"])
+
 from .api.v1.endpoints import announcements
 app.include_router(announcements.router, prefix="/api/v1/announcements", tags=["announcements"])
 
