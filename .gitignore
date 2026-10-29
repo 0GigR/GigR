@@ -98,3 +98,7 @@ frontend/recordings/
 
 # Walrus memory backfill resume state
 backend/.walrus_backfill_state.json
+
+# Per-fact memory reconcile restore journal
+backend/.memory_reconcile_journal.json
+backend/.memory_reconcile_journal.json.tmp

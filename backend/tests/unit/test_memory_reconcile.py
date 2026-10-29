@@ -618,6 +618,35 @@ async def test_a_crash_after_the_wipe_is_repaired_by_the_next_call(
     assert journal.pending(USER) is None
 
 
+async def test_a_journal_that_cannot_be_written_refuses_to_wipe(
+    tmp_path, monkeypatch
+):
+    """Without a restore point a wipe could not be undone, so it does not run."""
+    enable(monkeypatch)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+    relayer = FakeRelayer()
+    memory = FactMemoryService(gateway=relayer)
+    relayer.seed(memory, USER, (FACT_JOB,))
+    service = MemoryReconcileService(
+        memory=memory,
+        gateway=relayer,
+        journal=MemoryReconcileJournal(
+            str(blocker / "journal.json"), settings.MEMWAL_NAMESPACE_PREFIX
+        ),
+        locks=KeyedLock(),
+    )
+
+    result = await service.delete_facts(USER, [FACT_JOB])
+
+    assert result.ok is False
+    assert result.reason == "journal_failed"
+    assert result.partial is False
+    assert result.detail != ""
+    assert relayer.forget_calls == []
+    assert relayer.texts(USER) == [FACT_JOB]
+
+
 async def test_a_corrupt_journal_refuses_to_wipe(tmp_path, monkeypatch):
     enable(monkeypatch)
     service, relayer, _, _ = build(tmp_path, seed=(FACT_JOB,))
@@ -893,6 +922,35 @@ async def test_delete_answers_with_the_typed_result_and_its_counts(
             "everything you kept is still remembered."
         ),
     }
+
+
+async def test_a_noop_delete_reports_what_remains_without_claiming_a_rewrite(
+    tmp_path, monkeypatch
+):
+    """A no-op reports the remaining count while claiming no rewrite.
+
+    This is the endpoint contract the page reads: removed and restored are zero,
+    but remaining is the number still stored. Reporting the rewritten count in
+    its place would tell the page the memory is empty.
+    """
+    enable(monkeypatch)
+    service, relayer, journal, _ = build(tmp_path, seed=(FACT_ABOUT, FACT_JOB))
+    install_service(monkeypatch, service)
+    app, _ = mount_app()
+
+    response = await call(
+        app,
+        "DELETE",
+        "/api/v1/ai/memory/facts",
+        json={"texts": ["Kosi is based in Ikeja."]},
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["reason"] == "nothing_to_remove"
+    assert (body["removed"], body["restored"], body["remaining"]) == (0, 0, 2)
+    assert relayer.forget_calls == []
+    assert journal.pending(USER) is None
 
 
 async def test_delete_one_category_removes_that_group(

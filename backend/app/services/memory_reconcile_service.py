@@ -678,6 +678,7 @@ class MemoryReconcileService:
                     reason=REASON_RESTORE_INCOMPLETE,
                     restored=restored,
                     partial=True,
+                    recovered=recovered,
                     detail=_partial_detail(restored, len(writes)),
                 )
             self._clear_journal(user_id)
