@@ -365,7 +365,7 @@ class AgentBriefService:
         # aggregate does not consume a signature. The claim is then committed
         # before any content is returned: at most one brief per signature, in
         # this process and the next.
-        brief = await self._build_brief(job)
+        brief = await self.build_brief(job)
 
         claimed = await claim_signature(
             self._db,
@@ -392,8 +392,13 @@ class AgentBriefService:
             requirement=requirement,
         )
 
-    async def _build_brief(self, job: Job) -> AgentBrief:
-        """Assemble the brief from aggregate queries, never from a loop of rows."""
+    async def build_brief(self, job: Job) -> AgentBrief:
+        """Assemble the brief from aggregate queries, never from a loop of rows.
+
+        Public because the purchase path re-serves the brief for a job this pair
+        has already paid for; that path owns the proof that the payment happened,
+        so this method deliberately checks no payment itself.
+        """
         ratings = ReceivedRatings(count=0, average=None, distribution={})
         completed_jobs = 0
         disputes = ProviderDisputes(total=0, open=0, resolved=0)
