@@ -113,28 +113,71 @@ On Sui, verification goes through Tatum's Sui gateway. That one is gRPC only:
 Tatum's Sui JSON-RPC endpoint does not exist, and Sui itself has deprecated
 JSON-RPC in favour of gRPC and GraphQL. We speak gRPC."
 
-## 9. Agent payments (30s)
+## 9. Agent payments (60s, the panel on screen)
 
-"A marketplace of agents is the next step: another agent should be able to buy
-intelligence from Gigr without a human signing up.
+Say this slowly. It is the part most judges will not have thought about.
 
-We built that with x402, the HTTP 402 payment scheme. An agent asks for a brief
-on a job. Instead of a login wall it gets a 402 with a price in USDC, a recipient
-and a nonce. It pays on Solana, retries with the settlement signature, and we
-verify that transaction on chain, checking the mint, the recipient, the amount
-and that the signature has not been spent before. One payment buys one brief.
+"Everything so far is a person using Gigr. Now here is the part that is about the
+next few years.
 
-Show the card, which is labelled QUOTE, NOT A PAYMENT.
+A marketplace of software is coming. Someone's AI assistant is going to hire a
+plumber on their behalf. Before it does, it wants to know: is this provider
+reliable, what do comparable jobs cost, are there disputes. It wants the brief
+this panel sells.
 
-"What I am showing is the quote, not a purchase, because a purchase needs a
-funded devnet wallet and I would rather show you the real challenge than stage a
-fake transaction. The verification path is tested against the case that matters
-most: a payment in the wrong token is refused. A worthless token is not USDC,
-and the endpoint says so."
+But that assistant has a problem. It is a program. It has no email address, no
+credit card, and it cannot fill in a signup form or click 'verify your email'.
+Every payment system we have was built for a human to use, and a program sits
+outside all of them.
 
-Note for you: x402 does not support Sui; its supported networks are EVM, Solana,
-TON, Algorand, Stellar, Aptos, Hedera, Keeta, NEAR, Concordium, XRPL and Cardano.
-Say "on Solana" and do not claim Sui settlement.
+x402 is the fix. It is an HTTP status code that was reserved in 1997 for exactly
+this and almost never used. When a program asks Gigr for a brief, Gigr does not
+answer with a login wall. It answers with a price."
+
+Point at the card.
+
+"One cent of USDC, on Solana, to this address, with a nonce that expires in five
+minutes. That is the whole negotiation."
+
+"It is a vending machine. No account, no session. Put in coins, get the item, and
+an AI agent's coins are its wallet. The wallet is the only identity it needs."
+
+### If you do the purchase live
+
+Tap Buy. Let it go through.
+
+"The money left my wallet, Gigr read that transaction on chain and checked four
+things: the right token, the right recipient, the right amount, and that this
+signature had not been spent before. One payment buys one brief. Then it released
+the content.
+
+That is a robot buying from a robot, with no human in the loop and no account
+anywhere."
+
+Say this plainly, because a careful judge will notice it:
+
+"Two honest notes. My payer and the treasury are both my own wallets, because this
+is a one-person demo; in production the payer is a partner's agent with its own
+key. And I am tapping a button instead of writing a script, but it is the same
+four requests a program would make: ask, get a price, pay, ask again with the
+proof."
+
+### If the purchase does not complete
+
+Say what the card says. If it says submitted but unconfirmed, say:
+
+"The transaction was submitted and we could not confirm it in time, so the card
+gives me the signature rather than telling me either a truth or a lie. That is
+deliberate: I would rather a user be told 'we do not know yet' than be told a
+purchase failed when their money moved."
+
+### The boundary, stated once
+
+"One thing x402 does not do yet is settle on Sui. Its supported networks are EVM,
+Solana, TON, Algorand, Stellar, Aptos, Hedera, Keeta, NEAR, Concordium, XRPL and
+Cardano. So we settle where it actually works, and the Sui verification I showed
+earlier is a separate, real integration. I would rather ship one rail that works
+than claim two that do not."
 
 ## 10. Close (15s)
 
