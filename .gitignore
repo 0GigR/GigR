@@ -102,3 +102,17 @@ backend/.walrus_backfill_state.json
 # Per-fact memory reconcile restore journal
 backend/.memory_reconcile_journal.json
 backend/.memory_reconcile_journal.json.tmp
+
+# Internal working notes and one-off scripts. The repo is public; these are not
+# part of the product.
+house-standard.md
+agent-os-plan.md
+ai-implementation.md
+voice-assistant-plan.md
+voice-calls-twilio.md
+whatweshalldobloke.md
+start.ps1
+db-cleanup-backup.json
+*.bak
+frontend/scripts/inspect-video.mjs
+docs/demo-*.md
