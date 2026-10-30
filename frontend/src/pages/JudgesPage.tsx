@@ -8,15 +8,27 @@
  * not read the auth store, and it renders for a signed-out visitor.
  *
  * Visual rules: fixed dark palette (the app's dark theme, hue 265), no images
- * beyond the Gigr mark, no animation library, and every motion is CSS that
- * stops under prefers-reduced-motion. The copy panel reveals lines instead of
- * characters so playback is never tied to a JavaScript animation loop.
+ * beyond the brand marks in public/brands, no animation library, and every
+ * motion is CSS that stops under prefers-reduced-motion. The copy panel reveals
+ * lines instead of characters so playback is never tied to a JavaScript
+ * animation loop.
+ *
+ * Layout rule: there is no mobile composition. The page is one arrangement -
+ * brand strip, stat row, video and chapters on the left, the following text on
+ * the right, agent flow below - and only the ratio, the type scale and the
+ * spacing change with width. Nothing here is scaled with a transform, so text
+ * stays text and the video keeps its own resolution.
+ *
+ * Video rule: the player starts itself, muted, once 60 percent of it is in the
+ * viewport (see lib/judgesPlayback.ts for the gate). It pauses when it leaves,
+ * never resumes after a deliberate pause, and shows a Play button if the
+ * browser refused the start or the viewer stopped it.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import {
   JUDGES_CHAPTERS,
   chapterIndexAt,
@@ -28,7 +40,9 @@ import {
   JUDGE_BRAND_LINKS,
   JUDGE_PRODUCT_LINKS,
 } from '@/lib/judgesContent'
+import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 import AgentPaymentFlow from '@/components/judges/AgentPaymentFlow'
 import './judges.css'
 
@@ -69,6 +83,10 @@ export default function JudgesPage() {
   // the player agrees (or four seconds pass) so the copy panel cannot flash
   // back to the previous chapter.
   const seekLockRef = useRef<{ index: number; expires: number } | null>(null)
+  // Share of the player frame inside the viewport, straight from the observer.
+  const [visibleRatio, setVisibleRatio] = useState(0)
+  const videoFrameRef = useRef<HTMLDivElement | null>(null)
+  const reducedMotion = usePrefersReducedMotion()
 
   const handleTime = useCallback((seconds: number) => {
     const next = chapterIndexAt(seconds)
@@ -85,10 +103,66 @@ export default function JudgesPage() {
     setActiveIndex((current) => (current === next ? current : next))
   }, [])
 
-  const { containerRef, isReady, failed, seekTo } = useYouTubePlayer(
-    DEMO_VIDEO_ID,
-    handleTime,
-  )
+  const {
+    containerRef,
+    isReady,
+    failed,
+    isPlaying,
+    isMuted,
+    userPaused,
+    autoplayRefused,
+    ended,
+    seekTo,
+    attemptAutoplay,
+    pauseForVisibility,
+    playFromGesture,
+    pauseFromGesture,
+    toggleMute,
+  } = useYouTubePlayer(DEMO_VIDEO_ID, handleTime)
+
+  useEffect(() => {
+    const node = videoFrameRef.current
+    if (!node) return
+    if (typeof IntersectionObserver === 'undefined') {
+      // Without an observer there is no way to know the player is on screen,
+      // so treat it as visible and let the muted start happen.
+      setVisibleRatio(1)
+      return
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry) setVisibleRatio(entry.intersectionRatio)
+      },
+      // Several steps, so a slow scroll reports the crossing of 60 percent
+      // promptly instead of waiting for a jump between two states.
+      { threshold: [0, 0.1, 0.25, 0.4, 0.6, 0.75, 0.9, 1] },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  const playback = playbackCommand({
+    visibleRatio,
+    isReady,
+    isPlaying,
+    ended,
+    reducedMotion,
+    userPaused,
+    autoplayRefused,
+  })
+
+  useEffect(() => {
+    if (playback === 'play') {
+      attemptAutoplay()
+    } else if (playback === 'pause') {
+      pauseForVisibility()
+    }
+  }, [playback, attemptAutoplay, pauseForVisibility])
+
+  // Under reduced motion the player is simply left paused; the Play button is
+  // for a start that was refused or a pause the viewer made.
+  const showPlayOverlay = isReady && !failed && (userPaused || autoplayRefused || ended)
 
   useEffect(() => {
     const previousTitle = document.title
@@ -124,7 +198,13 @@ export default function JudgesPage() {
       <header className="judges-header">
         <div className="judges-header-inner">
           <Link to="/" className="judges-brand" aria-label="Gigr home">
-            <img className="judges-logo" src="/icon.png" alt="" width={34} height={34} />
+            <img
+              className="judges-logo"
+              src="/brands/gigr.png"
+              alt="Gigr"
+              width={1024}
+              height={1024}
+            />
             <span className="judges-wordmark">Gigr</span>
             <span className="judges-brand-rule" aria-hidden="true" />
             <span className="judges-brand-context">Judge briefing</span>
@@ -152,7 +232,20 @@ export default function JudgesPage() {
           <ul className="judges-brand-strip" aria-label="Core brands">
             {JUDGES_BRANDS.map((brand) => (
               <li key={brand.name} className="judges-brand-tile" data-tone={brand.tone}>
-                <span className="judges-brand-tile-name">{brand.name}</span>{' '}
+                {brand.mark ? (
+                  <img
+                    className={`judges-brand-mark${brand.mark.chip ? ' is-chip' : ''}${
+                      brand.mark.invert ? ' is-invert' : ''
+                    }`}
+                    src={brand.mark.src}
+                    alt={brand.mark.alt}
+                    width={brand.mark.width}
+                    height={brand.mark.height}
+                    decoding="async"
+                  />
+                ) : (
+                  <span className="judges-brand-wordmark">{brand.name}</span>
+                )}
                 <span className="judges-brand-tile-role">{brand.role}</span>
               </li>
             ))}
@@ -199,7 +292,7 @@ export default function JudgesPage() {
               </OutboundLink>
             </div>
 
-            <div className="judges-video-frame">
+            <div ref={videoFrameRef} className="judges-video-frame">
               <div ref={containerRef} className="judges-video-mount" />
               {!isReady && (
                 <div className={`judges-video-status${failed ? ' is-error' : ''}`}>
@@ -215,7 +308,46 @@ export default function JudgesPage() {
                   )}
                 </div>
               )}
+              {showPlayOverlay && (
+                <button
+                  type="button"
+                  className="judges-video-play"
+                  onClick={playFromGesture}
+                  aria-label={
+                    ended ? 'Play the demo video from the start' : 'Play the demo video'
+                  }
+                >
+                  <Play aria-hidden="true" />
+                  <span>{ended ? 'Play again' : 'Play'}</span>
+                </button>
+              )}
             </div>
+
+            {isReady && !failed && (
+              <div className="judges-video-controls">
+                <button
+                  type="button"
+                  className="judges-video-control"
+                  onClick={isPlaying ? pauseFromGesture : playFromGesture}
+                  aria-label={isPlaying ? 'Pause the demo video' : 'Play the demo video'}
+                >
+                  {isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+                  <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="judges-video-control judges-video-sound"
+                  data-muted={isMuted ? 'true' : 'false'}
+                  onClick={toggleMute}
+                  aria-label={
+                    isMuted ? 'Turn the video sound on' : 'Turn the video sound off'
+                  }
+                >
+                  {isMuted ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
+                  <span>{isMuted ? 'Sound off' : 'Sound on'}</span>
+                </button>
+              </div>
+            )}
 
             <nav className="judges-chapters" aria-label="Video chapters">
               <ol className="judges-chapter-list">
