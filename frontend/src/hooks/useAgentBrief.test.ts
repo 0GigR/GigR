@@ -25,7 +25,9 @@ vi.mock('@/lib/api', () => ({
 import {
   BRIEF_REQUEST_TIMEOUT_MS,
   PURCHASE_REQUEST_TIMEOUT_MS,
-  fetchAgentBriefJobs,
+  PROVIDER_PAGE_SIZE,
+  PROVIDER_REQUEST_TIMEOUT_MS,
+  fetchBriefProviders,
   purchaseAgentBrief,
   requestAgentBriefQuote,
 } from './useAgentBrief'
@@ -116,53 +118,41 @@ describe('requestAgentBriefQuote', () => {
   })
 })
 
-describe('fetchAgentBriefJobs', () => {
-  it('reads the caller client and provider jobs and deduplicates them', async () => {
-    getMock
-      .mockResolvedValueOnce({
-        data: [
-          { id: 'job-a', title: 'Fix sink', status: 'open' },
-          { id: 'job-b', title: 'Move sofa', status: 'assigned' },
-        ],
-      })
-      .mockResolvedValueOnce({
-        data: [
-          { id: 'job-b', title: 'Move sofa (provider copy)', status: 'assigned' },
-          { id: 'job-c', title: 'Build shelf', status: 'completed' },
-        ],
-      })
+describe('fetchBriefProviders', () => {
+  const PROVIDER_ROW = {
+    provider_id: 'da15e7cb-2103-4d71-904b-2c6cb7616f66',
+    name: 'OKAFOR KOSISOCHUKWU',
+    category: 'Home Services',
+    rating_count: 3,
+    rating_average: 4,
+    completed_jobs: 3,
+    job_id: 'ff099832-29a6-48ad-9d42-02bbdd016010',
+    job_title: 'Traditional Private Chef',
+    job_price: 5000,
+  }
 
-    const jobs = await fetchAgentBriefJobs()
+  it('asks the provider index once, for one page, and reads the job each row carries', async () => {
+    getMock.mockResolvedValue({ data: { providers: [PROVIDER_ROW] } })
 
-    expect(getMock).toHaveBeenCalledTimes(2)
-    expect(getMock.mock.calls[0][0]).toBe('/jobs/')
-    expect(getMock.mock.calls[0][1].params).toEqual({ my: 'client', limit: 20 })
-    expect(getMock.mock.calls[1][1].params).toEqual({ my: 'provider', limit: 20 })
-    expect(jobs.map((job) => job.id)).toEqual(['job-a', 'job-b', 'job-c'])
-    expect(jobs[1].title).toBe('Move sofa')
+    const providers = await fetchBriefProviders()
+
+    expect(getMock).toHaveBeenCalledTimes(1)
+    const [path, options] = getMock.mock.calls[0]
+    expect(path).toBe('/agent/brief/providers')
+    expect(options.params).toEqual({ limit: PROVIDER_PAGE_SIZE })
+    expect(options.timeout).toBe(PROVIDER_REQUEST_TIMEOUT_MS)
+    expect(options.timeout).toBeGreaterThanOrEqual(15000)
+    // The brief endpoint is still keyed by job, so the row must hand one over.
+    expect(providers[0].jobId).toBe(PROVIDER_ROW.job_id)
+    expect(providers[0].name).toBe(PROVIDER_ROW.name)
   })
 
-  it('skips rows without an id and names a blank title', async () => {
-    getMock
-      .mockResolvedValueOnce({
-        data: [{ id: 'job-a', title: '   ', status: 'open' }, null, { title: 'No id' }, { id: 7 }],
-      })
-      .mockResolvedValueOnce({ data: [] })
+  it('throws when the list cannot be read, so the picker can say so', async () => {
+    getMock.mockRejectedValue(new Error('provider index failed'))
 
-    const jobs = await fetchAgentBriefJobs()
-    expect(jobs).toEqual([{ id: 'job-a', title: 'Untitled job', status: 'open' }])
-  })
-
-  it('keeps the jobs it could read when one side fails', async () => {
-    getMock
-      .mockRejectedValueOnce(new Error('provider list failed'))
-      .mockResolvedValueOnce({ data: [{ id: 'job-c', title: 'Build shelf', status: 'open' }] })
-
-    const jobs = await fetchAgentBriefJobs()
-    expect(jobs).toEqual([{ id: 'job-c', title: 'Build shelf', status: 'open' }])
+    await expect(fetchBriefProviders()).rejects.toThrow('provider index failed')
   })
 })
-
 
 const PAID_BODY = {
   status: 'paid',

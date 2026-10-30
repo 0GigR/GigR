@@ -1,5 +1,12 @@
 /**
- * AgentPaymentsPanel.tsx - "Agent payments": the x402 challenge, and the purchase.
+ * AgentPaymentsPanel.tsx - the x402 challenge, and the purchase.
+ *
+ * This panel lives on Agent access, not on Memory: it is about what an external
+ * agent can buy, which has nothing to do with what Gigr remembers about a user.
+ * An agent has no Gigr account, so the thing the panel chooses is a PROVIDER
+ * from the public marketplace, not one of the signed-in user's jobs. The brief
+ * endpoint is still priced by job, so the chosen provider's most recent
+ * completed job is the id the quote and the purchase are asked for.
  *
  * An external agent can buy a brief about a job: it asks, gets a 402 quote in
  * USDC on Solana, pays, and calls again; Gigr verifies that settlement on chain
@@ -28,8 +35,9 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ProviderCombobox } from '@/components/agent/ProviderCombobox'
 import {
-  fetchAgentBriefJobs,
+  fetchBriefProviders,
   purchaseAgentBrief,
   requestAgentBriefQuote,
 } from '@/hooks/useAgentBrief'
@@ -39,6 +47,7 @@ import {
   settlementSignature,
   type PurchaseOutcome,
 } from '@/lib/agentBriefPurchase'
+import type { BriefProvider } from '@/lib/providerPicker'
 import {
   isJobId,
   type BriefOutcome,
@@ -51,6 +60,9 @@ const INPUT_ID = 'agent-brief-job-id'
 const TOUCH_TARGET = 'h-11 min-h-11'
 
 export function AgentPaymentsPanel() {
+  const [provider, setProvider] = useState<BriefProvider | null>(null)
+  // The job the brief is priced for. It comes from the chosen provider, or from
+  // a pasted id when someone has one and no provider row.
   const [jobId, setJobId] = useState('')
   // An answer belongs to the id it was asked for. Editing the id drops the old
   // answer instead of leaving a quote for one job under another job's field.
@@ -63,19 +75,26 @@ export function AgentPaymentsPanel() {
   const quoteInFlight = useRef(false)
   const purchaseInFlight = useRef(false)
 
-  const jobsQuery = useQuery({
-    queryKey: ['agent-brief', 'jobs'],
-    queryFn: fetchAgentBriefJobs,
+  const providersQuery = useQuery({
+    queryKey: ['agent-brief', 'providers'],
+    queryFn: fetchBriefProviders,
     staleTime: 60_000,
     retry: 0,
   })
-  const jobs = jobsQuery.data ?? []
-  const pickedJob = jobs.some((job) => job.id === jobId) ? jobId : ''
+  const providers = providersQuery.data ?? []
   const outcome = answer && answer.jobId === jobId.trim() ? answer.outcome : null
   const purchaseOutcome =
     purchase && purchase.jobId === jobId.trim() ? purchase.outcome : null
   const bought =
     purchaseOutcome && purchaseOutcome.kind === 'paid' ? purchaseOutcome : null
+
+  const chooseProvider = (next: BriefProvider | null) => {
+    setProvider(next)
+    setJobId(next ? next.jobId : '')
+    // A new subject is a new question: the old quote belongs to the old job.
+    setAnswer(null)
+    setPurchase(null)
+  }
 
   const run = async () => {
     const cleaned = jobId.trim()
@@ -83,7 +102,11 @@ export function AgentPaymentsPanel() {
     if (!cleaned) {
       setAnswer({
         jobId: cleaned,
-        outcome: { kind: 'error', detail: 'Choose one of your jobs or paste its id first.' },
+        outcome: {
+          kind: 'error',
+          detail:
+            'Choose a provider first, or paste a job id. The brief is priced for one job.',
+        },
       })
       return
     }
@@ -127,7 +150,7 @@ export function AgentPaymentsPanel() {
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+    <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:p-5">
       <div className="flex gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/40">
           <CircleDollarSign className="h-5 w-5 text-sky-600 dark:text-sky-300" />
@@ -135,9 +158,9 @@ export function AgentPaymentsPanel() {
         <div className="min-w-0 flex-1">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Agent payments</h2>
           <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-            An external agent can buy a brief about a job: the endpoint quotes a price in USDC on
-            Solana and verifies the settlement on chain before it returns any content. You can buy
-            the same brief here in one tap, paid from your Gigr wallet.
+            An external agent can buy a brief about a provider: the endpoint quotes a price in
+            USDC on Solana and verifies the settlement on chain before it returns any content.
+            You can buy the same brief here in one tap, paid from your Gigr wallet.
           </p>
 
           <form
@@ -147,51 +170,64 @@ export function AgentPaymentsPanel() {
               void run()
             }}
           >
-            <label
-              htmlFor={INPUT_ID}
-              className="text-[11px] font-medium uppercase tracking-wide text-gray-500"
-            >
-              Job
-            </label>
-            {jobs.length > 0 && (
-              <select
-                aria-label="Pick one of your jobs"
-                value={pickedJob}
-                onChange={(event) => setJobId(event.target.value)}
-                className={`mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 p-2 text-sm text-gray-900 focus:ring-2 focus:ring-sky-500 dark:border-gray-700 dark:bg-gray-950/40 dark:text-gray-100 ${TOUCH_TARGET}`}
+            <ProviderCombobox
+              providers={providers}
+              selected={provider}
+              onSelect={chooseProvider}
+              loading={providersQuery.isLoading}
+              failed={providersQuery.isError}
+              onRetry={() => {
+                void providersQuery.refetch()
+              }}
+            />
+
+            {!providersQuery.isLoading &&
+              !providersQuery.isError &&
+              providers.length === 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  No provider has completed a job yet, so there is no brief to buy. Paste a job
+                  id below if you have one.
+                </p>
+              )}
+
+            <div className="mt-3">
+              <label
+                htmlFor={INPUT_ID}
+                className="text-[11px] font-medium uppercase tracking-wide text-gray-500"
               >
-                <option value="">Pick one of your jobs</option>
-                {jobs.map((job) => (
-                  <option key={job.id} value={job.id}>
-                    {job.title} ({job.status})
-                  </option>
-                ))}
-              </select>
-            )}
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                Or paste a job id
+              </label>
               <Input
                 id={INPUT_ID}
                 value={jobId}
-                onChange={(event) => setJobId(event.target.value)}
-                placeholder="Or paste a job id"
+                onChange={(event) => {
+                  setJobId(event.target.value)
+                  setProvider(null)
+                }}
+                placeholder="123e4567-e89b-12d3-a456-426614174000"
                 spellCheck={false}
                 autoComplete="off"
-                className={`font-mono text-xs sm:flex-1 ${TOUCH_TARGET}`}
+                className={`mt-1 font-mono text-xs ${TOUCH_TARGET}`}
               />
-              <Button
-                type="submit"
-                size="sm"
-                disabled={requesting}
-                className={`w-full shrink-0 sm:w-auto ${TOUCH_TARGET}`}
-              >
-                {requesting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ReceiptText className="h-3.5 w-3.5" />
-                )}
-                {requesting ? 'Requesting' : 'Request a brief'}
-              </Button>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Choosing a provider fills this in with that provider's most recent completed
+                job. Typing here replaces it.
+              </p>
             </div>
+
+            <Button
+              type="submit"
+              size="sm"
+              disabled={requesting}
+              className={`mt-3 w-full gap-1.5 ${TOUCH_TARGET}`}
+            >
+              {requesting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <ReceiptText className="h-3.5 w-3.5" />
+              )}
+              {requesting ? 'Requesting' : 'Request a brief'}
+            </Button>
           </form>
 
           {bought ? (

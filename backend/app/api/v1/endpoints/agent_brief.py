@@ -11,8 +11,13 @@ as the GET. The router parses, calls one service, and maps the service's typed
 outcome to a status code; the transfer, the confirmation wait, the replay guard
 and the brief itself live in the services.
 
-The feature flag is checked first on both routes. With it off neither one reads
-a job, builds a gateway, or touches a ledger.
+``GET /brief/providers`` is the picker's index: the providers a brief can be
+bought about, each with the representative completed job the existing job-keyed
+quote is asked for. It is public marketplace data and it changes no existing
+contract.
+
+The feature flag is checked first on both paid routes. With it off neither one
+reads a job, builds a gateway, or touches a ledger.
 """
 
 from __future__ import annotations
@@ -37,6 +42,8 @@ from ....schemas.agent_brief import (
     AgentBriefPaidOut,
     AgentBriefPurchaseFailure,
     AgentBriefPurchasedOut,
+    BriefProviderListOut,
+    BriefProviderOut,
     ComparableJobs,
     DisputeSummary,
     PaymentReceipt,
@@ -80,6 +87,7 @@ from ....services.agent_brief_service import (
     WRONG_RECIPIENT,
     BriefStatus,
     PaymentRequirement,
+    list_brief_providers,
 )
 
 logger = logging.getLogger(__name__)
@@ -191,6 +199,25 @@ def _brief_content(brief) -> AgentBriefOut:
         ),
         has_history=brief.has_history,
         summary=brief.summary,
+    )
+
+
+def _brief_provider(row) -> BriefProviderOut:
+    """One provider row in the shape the picker reads.
+
+    The display name is renamed ``name`` on purpose: the picker shows a provider
+    by name, and the rest of this payload is already public profile data.
+    """
+    return BriefProviderOut(
+        provider_id=row.provider_id,
+        name=row.display_name,
+        category=row.category_name,
+        rating_count=row.rating_count,
+        rating_average=row.rating_average,
+        completed_jobs=row.completed_jobs,
+        job_id=row.job_id,
+        job_title=row.job_title,
+        job_price=None if row.job_price is None else float(row.job_price),
     )
 
 
@@ -344,3 +371,33 @@ async def purchase_agent_brief(
             current_user.id,
         )
         return _purchase_failure(_failure_result(PURCHASE_UNAVAILABLE, PAYMENT_UNKNOWN))
+
+
+@router.get("/brief/providers", response_model=BriefProviderListOut)
+async def get_brief_providers(
+    q: str | None = Query(
+        None,
+        max_length=100,
+        description="Match part of a provider's name, case-insensitively.",
+    ),
+    limit: int = Query(20, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """The providers a brief can be bought about, with a representative job id.
+
+    Public, like the brief itself: this is marketplace data (a display name, a
+    category, a rating, a count), not the caller's own records. An agent that
+    wants to know who it could research has no Gigr account to authenticate
+    with, and the panel needs the list before anyone has paid.
+
+    Each row carries the job the existing job-keyed quote and purchase are asked
+    for: that provider's most recent completed job, chosen in the same query that
+    builds the row. Keeping the job id in the row is what lets the quote and the
+    purchase keep their contract unchanged.
+
+    Not gated by the brief's feature flag on purpose: the list is also what the
+    panel reads to explain that briefs are switched off in this deployment, and a
+    404 here would replace that sentence with a failed request.
+    """
+    rows = await list_brief_providers(db, search=q, limit=limit)
+    return BriefProviderListOut(providers=[_brief_provider(row) for row in rows])

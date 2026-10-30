@@ -30,6 +30,7 @@ from uuid import UUID, uuid4
 
 from ..core.errors import DependencyUnavailableError, RecordNotFoundError
 from ..crud.agent_brief_payment import claim_signature
+from ..crud.agent_brief_provider import BriefProviderRow, list_brief_provider_rows
 from ..crud.dispute import ProviderDisputes, summarize_disputes_for_provider
 from ..crud.job import (
     CompletedJobPrices,
@@ -450,3 +451,35 @@ class AgentBriefService:
             has_history=has_history,
             summary=summary,
         )
+
+
+# The picker's search is cut to this length before it becomes a LIKE pattern, so
+# a pasted page of text cannot become a pattern of that length. The page size has
+# its own ceiling, so no caller can ask for the whole user table in one request.
+BRIEF_PROVIDER_SEARCH_CHARS = 100
+BRIEF_PROVIDER_PAGE_SIZE = 20
+MAX_BRIEF_PROVIDER_PAGE_SIZE = 50
+
+
+async def list_brief_providers(
+    db,
+    *,
+    search: str | None = None,
+    limit: int = BRIEF_PROVIDER_PAGE_SIZE,
+) -> list[BriefProviderRow]:
+    """The providers a brief can be bought about, most completed jobs first.
+
+    Returns the rows the crud query produced, one per provider, each carrying the
+    representative completed job a brief would be priced for.
+
+    Input handling. A blank or whitespace-only search is no search at all, so the
+    picker's untouched field lists everyone instead of matching nobody. A search
+    longer than ``BRIEF_PROVIDER_SEARCH_CHARS`` is cut to that length rather than
+    refused, because a paste is not a mistake worth an error. ``limit`` is held
+    between one and ``MAX_BRIEF_PROVIDER_PAGE_SIZE``, so a hand-written request
+    cannot ask for every provider in one page. The escaping of LIKE wildcards
+    lives in the crud layer, next to the pattern it protects.
+    """
+    cleaned = (search or "").strip()[:BRIEF_PROVIDER_SEARCH_CHARS]
+    bounded = max(1, min(limit, MAX_BRIEF_PROVIDER_PAGE_SIZE))
+    return await list_brief_provider_rows(db, search=cleaned or None, limit=bounded)

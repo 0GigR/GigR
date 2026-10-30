@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Send, Loader2, ExternalLink } from 'lucide-react'
-import api, { extractError } from '@/lib/api'
+import api from '@/lib/api'
+import { transferFailureMessage } from '@/lib/walletTransfer'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,8 +45,12 @@ export function WalletTransferModal({
       toast.success(`Successfully sent ${data.amount} ${data.currency}!`)
       queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
     },
-    onError: (err: any) => {
-      toast.error(extractError(err, 'Transfer failed'))
+    // The message names the step that stopped the transfer: the server's own
+    // detail when it sent one, otherwise a status-specific sentence. It never
+    // says "network request failed", which used to be shown for a server crash
+    // the browser could not read.
+    onError: (err: unknown) => {
+      toast.error(transferFailureMessage(err))
     },
   })
 
@@ -173,6 +178,11 @@ export function WalletTransferModal({
                 onChange={(e) => setAmount(e.target.value)}
                 className="text-xs font-mono font-bold"
               />
+              {currency === 'USDC' && (
+                <p className="text-[11px] text-gray-500 dark:text-muted-foreground">
+                  USDC has six decimal places, so enter at most six.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2 justify-end pt-2">

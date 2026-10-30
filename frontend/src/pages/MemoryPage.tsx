@@ -14,8 +14,9 @@
  * The namespace wipe ("Forget everything Gigr remembers about me") is the
  * separate, explicit control that deletes every sentence this user has stored.
  * Sui verification also has a panel of its own ("Prove it on chain"), where the
- * known-good Walrus blob can be checked without a saved preference, and the
- * x402 paid-brief challenge is shown read-only in "Agent payments".
+ * known-good Walrus blob can be checked without a saved preference. The x402
+ * paid brief has its own page, /dashboard/agent-access: it is about what an
+ * outside agent can buy, which is not a memory setting.
  *
  * House standard: zero emojis, zero decorative unicode, confirmation before a
  * destructive action, and an honest state for empty, loading, error and
@@ -54,7 +55,6 @@ import {
 } from '@/hooks/useAgentMemory'
 import { MemoryFactsPanel } from '@/components/memory/MemoryFactsPanel'
 import { OnChainProofPanel } from '@/components/memory/OnChainProofPanel'
-import { AgentPaymentsPanel } from '@/components/memory/AgentPaymentsPanel'
 import {
   failedVerification,
   findSuiReference,
@@ -217,8 +217,6 @@ export default function MemoryPage() {
         />
 
         <OnChainProofPanel />
-
-        <AgentPaymentsPanel />
 
         {!factsLoading && preferenceCount > 0 ? (
           <section className="space-y-3">
