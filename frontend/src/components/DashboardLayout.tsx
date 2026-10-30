@@ -38,6 +38,7 @@ import {
   User,
   Bot,
   Brain,
+  KeyRound,
   Sun,
   Moon,
   LogOut,
@@ -154,6 +155,9 @@ export default function DashboardLayout() {
     ...(hasDisputes ? [{ to: '/dashboard/disputes', icon: Gavel, label: 'Disputes' }] : []),
     ...(aiEnabled ? [{ to: '/dashboard/memory', icon: Brain, label: 'Memory' }] : []),
     ...(aiEnabled ? [{ to: '/dashboard/ai-settings', icon: Bot, label: 'AI Settings' }] : []),
+    // Not gated on aiEnabled: the x402 brief is what an outside agent buys, and
+    // it works whether or not this account has the AI features on.
+    { to: '/dashboard/agent-access', icon: KeyRound, label: 'Agent access' },
     ...(isAdmin ? [{ to: '/dashboard/admin', icon: Shield, label: 'Admin' }] : []),
   ]
   const navItems = [...primaryNav, ...secondaryNav]

@@ -1,5 +1,5 @@
 /**
- * useAgentBrief.ts - the reads the Agent payments panel needs, and the purchase.
+ * useAgentBrief.ts - the reads the Agent access panel needs, and the purchase.
  *
  * `requestAgentBriefQuote` asks the paid-brief endpoint for its terms and stops
  * there. It never sends an X-PAYMENT header, so it cannot buy anything: the 402
@@ -14,9 +14,11 @@
  * before it answers, and every status is classified for the same reason as
  * above: a 402 here is "you have no USDC", a typed answer, not an exception.
  *
- * `fetchAgentBriefJobs` lists the caller's own jobs so a job id can be picked,
- * and is best effort: pasting an id must keep working when the list cannot be
- * read, so a failed side is skipped rather than failing the picker.
+ * `fetchBriefProviders` lists the providers a brief can be bought about, each
+ * with the representative completed job the quote is asked for. It is one
+ * request, so the picker cannot show a provider whose job id it has not read
+ * yet. A failure is surfaced, not swallowed: the picker then says it could not
+ * read the list and points at the job-id field, which still works.
  */
 
 import api from '@/lib/api'
@@ -24,6 +26,7 @@ import {
   classifyPurchaseResponse,
   type PurchaseOutcome,
 } from '@/lib/agentBriefPurchase'
+import { parseBriefProviders, type BriefProvider } from '@/lib/providerPicker'
 import { classifyBriefResponse, type BriefOutcome } from '@/lib/x402Challenge'
 
 /** A brief recall does a database read; the shared 15s timeout is close. */
@@ -35,11 +38,11 @@ export const BRIEF_REQUEST_TIMEOUT_MS = 20000
  */
 export const PURCHASE_REQUEST_TIMEOUT_MS = 60000
 
-export interface AgentBriefJob {
-  id: string
-  title: string
-  status: string
-}
+/** The picker asks for one page: a phone cannot use more than this. */
+export const PROVIDER_PAGE_SIZE = 50
+
+/** The provider list is one aggregate query, but it is still a database read. */
+export const PROVIDER_REQUEST_TIMEOUT_MS = 15000
 
 function isTimeout(error: unknown): boolean {
   return (
@@ -112,33 +115,17 @@ export async function purchaseAgentBrief(jobId: string): Promise<PurchaseOutcome
 }
 
 /**
- * The caller's jobs, clients and providers together, deduplicated by id.
+ * The providers a brief can be bought about, most completed jobs first.
  *
- * The two lists can overlap (a job where the caller is both sides), so the
- * first row for an id wins. Rows without a usable id or title are skipped
- * rather than rendered as blanks.
+ * Each row carries its own representative job id, so the picker does not make a
+ * second request to find one. A body that is not the documented shape reads as
+ * an empty list; a request that fails throws, because "we could not read the
+ * list" and "there are no providers" are different sentences to show.
  */
-export async function fetchAgentBriefJobs(): Promise<AgentBriefJob[]> {
-  const settled = await Promise.allSettled([
-    api.get('/jobs/', { params: { my: 'client', limit: 20 }, timeout: 15000 }),
-    api.get('/jobs/', { params: { my: 'provider', limit: 20 }, timeout: 15000 }),
-  ])
-
-  const byId = new Map<string, AgentBriefJob>()
-  for (const result of settled) {
-    if (result.status !== 'fulfilled') continue
-    const rows = Array.isArray(result.value.data) ? result.value.data : []
-    for (const row of rows) {
-      if (!row || typeof row !== 'object') continue
-      const record = row as Record<string, unknown>
-      const id = typeof record.id === 'string' ? record.id : null
-      if (!id || byId.has(id)) continue
-      byId.set(id, {
-        id,
-        title: typeof record.title === 'string' && record.title.trim() ? record.title : 'Untitled job',
-        status: typeof record.status === 'string' ? record.status : 'unknown',
-      })
-    }
-  }
-  return Array.from(byId.values())
+export async function fetchBriefProviders(): Promise<BriefProvider[]> {
+  const response = await api.get('/agent/brief/providers', {
+    params: { limit: PROVIDER_PAGE_SIZE },
+    timeout: PROVIDER_REQUEST_TIMEOUT_MS,
+  })
+  return parseBriefProviders(response.data)
 }

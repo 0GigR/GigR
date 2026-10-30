@@ -235,39 +235,135 @@ async def transfer_funds(
             )
             tx_sig = str(send_res.value)
         else:
-            # USDC transfer via SPL token
-            from spl.token.instructions import get_associated_token_address, transfer_checked
+            # USDC transfer via SPL token.
+            #
+            # Every refusal below is an HTTPException with a sentence that names
+            # the step that stopped it. The previous version raised a TypeError
+            # here (transfer_checked was called with keyword arguments this
+            # spl.token does not take); nothing caught it, so the browser got a
+            # 500 with no CORS headers and reported "network request failed".
+            from spl.token.instructions import get_associated_token_address
+            from solana.rpc.core import RPCException
             from ....services.solana_client import ensure_ata_exists, get_platform_payer
+            from ....services.wallet_transfer_service import (
+                build_usdc_transfer_instruction,
+                usdc_amount_atomic,
+            )
+
+            if not settings.USDC_MINT_DEVNET:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "USDC is not configured on this deployment, so a USDC transfer "
+                        "cannot be sent. Nothing left your wallet. Use SOL instead."
+                    ),
+                )
+
+            try:
+                amount_base_units = usdc_amount_atomic(data.amount)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "That USDC amount cannot be sent. Enter an amount greater than "
+                        "zero, no more than 1000000, with at most six decimal places. "
+                        "Nothing left your wallet."
+                    ),
+                ) from exc
 
             mint_pubkey = Pubkey.from_string(settings.USDC_MINT_DEVNET)
             sender_ata = get_associated_token_address(sender_kp.pubkey(), mint_pubkey)
 
-            # Ensure recipient ATA exists (platform payer funds rent if needed)
-            payer_kp = get_platform_payer()
-            recipient_ata = await ensure_ata_exists(payer_kp, recipient_pk, mint_pubkey)
+            # A wallet that has never held USDC has no token account for this
+            # mint, and the transfer would fail at preflight with a message that
+            # names no next step. Say that here instead.
+            sender_account = await client.get_account_info(sender_ata)
+            if sender_account.value is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Your Gigr wallet has no USDC token account yet, so there is "
+                        "nothing to send. Add USDC to this wallet first, then try again. "
+                        "Nothing left your wallet."
+                    ),
+                )
 
-            amount_base_units = int(data.amount * 1_000_000)  # USDC has 6 decimals
-            ix = transfer_checked(
+            try:
+                payer_kp = get_platform_payer()
+                recipient_ata = await ensure_ata_exists(
+                    payer_kp, recipient_pk, mint_pubkey
+                )
+            except Exception:
+                logger.exception(
+                    "[wallet-transfer] could not prepare the recipient USDC account "
+                    "user_id=%s recipient=%s",
+                    current_user.id,
+                    recipient_pubkey_str,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "We could not open a USDC account for the recipient, so the "
+                        "transfer was not sent. Nothing left your wallet. Try again in a "
+                        "moment."
+                    ),
+                )
+
+            ix = build_usdc_transfer_instruction(
                 source=sender_ata,
                 mint=mint_pubkey,
                 dest=recipient_ata,
                 owner=sender_kp.pubkey(),
-                amount=amount_base_units,
-                decimals=6,
+                amount_atomic=amount_base_units,
             )
-            blockhash_resp = await client.get_latest_blockhash()
-            recent_blockhash = blockhash_resp.value.blockhash
-            msg = MessageV0.try_compile(
-                payer=sender_kp.pubkey(),
-                instructions=[ix],
-                address_lookup_table_accounts=[],
-                recent_blockhash=recent_blockhash,
-            )
-            tx = VersionedTransaction(msg, [sender_kp])
-            send_res = await client.send_transaction(
-                tx, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
-            )
-            tx_sig = str(send_res.value)
+            try:
+                blockhash_resp = await client.get_latest_blockhash()
+                recent_blockhash = blockhash_resp.value.blockhash
+                msg = MessageV0.try_compile(
+                    payer=sender_kp.pubkey(),
+                    instructions=[ix],
+                    address_lookup_table_accounts=[],
+                    recent_blockhash=recent_blockhash,
+                )
+                tx = VersionedTransaction(msg, [sender_kp])
+                send_res = await client.send_transaction(
+                    tx, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
+                )
+                tx_sig = str(send_res.value)
+            except RPCException:
+                # A preflight rejection means the node simulated the transfer and
+                # refused it, so nothing was submitted and nothing can move.
+                logger.exception(
+                    "[wallet-transfer] Solana refused the USDC transfer before sending "
+                    "user_id=%s recipient=%s",
+                    current_user.id,
+                    recipient_pubkey_str,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "Solana refused the USDC transfer before it was sent, so no money "
+                        "moved. Check the amount and the recipient address, then try "
+                        "again."
+                    ),
+                )
+            except Exception:
+                # Past a preflight rejection the answer is genuinely unknown: the
+                # node may have accepted the transfer and the reply may have been
+                # lost. Say exactly that instead of claiming nothing was sent.
+                logger.exception(
+                    "[wallet-transfer] USDC transfer outcome unknown user_id=%s recipient=%s",
+                    current_user.id,
+                    recipient_pubkey_str,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=(
+                        "We lost Solana's answer while sending the USDC transfer. Do not "
+                        "send it again yet: check your wallet activity first, then try "
+                        "again if nothing moved."
+                    ),
+                )
 
     if target_user:
         await create_notification(

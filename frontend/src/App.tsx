@@ -54,6 +54,7 @@ const AdminDashboard = lazyWithRetry(() => import('@/pages/AdminDashboard'))
 const PublicProfilePage = lazyWithRetry(() => import('@/pages/PublicProfilePage'))
 const AISettingsPage = lazyWithRetry(() => import('@/pages/AISettingsPage'))
 const MemoryPage = lazyWithRetry(() => import('@/pages/MemoryPage'))
+const AgentAccessPage = lazyWithRetry(() => import('@/pages/AgentAccessPage'))
 const PayPalReturnPage = lazyWithRetry(() => import('@/pages/PayPalReturnPage'))
 const PaymentsPage = lazyWithRetry(() => import('@/pages/PaymentsPage'))
 const NotFoundPage = lazyWithRetry(() => import('@/pages/NotFoundPage'))
@@ -156,6 +157,7 @@ function App() {
               <Route path="profile" element={<ProfilePage />} />
               <Route path="ai-settings" element={<AISettingsPage />} />
               <Route path="memory" element={<MemoryPage />} />
+              <Route path="agent-access" element={<AgentAccessPage />} />
               <Route path="admin" element={<AdminDashboard />} />
               <Route path="user/:userId" element={<PublicProfilePage />} />
               <Route path="profile/:userId" element={<PublicProfilePage />} />

@@ -205,6 +205,36 @@ class AgentBriefPurchasedOut(AgentBriefPaidOut):
     already_purchased: bool = False
 
 
+class BriefProviderOut(BaseModel):
+    """One provider the picker can offer, and the job its brief would be about.
+
+    The brief endpoint is priced by job, so ``job_id`` is the representative
+    completed job the panel asks its quote for. It is part of this row on
+    purpose: the picker makes one request, and a second round trip to find a job
+    for the chosen provider would be a second chance to disagree with the row.
+    """
+
+    provider_id: UUID
+    name: str
+    category: str | None
+    rating_count: int
+    rating_average: float | None
+    completed_jobs: int
+    job_id: UUID
+    job_title: str
+    job_price: float | None
+
+
+class BriefProviderListOut(BaseModel):
+    """The picker's page of providers.
+
+    ``providers`` is empty when no provider has completed a job yet, or when the
+    search matches none. That is a state the panel names, not an error.
+    """
+
+    providers: list[BriefProviderOut]
+
+
 class AgentBriefPurchaseFailure(BaseModel):
     """A purchase answer that is not paid: typed, and explicit about the money.
 
