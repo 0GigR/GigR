@@ -207,6 +207,7 @@ body:has(.judges-page) {
 
 .judges-header-cta:focus-visible,
 .judges-brand:focus-visible,
+.judges-brand-tile-link:focus-visible,
 .judges-button:focus-visible,
 .judges-chapter:focus-visible,
 .judges-link:focus-visible,
@@ -369,12 +370,20 @@ body:has(.judges-page) {
 .judges-brand-tile {
   --brand-tone: #a78bfa;
   --brand-wash: rgba(167, 139, 250, 0.14);
+  display: flex;
+  min-width: 0;
+}
+
+/* The tile is the anchor: the whole card is clickable, but it is still one
+   link among five, never a single link around the strip. */
+.judges-brand-tile-link {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: center;
   gap: clamp(2px, 0.2vw, 3px);
+  width: 100%;
   min-width: 0;
   min-height: clamp(52px, calc(1.3333vw + 46.8px), 66px);
   padding: clamp(6px, calc(0.6667vw + 3.4px), 13px);
@@ -385,6 +394,16 @@ body:has(.judges-page) {
   background:
     linear-gradient(180deg, var(--brand-wash), rgba(26, 25, 34, 0.82) 70%),
     var(--judges-card);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.judges-brand-tile-link:hover {
+  border-color: rgba(196, 181, 253, 0.45);
+  border-top-color: var(--brand-tone);
+  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.9);
+  transform: translateY(-1px);
 }
 
 .judges-brand-tile[data-tone='blue'] {
@@ -948,6 +967,29 @@ body:has(.judges-page) {
   }
 }
 
+/* Inline links in the copy panel. The underline carries the affordance, so the
+   colour is not the only signal, and it stays legible on the dark panel. */
+.judges-copy-link {
+  color: #e4dcff;
+  font-weight: 560;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(196, 181, 253, 0.6);
+  text-underline-offset: 2px;
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+.judges-copy-link:hover {
+  color: #ffffff;
+  text-decoration-color: rgba(255, 255, 255, 0.85);
+}
+
+.judges-copy-link:focus-visible {
+  outline: 2px solid var(--judges-primary-bright);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 /* -- Links ---------------------------------------------------------------- */
 
 .judges-links {
@@ -1184,6 +1226,83 @@ body:has(.judges-page) {
   line-height: 1.4;
 }
 
+/* -- Upstream issues ------------------------------------------------------
+   Five compact rows. The number is a fixed first column and the title wraps
+   inside minmax(0, 1fr), so a long title can never widen the page. */
+
+.judges-issues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.judges-issue {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(26, 25, 34, 0.6);
+  color: var(--judges-text-soft);
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.judges-issue:hover {
+  border-color: var(--judges-border-strong);
+  background: var(--judges-card-raised);
+}
+
+.judges-issue:focus-visible {
+  outline: 2px solid var(--judges-primary-bright);
+  outline-offset: 2px;
+}
+
+.judges-issue-number {
+  color: #c4b5fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+
+.judges-issue-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.judges-issue-title {
+  font-size: clamp(11.5px, calc(0.1905vw + 10.757px), 13px);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.judges-issue-note {
+  color: var(--judges-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.judges-issue .judges-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--judges-muted);
+  transition: color 160ms ease;
+}
+
+.judges-issue:hover .judges-icon {
+  color: var(--judges-primary-bright);
+}
+
 /* -- Footer --------------------------------------------------------------- */
 
 .judges-footer {
@@ -1282,7 +1401,7 @@ body:has(.judges-page) {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
-  .judges-brand-tile {
+  .judges-brand-tile-link {
     padding: 4px;
   }
 
@@ -1321,6 +1440,7 @@ body:has(.judges-page) {
   }
 
   .judges-button:hover,
+  .judges-brand-tile-link:hover,
   .judges-link:hover {
     transform: none;
   }

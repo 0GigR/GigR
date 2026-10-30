@@ -6,6 +6,8 @@
  * tests can assert the required wording and order without rendering React.
  */
 
+import type { JudgesChapterId } from './judgesChapters'
+
 export type JudgeBrandTone = 'blue' | 'amber' | 'violet' | 'sky' | 'cyan'
 
 export interface JudgeBrandMark {
@@ -25,6 +27,8 @@ export interface JudgeBrand {
   name: string
   role: string
   tone: JudgeBrandTone
+  /** Where the tile goes: the brand's own public site or upstream repository. */
+  href: string
   /**
    * The real mark, or null when no asset exists. x402 has no logo, and the
    * page sets it as type rather than inventing one.
@@ -32,12 +36,19 @@ export interface JudgeBrand {
   mark: JudgeBrandMark | null
 }
 
-/** Order of prominence: Walrus Memory, Tatum, x402, Sui, MemWal. */
+/**
+ * Order of prominence: Walrus Memory, Tatum, x402, Sui, MemWal.
+ *
+ * Tile destinations: the Walrus tile carries the Walrus mark and the storage
+ * role, so it opens the Walrus network; the MemWal tile is the memory SDK and
+ * opens the upstream walrus-memory repository that it ships from.
+ */
 export const JUDGES_BRANDS: readonly JudgeBrand[] = [
   {
     name: 'Walrus Memory',
     role: 'Walrus storage',
     tone: 'blue',
+    href: 'https://walrus.xyz',
     mark: {
       src: '/brands/walrus.ico',
       alt: 'Walrus Memory logo',
@@ -50,6 +61,7 @@ export const JUDGES_BRANDS: readonly JudgeBrand[] = [
     name: 'Tatum',
     role: 'Chain reads',
     tone: 'amber',
+    href: 'https://tatum.io',
     mark: {
       src: '/brands/tatum-chip.png',
       alt: 'Tatum logo',
@@ -62,12 +74,14 @@ export const JUDGES_BRANDS: readonly JudgeBrand[] = [
     name: 'x402',
     role: 'Agent payments',
     tone: 'violet',
+    href: 'https://x402.org',
     mark: null,
   },
   {
     name: 'Sui',
     role: 'Walrus chain',
     tone: 'sky',
+    href: 'https://sui.io',
     mark: {
       src: '/brands/sui-chip.png',
       alt: 'Sui logo',
@@ -80,6 +94,7 @@ export const JUDGES_BRANDS: readonly JudgeBrand[] = [
     name: 'MemWal',
     role: 'Memory SDK',
     tone: 'cyan',
+    href: 'https://github.com/MystenLabs/walrus-memory',
     mark: {
       src: '/brands/memwal-chip.png',
       alt: 'MemWal logo',
@@ -168,3 +183,147 @@ export const JUDGE_PRODUCT_LINKS: readonly JudgeLink[] = [
   },
   { label: 'Source', note: 'The whole repository', href: 'https://github.com/0GigR/GigR' },
 ]
+
+/**
+ * A link inside a chapter's copy.
+ *
+ * `chapter` and `line` place it; `label` is the exact substring of that line
+ * that becomes the anchor, so the anchor text is always visible copy rather
+ * than a bare URL. A sentence can hold more than one link (the x402 line does).
+ */
+export interface JudgeCopyLink {
+  chapter: JudgesChapterId
+  line: number
+  label: string
+  href: string
+}
+
+/**
+ * Only the claims a reader can actually check are linked. The Walrus delete
+ * claim points at the recovery test, the Tatum claims at the Sui migration
+ * notes and the exact blob, and the x402 claims at the protocol, the network
+ * support matrix and the status code definition.
+ */
+export const JUDGE_COPY_LINKS: readonly JudgeCopyLink[] = [
+  {
+    chapter: 'memory',
+    line: 5,
+    label: 'the recovery test',
+    href: 'https://github.com/0GigR/GigR/blob/main/backend/tests/unit/test_memory_reconcile.py',
+  },
+  {
+    chapter: 'tatum',
+    line: 2,
+    label: 'Sui has deprecated JSON-RPC',
+    href: 'https://docs.sui.io/develop/accessing-data/json-rpc-migration',
+  },
+  {
+    chapter: 'tatum',
+    line: 2,
+    label: 'the blob we verified',
+    href: 'https://suivision.xyz/object/0x0000003c64bf4bda578d911acb4f93f470a89f66d9fd8993fdb032cf007b1c93',
+  },
+  {
+    chapter: 'x402',
+    line: 1,
+    label: 'HTTP 402',
+    href: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/402',
+  },
+  {
+    chapter: 'x402',
+    line: 6,
+    label: 'x402',
+    href: 'https://x402.org',
+  },
+  {
+    chapter: 'x402',
+    line: 6,
+    label: 'does not support Sui',
+    href: 'https://raw.githubusercontent.com/coinbase/x402/main/docs/core-concepts/network-and-token-support.mdx',
+  },
+]
+
+export interface JudgeIssue {
+  number: number
+  /** The issue title, and the anchor text of the row. */
+  label: string
+  /** The follow-up a judge would otherwise have to dig out of the thread. */
+  note: string | null
+  href: string
+}
+
+/** The five upstream issues, all closed; the notes say where each fix landed. */
+export const JUDGE_UPSTREAM_ISSUES: readonly JudgeIssue[] = [
+  {
+    number: 1061,
+    label: 'Python SDK has no forget or delete method',
+    note: 'shipped as forget in memwal 0.2.2',
+    href: 'https://github.com/MystenLabs/walrus-memory/issues/1061',
+  },
+  {
+    number: 1062,
+    label: 'recall() cannot pass scoring weights',
+    note: null,
+    href: 'https://github.com/MystenLabs/walrus-memory/issues/1062',
+  },
+  {
+    number: 1063,
+    label: 'recall() drops the created_at and score fields',
+    note: null,
+    href: 'https://github.com/MystenLabs/walrus-memory/issues/1063',
+  },
+  {
+    number: 1064,
+    label: 'Python SDK defaults server_url to localhost',
+    note: null,
+    href: 'https://github.com/MystenLabs/walrus-memory/issues/1064',
+  },
+  {
+    number: 1312,
+    label: 'idempotency key reused across namespaces returns a 500',
+    note: 'fixed in relayer 0.1.0',
+    href: 'https://github.com/MystenLabs/walrus-memory/issues/1312',
+  },
+]
+
+/** A piece of a chapter line: plain text, or the text of an external link. */
+export interface JudgeTextSegment {
+  text: string
+  href?: string
+}
+
+/**
+ * Splits `line` at the labels in `links`, in the order they appear.
+ *
+ * The links are matched by their exact label so a typo in the copy cannot
+ * silently turn a claim into plain text: the tests assert every label is
+ * present in the line it is placed on. Overlapping matches are left as text
+ * instead of producing nested anchors.
+ */
+export function linkSegments(
+  line: string,
+  links: readonly Pick<JudgeCopyLink, 'label' | 'href'>[],
+): readonly JudgeTextSegment[] {
+  const matches = links
+    .map((link) => ({ link, at: line.indexOf(link.label) }))
+    .filter((match) => match.at >= 0)
+    .sort((a, b) => a.at - b.at)
+
+  if (matches.length === 0) return [{ text: line }]
+
+  const segments: JudgeTextSegment[] = []
+  let cursor = 0
+  for (const { link, at } of matches) {
+    if (at < cursor) continue
+    if (at > cursor) segments.push({ text: line.slice(cursor, at) })
+    segments.push({ text: link.label, href: link.href })
+    cursor = at + link.label.length
+  }
+  if (cursor < line.length) segments.push({ text: line.slice(cursor) })
+  return segments
+}
+
+/** A link is safe to render only when it is an absolute https URL. */
+export function isSafeExternalHref(href: string): boolean {
+  return /^https:\/\/[^\s]+$/.test(href) && !href.toLowerCase().startsWith('javascript:')
+}
