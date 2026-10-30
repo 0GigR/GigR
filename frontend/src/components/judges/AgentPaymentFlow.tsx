@@ -21,23 +21,7 @@ import {
   agentFlowBalanceAt,
   agentFlowStepAt,
 } from '@/lib/judgesAgentFlow'
-
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return false
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  })
-
-  useEffect(() => {
-    if (!window.matchMedia) return
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const onChange = () => setReduced(query.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
-
-  return reduced
-}
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
 
 interface Packet {
   direction: 'left' | 'right'
@@ -176,7 +160,13 @@ export default function AgentPaymentFlow() {
                 <span className="agent-card-name">Gigr</span>
                 <span className="agent-public">public endpoint</span>
               </div>
-              <img className="agent-gigr-mark" src="/icon.png" alt="" width={44} height={44} />
+              <img
+                className="agent-gigr-mark"
+                src="/brands/gigr.png"
+                alt="Gigr"
+                width={1024}
+                height={1024}
+              />
               <code className="agent-endpoint">GET /api/v1/agent/brief</code>
               <span className={`agent-http${step === 1 ? ' is-402' : ''}${step === 5 ? ' is-200' : ''}`}>
                 {httpStatus}

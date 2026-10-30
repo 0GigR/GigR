@@ -8,19 +8,86 @@
 
 export type JudgeBrandTone = 'blue' | 'amber' | 'violet' | 'sky' | 'cyan'
 
+export interface JudgeBrandMark {
+  /** Served straight out of public/brands; never copied anywhere else. */
+  src: string
+  alt: string
+  /** Intrinsic pixel size, kept so the browser reserves the right box. */
+  width: number
+  height: number
+  /** Dark artwork shipped on its supplied white chip, so it stays legible. */
+  chip?: boolean
+  /** A dark mark on transparent, flipped to white for the dark page. */
+  invert?: boolean
+}
+
 export interface JudgeBrand {
   name: string
   role: string
   tone: JudgeBrandTone
+  /**
+   * The real mark, or null when no asset exists. x402 has no logo, and the
+   * page sets it as type rather than inventing one.
+   */
+  mark: JudgeBrandMark | null
 }
 
 /** Order of prominence: Walrus Memory, Tatum, x402, Sui, MemWal. */
 export const JUDGES_BRANDS: readonly JudgeBrand[] = [
-  { name: 'Walrus Memory', role: 'Walrus storage', tone: 'blue' },
-  { name: 'Tatum', role: 'Chain reads', tone: 'amber' },
-  { name: 'x402', role: 'Agent payments', tone: 'violet' },
-  { name: 'Sui', role: 'Walrus chain', tone: 'sky' },
-  { name: 'MemWal', role: 'Memory SDK', tone: 'cyan' },
+  {
+    name: 'Walrus Memory',
+    role: 'Walrus storage',
+    tone: 'blue',
+    mark: {
+      src: '/brands/walrus.ico',
+      alt: 'Walrus Memory logo',
+      width: 64,
+      height: 64,
+      invert: true,
+    },
+  },
+  {
+    name: 'Tatum',
+    role: 'Chain reads',
+    tone: 'amber',
+    mark: {
+      src: '/brands/tatum-chip.png',
+      alt: 'Tatum logo',
+      width: 788,
+      height: 452,
+      chip: true,
+    },
+  },
+  {
+    name: 'x402',
+    role: 'Agent payments',
+    tone: 'violet',
+    mark: null,
+  },
+  {
+    name: 'Sui',
+    role: 'Walrus chain',
+    tone: 'sky',
+    mark: {
+      src: '/brands/sui-chip.png',
+      alt: 'Sui logo',
+      width: 306,
+      height: 184,
+      chip: true,
+    },
+  },
+  {
+    name: 'MemWal',
+    role: 'Memory SDK',
+    tone: 'cyan',
+    mark: {
+      src: '/brands/memwal-chip.png',
+      alt: 'MemWal logo',
+      width: 772,
+      height: 452,
+      chip: true,
+    },
+  },
 ]
 
 export interface JudgeStat {
