@@ -116,3 +116,5 @@ db-cleanup-backup.json
 *.bak
 frontend/scripts/inspect-video.mjs
 docs/demo-*.md
+docs/competitor-landscape.md
+testhtmls/
