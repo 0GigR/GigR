@@ -53,7 +53,7 @@ export const JUDGES_CHAPTERS: readonly JudgesChapter[] = [
       'Facts are extracted from real rows by templates. No model writes a memory from nothing, so nothing is invented.',
       'The store grows with use. Every job, correction and stated preference adds to it.',
       'Deleting one memory is the hard part. Walrus deletes a whole namespace, not a single record.',
-      'So a delete rewrites the namespace without that memory and saves everything again.',
+      'So a delete rewrites the namespace without that memory and saves everything again; the recovery test is the proof.',
       'The upstream SDK had no delete at all. That fix shipped in memwal 0.2.2.',
       'A user can still ask to be forgotten, and the next read confirms the fact is gone.',
     ],
@@ -66,7 +66,7 @@ export const JUDGES_CHAPTERS: readonly JudgesChapter[] = [
     lines: [
       'Tatum is the read layer: three integrations across two chains.',
       'Reads on Solana go through Tatum: the account and the latest blockhash, with a four second timeout and a single fast fallback if a read times out.',
-      'On Sui, gRPC get_object reads the Walrus blob and its certified epoch.',
+      'Sui has deprecated JSON-RPC. On Sui, gRPC get_object reads the blob we verified and its certified epoch.',
       'Tatum\'s getTransaction verifies every x402 payment before Gigr answers.',
       'The discipline is simple: writes never go through Tatum.',
       'Escrow, milestone releases and settlement are signed by our own transaction path.',
@@ -81,7 +81,7 @@ export const JUDGES_CHAPTERS: readonly JudgesChapter[] = [
     start: 272,
     lines: [
       'An external agent cannot sign up. It has no email, no password and no browser.',
-      'So Gigr answers with a price instead of a login wall.',
+      'So Gigr answers with HTTP 402 and a price instead of a login wall.',
       'The challenge is 0.01 USDC, with a nonce.',
       'Gigr verifies on chain: the right mint, the right recipient, the right amount, and a signature that has not been spent.',
       'One payment buys one brief. There is no account and no session.',

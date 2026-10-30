@@ -38,7 +38,10 @@ import {
   JUDGES_BRANDS,
   JUDGES_STATS,
   JUDGE_BRAND_LINKS,
+  JUDGE_COPY_LINKS,
   JUDGE_PRODUCT_LINKS,
+  JUDGE_UPSTREAM_ISSUES,
+  linkSegments,
 } from '@/lib/judgesContent'
 import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
@@ -232,21 +235,23 @@ export default function JudgesPage() {
           <ul className="judges-brand-strip" aria-label="Core brands">
             {JUDGES_BRANDS.map((brand) => (
               <li key={brand.name} className="judges-brand-tile" data-tone={brand.tone}>
-                {brand.mark ? (
-                  <img
-                    className={`judges-brand-mark${brand.mark.chip ? ' is-chip' : ''}${
-                      brand.mark.invert ? ' is-invert' : ''
-                    }`}
-                    src={brand.mark.src}
-                    alt={brand.mark.alt}
-                    width={brand.mark.width}
-                    height={brand.mark.height}
-                    decoding="async"
-                  />
-                ) : (
-                  <span className="judges-brand-wordmark">{brand.name}</span>
-                )}
-                <span className="judges-brand-tile-role">{brand.role}</span>
+                <OutboundLink className="judges-brand-tile-link" href={brand.href}>
+                  {brand.mark ? (
+                    <img
+                      className={`judges-brand-mark${brand.mark.chip ? ' is-chip' : ''}${
+                        brand.mark.invert ? ' is-invert' : ''
+                      }`}
+                      src={brand.mark.src}
+                      alt={brand.mark.alt}
+                      width={brand.mark.width}
+                      height={brand.mark.height}
+                      decoding="async"
+                    />
+                  ) : (
+                    <span className="judges-brand-wordmark">{brand.name}</span>
+                  )}
+                  <span className="judges-brand-tile-role">{brand.role}</span>
+                </OutboundLink>
               </li>
             ))}
           </ul>
@@ -396,15 +401,32 @@ export default function JudgesPage() {
               {activeChapter.title}
             </h2>
             <div key={activeChapter.id} className="judges-copy">
-              {activeChapter.lines.map((line, index) => (
-                <p
-                  key={line}
-                  className="judges-line"
-                  style={{ animationDelay: `${index * 100}ms` }}
-                >
-                  {line}
-                </p>
-              ))}
+              {activeChapter.lines.map((line, lineIndex) => {
+                const links = JUDGE_COPY_LINKS.filter(
+                  (link) => link.chapter === activeChapter.id && link.line === lineIndex,
+                )
+                return (
+                  <p
+                    key={line}
+                    className="judges-line"
+                    style={{ animationDelay: `${lineIndex * 100}ms` }}
+                  >
+                    {linkSegments(line, links).map((segment, segmentIndex) =>
+                      segment.href ? (
+                        <OutboundLink
+                          key={segmentIndex}
+                          className="judges-copy-link"
+                          href={segment.href}
+                        >
+                          {segment.text}
+                        </OutboundLink>
+                      ) : (
+                        <span key={segmentIndex}>{segment.text}</span>
+                      ),
+                    )}
+                  </p>
+                )
+              })}
             </div>
             <p className="sr-only" role="status" aria-live="polite">
               Chapter {activeIndex + 1} of {chapterCount}: {activeChapter.title}
@@ -449,6 +471,28 @@ export default function JudgesPage() {
                       {link.label}
                     </span>
                     <span className="judges-brand-link-note">{link.note}</span>
+                    <ExternalLink className="judges-icon" aria-hidden="true" />
+                  </OutboundLink>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="judges-link-group">
+            <h3 className="judges-link-group-title">
+              Upstream issues we filed, all closed
+            </h3>
+            <ul className="judges-issues">
+              {JUDGE_UPSTREAM_ISSUES.map((issue) => (
+                <li key={issue.number}>
+                  <OutboundLink className="judges-issue" href={issue.href}>
+                    <span className="judges-issue-number">{issue.number}</span>
+                    <span className="judges-issue-body">
+                      <span className="judges-issue-title">{issue.label}</span>
+                      {issue.note && (
+                        <span className="judges-issue-note">{issue.note}</span>
+                      )}
+                    </span>
                     <ExternalLink className="judges-icon" aria-hidden="true" />
                   </OutboundLink>
                 </li>
