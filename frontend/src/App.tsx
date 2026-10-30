@@ -42,6 +42,9 @@ const LoginPage = lazyWithRetry(() => import('@/pages/LoginPage'))
 const RegisterPage = lazyWithRetry(() => import('@/pages/RegisterPage'))
 const ForgotPasswordPage = lazyWithRetry(() => import('@/pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazyWithRetry(() => import('@/pages/ResetPasswordPage'))
+// Public judge briefing. Deliberately not in the sidebar or mobile More sheet:
+// the URL is pasted directly to hackathon judges and must work signed out.
+const JudgesPage = lazyWithRetry(() => import('@/pages/JudgesPage'))
 const HomePage = lazyWithRetry(() => import('@/pages/HomePage'))
 const JobsPage = lazyWithRetry(() => import('@/pages/JobsPage'))
 const ServicesPage = lazyWithRetry(() => import('@/pages/ServicesPage'))
@@ -133,6 +136,7 @@ function App() {
             <Route path="/register" element={<Suspense fallback={<PageFallback />}><RegisterPage /></Suspense>} />
             <Route path="/forgot-password" element={<Suspense fallback={<PageFallback />}><ForgotPasswordPage /></Suspense>} />
             <Route path="/reset-password" element={<Suspense fallback={<PageFallback />}><ResetPasswordPage /></Suspense>} />
+            <Route path="/judges" element={<Suspense fallback={<PageFallback />}><JudgesPage /></Suspense>} />
 
             {/* Dashboard routes: DashboardLayout renders immediately and synchronously.
                 It contains its own internal Suspense fallback around the content Outlet,
