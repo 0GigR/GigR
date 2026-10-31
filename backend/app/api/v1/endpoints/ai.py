@@ -55,6 +55,8 @@ from ....schemas.agent import AgentCommandRequest, AgentTaskOut, AgentLogOut, Ag
 from ....services.ws_manager import manager as _ws_manager
 from ....services.groq_client import extract_json as _extract_json
 from ....services.agent_guardrails import (
+    MEMORY_CONTEXT_ANCHOR,
+    is_action_task,
     sanitize_user_input,
     validate_intent,
     build_enriched_system_prompt,
@@ -119,6 +121,9 @@ Rules:
 - Numbers: convert "5k" → 5000, "10k" → 10000, "₦5,000" → 5000, "five thousand" → 5000
 - If the intent is unclear, use "generic" — NOT "search", which is not a
   supported task type and silently degrades to a chat reply
+
+""" + MEMORY_CONTEXT_ANCHOR + """
+
 - Return ONLY the JSON, no markdown, no explanation"""
 
 
@@ -268,8 +273,14 @@ def _extract_search_query(text: str) -> Optional[str]:
                 return q
     return None
 
-def _parse_command_rules(text: str) -> Dict[str, Any]:
-    """Rule-based NLP fallback. Returns same structure as Groq parser."""
+def _parse_command_rules(text: str, *, allow_guess: bool = True) -> Dict[str, Any]:
+    """Rule-based NLP fallback. Returns same structure as Groq parser.
+
+    ``allow_guess=False`` keeps the rules to the branches that name a clear
+    intent and makes the final catch-all reply instead of turning an
+    unrecognised sentence into a service search. The intent guard uses it to
+    tell a confident action apart from the catch-all's guess.
+    """
     text_lower = text.lower().strip()
 
     # ─── Navigation ─────────────────────────────────────────────────
@@ -311,7 +322,17 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Physical symptoms / needs mapping ───────────────────────────
-    if re.search(r"\b(?:back\s+hurts?|sore\s+(?:body|muscles?|back)|body\s+(?:is\s+)?sore|sore\s+muscles?|better\s+my\s+sore|massage|masseuse|masseur|stiff\s+neck|body\s+pain|ache|aching)\b", text_lower):
+    # The model is told these symptoms mean "find a massage", but the fallback
+    # is the guarantee. It must cover the way people actually say it, not only
+    # the two examples in the prompt: "body feels sore" and "I feel sore" are
+    # the same request as "sore body".
+    if re.search(
+        r"\b(?:back\s+hurts?|sore\s+(?:body|muscles?|back)|body\s+(?:is\s+|feels?\s+)?sore|"
+        r"feel(?:s|ing)?\s+(?:a\s+bit\s+|really\s+|so\s+|very\s+)?sore|"
+        r"sore\s+muscles?|better\s+my\s+sore|massage|masseuse|masseur|stiff\s+neck|"
+        r"body\s+pain|ache|aching)\b",
+        text_lower,
+    ):
         return {
             "task_type": "find_service",
             "params": {"query": "massage", "max_price": _extract_price(text), "radius_km": _extract_radius_km(text)},
@@ -424,6 +445,16 @@ def _parse_command_rules(text: str) -> Dict[str, Any]:
         }
 
     # ─── Final fallback ───────────────────────────────────────────────
+    if not allow_guess:
+        # The caller asked only for a classification the rules are sure of. An
+        # unrecognised sentence is not a service search: guessing one here would
+        # turn ordinary chat into a search on the strength of one vague word.
+        return {
+            "task_type": "generic",
+            "params": {"query": text},
+            "response": "Could you clarify what you'd like to do?",
+        }
+
     query = _extract_search_query(text_lower) or text
     return {
         "task_type": "find_service",
@@ -444,10 +475,22 @@ async def parse_command(
 
     Tries Groq Llama-3 first with context guardrails, memory enrichment, and multi-turn session context.
     Falls back to rule-based regex parser if Groq key is missing or validation fails.
+
+    A reply is not allowed to replace an action the user asked for. Memory is
+    context for the decision, so when the model answers with the one task type
+    that only talks ("generic") and the message itself names an action, the
+    rules' confident classification wins. A question about the user's own
+    history is generic by the rules too, so it keeps the model's answer, which
+    is the one place the recalled memory is supposed to speak.
     """
     clean_text = sanitize_user_input(text)
     groq_result = await _parse_command_groq(clean_text, memory=memory, session_history=session_history)
     if groq_result and groq_result.get("task_type"):
+        if is_action_task(groq_result.get("task_type")):
+            return groq_result
+        rule_result = _parse_command_rules(clean_text, allow_guess=False)
+        if is_action_task(rule_result.get("task_type")):
+            return rule_result
         return groq_result
     return _parse_command_rules(clean_text)
 

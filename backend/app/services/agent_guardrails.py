@@ -46,10 +46,55 @@ VALID_NAV_PAGES = frozenset({
     "profile",
 })
 
+# The task types that make the agent do something. "generic" is the only one
+# that only answers in words, so it is the only type memory may legitimately
+# produce.
+ACTION_TASK_TYPES = VALID_TASK_TYPES - {"generic"}
+
+
+def is_action_task(task_type: Any) -> bool:
+    """True when a parsed task type performs an action rather than only replying.
+
+    ``generic`` means "answer in words"; every other valid type means "do
+    something". The intent guard uses this to tell a memory-shaped reply apart
+    from an action the user asked for.
+    """
+    return task_type in ACTION_TASK_TYPES
+
+
 _CHARS_PER_TOKEN = 4
 CONTEXT_TOKEN_BUDGET = 2048
 SESSION_HISTORY_BUDGET = 400
 MEMORY_BUDGET = 200
+
+# One remembered value can outgrow the whole hint: a mirrored memory value is
+# capped at 2000 characters by the memory service. A value that long would spend
+# the budget on its own and hide every other memory, so each entry is cut to
+# this length before it is costed, and the joined hint is cut to MEMORY_BUDGET
+# tokens worth of characters at the end. Both caps live here, next to the
+# budget they protect.
+MEMORY_ENTRY_CHARS = 160
+MEMORY_HINT_MAX_CHARS = MEMORY_BUDGET * _CHARS_PER_TOKEN
+
+# Where build_enriched_system_prompt puts the memory block. A base prompt
+# carries this marker just before its closing instruction, so the instruction
+# that tells the model to choose an action stays the last text it reads, however
+# much memory is injected.
+MEMORY_CONTEXT_ANCHOR = "[MEMORY_CONTEXT]"
+
+# The framing that goes in front of the remembered facts. Memory is context for
+# the decision, never the decision: without this framing the model reads a list
+# of past services and answers a service request by repeating the list instead
+# of choosing an action. ASCII only, like the rest of this file.
+MEMORY_CONTEXT_RULES = (
+    "[User context, for reference only. These are remembered facts about the "
+    "user, not the task and not a list to repeat. They may change the query you "
+    "choose; they never change what the user is asking for. When the user asks "
+    "for a service, a job, a provider or a fix, choose the matching action even "
+    "when this context lists services, and never answer with a list of these "
+    "remembered entries. Answer from this context only when the user asks about "
+    "their own history, preferences or usual prices."
+)
 
 _RESPONSE_LEAK_PATTERNS = [
     re.compile(r"you are a command parser", re.IGNORECASE),
@@ -211,7 +256,18 @@ def prune_session_history(
 
 
 def build_memory_hint(memory: Dict[str, Any], budget_tokens: int = MEMORY_BUDGET) -> str:
-    """Serialise the most useful memory fields into a compact hint string."""
+    """Serialise the most useful memory fields into a compact hint string.
+
+    The hint is bounded twice: each entry is cut to :data:`MEMORY_ENTRY_CHARS`
+    before it is costed, and the whole hint is cut to
+    :data:`MEMORY_HINT_MAX_CHARS`, which is :data:`MEMORY_BUDGET` tokens worth
+    of characters. An entry that does not fit is skipped rather than ending the
+    loop, so one long value cannot hide the smaller memories behind it.
+
+    Priority fields come first. Every other field follows in a stable sorted
+    order, because recalled Walrus facts arrive as whole sentences under their
+    own labels and an allowlist of key names would discard them.
+    """
     if not memory:
         return ""
 
@@ -224,45 +280,27 @@ def build_memory_hint(memory: Dict[str, Any], budget_tokens: int = MEMORY_BUDGET
         "price_sensitivity",
         "last_active_job_id",
     ]
+    ordered_keys = priority_keys + sorted(
+        key for key in memory if key not in priority_keys
+    )
 
     parts: List[str] = []
     tokens_used = 0
 
-    for key in priority_keys:
+    for key in ordered_keys:
         value = memory.get(key)
         if value is None:
             continue
         if isinstance(value, list):
             value = ", ".join(str(v) for v in value[:5])
-        hint = f"{key}: {value}"
+        hint = f"{key}: {value}"[:MEMORY_ENTRY_CHARS]
         cost = _estimate_tokens(hint)
         if tokens_used + cost > budget_tokens:
-            break
+            continue
         parts.append(hint)
         tokens_used += cost
 
-    # Fields outside the priority list are still memory. Recalled Walrus facts
-    # arrive as whole sentences under their own labels, and an allowlist that
-    # only renders the seven keys above silently discards every one of them:
-    # the relayer answered, the prompt received nothing, and the task logged a
-    # recall of zero. Remaining fields follow the priority ones, in a stable
-    # order, within the same token budget.
-    for key in sorted(memory):
-        if key in priority_keys:
-            continue
-        value = memory.get(key)
-        if value is None:
-            continue
-        if isinstance(value, list):
-            value = ", ".join(str(v) for v in value[:5])
-        hint = f"{key}: {value}"
-        cost = _estimate_tokens(hint)
-        if tokens_used + cost > budget_tokens:
-            break
-        parts.append(hint)
-        tokens_used += cost
-
-    return "; ".join(parts)
+    return "; ".join(parts)[:MEMORY_HINT_MAX_CHARS]
 
 
 def build_enriched_system_prompt(
@@ -270,21 +308,39 @@ def build_enriched_system_prompt(
     memory: Optional[Dict[str, Any]] = None,
     session_turn: int = 1,
 ) -> str:
-    """Construct the system prompt with controlled context injection."""
-    sections: List[str] = [base_prompt]
+    """Construct the system prompt with controlled context injection.
+
+    The context block goes where the base prompt's :data:`MEMORY_CONTEXT_ANCHOR`
+    marks, which a caller places just before its closing instruction. That keeps
+    the action instruction in a stable position: adding memory never pushes it
+    out of the prompt or lets memory text become the last thing the model reads.
+    A base prompt without the marker gets the context first, which is still
+    before every instruction, because appending it would put memory after the
+    closing instruction, which is the regression this guards against.
+    """
+    context_parts: List[str] = []
 
     if memory:
         hint = build_memory_hint(memory)
         if hint:
-            sections.append(f"[User context: {hint}]")
+            context_parts.append(f"{MEMORY_CONTEXT_RULES} {hint}]")
 
     if session_turn > 1:
-        sections.append(
+        context_parts.append(
             f"[This is turn {session_turn} of an ongoing session. "
             f"Earlier turns are in the conversation history.]"
         )
 
-    return "\n\n".join(sections)
+    context = "\n\n".join(context_parts)
+
+    if MEMORY_CONTEXT_ANCHOR in base_prompt:
+        rendered = base_prompt.replace(MEMORY_CONTEXT_ANCHOR, context, 1)
+        return re.sub(r"\n{3,}", "\n\n", rendered)
+
+    if not context:
+        return base_prompt
+
+    return f"{context}\n\n{base_prompt}"
 
 
 def sanitize_user_input(text: str) -> str:
