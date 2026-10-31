@@ -86,7 +86,7 @@ export const JUDGES_CHAPTERS: readonly JudgesChapter[] = [
       'Gigr verifies on chain: the right mint, the right recipient, the right amount, and a signature that has not been spent.',
       'One payment buys one brief. There is no account and no session.',
       'The agent pays, receives the brief and can cite it.',
-      'x402 does not support Sui, so this rail settles on Solana.',
+      "x402's own network list does not support Sui, so this rail settles on Solana; a community Sui scheme (suimpp) is the next rail.",
       'That is the whole exchange: a price, a payment, and a check before the data moves.',
     ],
   },
