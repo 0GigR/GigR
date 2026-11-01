@@ -105,7 +105,6 @@ backend/.memory_reconcile_journal.json.tmp
 
 # Internal working notes and one-off scripts. The repo is public; these are not
 # part of the product.
-house-standard.md
 agent-os-plan.md
 ai-implementation.md
 voice-assistant-plan.md
@@ -118,3 +117,6 @@ frontend/scripts/inspect-video.mjs
 docs/demo-*.md
 docs/competitor-landscape.md
 testhtmls/
+
+# TypeScript build cache. Regenerated on every build.
+*.tsbuildinfo
