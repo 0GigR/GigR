@@ -120,3 +120,16 @@ testhtmls/
 
 # TypeScript build cache. Regenerated on every build.
 *.tsbuildinfo
+
+# Submission drafts and internal planning. The repo is public and judge facing;
+# these describe the entry rather than ship as part of it.
+DEVPOST_SUBMISSION.md
+docs/total-recall-submission.md
+docs/HACKATHON.md
+
+# A stray duplicate created by a file copy, never referenced.
+frontend/README copy.md
+
+# Render blueprint. The application deploys to Koyeb and Vercel, so this file
+# describes infrastructure that is not in use.
+render.yaml
