@@ -1,484 +1,545 @@
 /**
- * EncodeAuroraPage.tsx - Dedicated showcase route (/ea) for the Aurora Intents Hackathon.
+ * EncodeAuroraPage.tsx - Hackathon judge briefing for Aurora Intents on Solana.
  *
- * Live multi-chain intent execution directly wired to Aurora / 1Click.
  * Conforms strictly to house-standard.md:
- * - Strict typography and styling, zero emojis anywhere
- * - Comprehensive live testbench: supported chains, live quote engine, deposit status polling
- * - Direct evidence of the master on/off switch behavior
+ * - Uses Gigr's standard dark palette and judges briefing layout (judges.css)
+ * - Zero emojis anywhere in code, copy, or markup
+ * - Synchronized chapter navigation ready for demo video playback
+ * - Zero interactive simulator/sandboxes on this page: pure demo briefing
  */
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+import { ExternalLink, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import {
-  Globe,
-  ArrowRight,
-  Layers,
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { isFeatureEnabled } from '@/lib/featureFlags'
-import {
-  AURORA_SUPPORTED_CHAINS,
-  getAuroraIntegrationStatus,
-  requestAuroraQuote,
-  pollAuroraDepositStatus,
-  type AuroraQuoteResult,
-  type AuroraStatusResult,
-} from '@/lib/auroraIntents'
+  AURORA_CHAPTERS,
+  chapterIndexAt,
+  formatChapterTime,
+} from '@/lib/auroraChapters'
+import { playbackCommand } from '@/lib/judgesPlayback'
+import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
+import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import './judges.css'
+
+// Placeholder video ID until user records their live walkthrough
+const DEMO_VIDEO_ID = 'HM9IAKpiks0'
+const DEMO_VIDEO_URL = 'https://youtu.be/HM9IAKpiks0'
+const APPLICATION_URL = 'https://gigrr.vercel.app'
+const SOURCE_URL = 'https://github.com/0GigR/GigR'
+const CI_URL = 'https://github.com/0GigR/GigR/actions'
+
+interface BrandTile {
+  name: string
+  role: string
+  tone: 'violet' | 'sky' | 'blue' | 'cyan'
+  href: string
+  mark?: {
+    src: string
+    alt: string
+    width: number
+    height: number
+    invert?: boolean
+  }
+}
+
+const BRANDS: readonly BrandTile[] = [
+  {
+    name: 'Gigr',
+    role: 'Solana escrow marketplace',
+    tone: 'violet',
+    href: 'https://gigrr.vercel.app',
+    mark: {
+      src: '/brands/gigr.png',
+      alt: 'Gigr logo',
+      width: 64,
+      height: 64,
+    },
+  },
+  {
+    name: 'Aurora Intents',
+    role: 'Cross-chain engine',
+    tone: 'sky',
+    href: 'https://intents.aurora.dev',
+  },
+  {
+    name: 'NEAR Intents',
+    role: '1Click routing',
+    tone: 'blue',
+    href: 'https://near.org',
+  },
+  {
+    name: 'Solana',
+    role: 'Settlement layer',
+    tone: 'violet',
+    href: 'https://solana.com',
+  },
+]
+
+const STATS = [
+  { value: '38+', label: 'Supported blockchains' },
+  { value: '0.5%', label: 'Custom fee margin' },
+  { value: '10s', label: 'Circuit breaker gateway' },
+  { value: '318', label: 'Tests passing in CI' },
+]
+
+function OutboundLink({
+  href,
+  className,
+  tone,
+  children,
+}: {
+  href: string
+  className?: string
+  tone?: string
+  children: ReactNode
+}) {
+  return (
+    <a
+      className={className}
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-tone={tone}
+    >
+      {children}
+    </a>
+  )
+}
 
 export default function EncodeAuroraPage() {
-  const isEnabledInClient = isFeatureEnabled('auroraIntents')
-  const [backendStatus, setBackendStatus] = useState<{
-    enabled: boolean
-    configured: boolean
-    baseUrl: string
-    feeBps: number
-    network: string
-  } | null>(null)
-  const [loadingStatus, setLoadingStatus] = useState(true)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const seekLockRef = useRef<{ index: number; expires: number } | null>(null)
+  const [visibleRatio, setVisibleRatio] = useState(0)
+  const videoFrameRef = useRef<HTMLDivElement | null>(null)
+  const reducedMotion = usePrefersReducedMotion()
 
-  // Live Simulator state
-  const [selectedChainId, setSelectedChainId] = useState('base')
-  const [amount, setAmount] = useState('0.01')
-  const [solanaRecipient, setSolanaRecipient] = useState(
-    '72sWqFv9Qp5qPj9k9wB3x8X3fVwE7qR8kL9mZ2yP4xW'
-  )
-  const [refundTo, setRefundTo] = useState(
-    '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'
-  )
-  const [isQuoting, setIsQuoting] = useState(false)
-  const [quoteResult, setQuoteResult] = useState<AuroraQuoteResult | null>(null)
-  const [quoteError, setQuoteError] = useState<string | null>(null)
-  const [depositStatus, setDepositStatus] = useState<AuroraStatusResult | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  const selectedChain =
-    AURORA_SUPPORTED_CHAINS.find((c) => c.id === selectedChainId) ||
-    AURORA_SUPPORTED_CHAINS[0]
-
-  useEffect(() => {
-    if (selectedChain) {
-      setRefundTo(selectedChain.sampleRefundAddress)
-    }
-  }, [selectedChainId])
-
-  // Live status polling when a real deposit address is generated
-  useEffect(() => {
-    if (!quoteResult?.depositAddress) return
-
-    const interval = setInterval(async () => {
-      try {
-        const st = await pollAuroraDepositStatus(quoteResult.depositAddress)
-        setDepositStatus(st)
-      } catch {
-        // tolerate network blip
+  const handleTime = useCallback((seconds: number) => {
+    const next = chapterIndexAt(seconds)
+    const lock = seekLockRef.current
+    if (lock) {
+      if (next === lock.index) {
+        seekLockRef.current = null
+      } else if (performance.now() < lock.expires) {
+        return
+      } else {
+        seekLockRef.current = null
       }
-    }, 4000)
-
-    return () => clearInterval(interval)
-  }, [quoteResult?.depositAddress])
-
-  const fetchStatus = async () => {
-    setLoadingStatus(true)
-    const status = await getAuroraIntegrationStatus()
-    setBackendStatus(status)
-    setLoadingStatus(false)
-  }
-
-  useEffect(() => {
-    fetchStatus()
+    }
+    setActiveIndex((current) => (current === next ? current : next))
   }, [])
 
-  const handleSimulateQuote = async () => {
-    setIsQuoting(true)
-    setQuoteError(null)
-    setQuoteResult(null)
-    setDepositStatus(null)
+  const {
+    containerRef,
+    isReady,
+    failed,
+    isPlaying,
+    isMuted,
+    userPaused,
+    autoplayRefused,
+    ended,
+    seekTo,
+    attemptAutoplay,
+    pauseForVisibility,
+    playFromGesture,
+    pauseFromGesture,
+    toggleMute,
+  } = useYouTubePlayer(DEMO_VIDEO_ID, handleTime)
 
-    try {
-      const parsedFloat = parseFloat(amount)
-      if (isNaN(parsedFloat) || parsedFloat <= 0) {
-        throw new Error('Please enter a valid amount.')
-      }
-
-      // Convert human amount to base atomic units based on selected token decimals
-      const atomicMultiplier = BigInt(10) ** BigInt(selectedChain.decimals)
-      const wholePart = Math.floor(parsedFloat)
-      const fractionalPart = parsedFloat - wholePart
-      const atomicAmount = (
-        BigInt(wholePart) * atomicMultiplier +
-        BigInt(Math.round(fractionalPart * Number(atomicMultiplier)))
-      ).toString()
-
-      const res = await requestAuroraQuote({
-        originAsset: selectedChain.defaultAssetId,
-        amount: atomicAmount,
-        recipient: solanaRecipient.trim(),
-        refundTo: refundTo.trim(),
-      })
-      setQuoteResult(res)
-    } catch (err: any) {
-      setQuoteError(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'Failed to execute quote with Aurora Intents 1Click engine.'
-      )
-    } finally {
-      setIsQuoting(false)
+  useEffect(() => {
+    const node = videoFrameRef.current
+    if (!node) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisibleRatio(1)
+      return
     }
-  }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry) setVisibleRatio(entry.intersectionRatio)
+      },
+      { threshold: [0, 0.1, 0.25, 0.4, 0.6, 0.75, 0.9, 1] },
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const playback = playbackCommand({
+    visibleRatio,
+    isReady,
+    isPlaying,
+    ended,
+    reducedMotion,
+    userPaused,
+    autoplayRefused,
+  })
+
+  useEffect(() => {
+    if (playback === 'play') {
+      attemptAutoplay()
+    } else if (playback === 'pause') {
+      pauseForVisibility()
+    }
+  }, [playback, attemptAutoplay, pauseForVisibility])
+
+  const showPlayOverlay =
+    isReady && !failed && (userPaused || autoplayRefused || ended)
+
+  useEffect(() => {
+    const previousTitle = document.title
+    document.title = 'Gigr - Encode Aurora Judge Briefing'
+    return () => {
+      document.title = previousTitle
+    }
+  }, [])
+
+  const activeChapter = AURORA_CHAPTERS[activeIndex] ?? AURORA_CHAPTERS[0]
+  const nextChapter = AURORA_CHAPTERS[activeIndex + 1]
+  const chapterCount = AURORA_CHAPTERS.length
+
+  const selectChapter = useCallback(
+    (index: number) => {
+      const chapter = AURORA_CHAPTERS[index]
+      if (!chapter) return
+      seekLockRef.current = { index, expires: performance.now() + 4000 }
+      setActiveIndex(index)
+      seekTo(chapter.start)
+    },
+    [seekTo],
+  )
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-emerald-500 selection:text-black">
-      <div className="max-w-6xl mx-auto space-y-10">
-        {/* Header / Brand Strip */}
-        <div className="border-b border-slate-800 pb-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Badge variant="outline" className="text-emerald-400 border-emerald-500/40 px-2.5 py-0.5 text-xs font-mono tracking-wide">
-                ENCODE AURORA HACKATHON
-              </Badge>
-              <Badge variant="secondary" className="bg-slate-800 text-slate-300 text-xs font-mono">
-                SOLANA DEVNET RAIL
-              </Badge>
-            </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white">
-              Aurora Intents for Gigr
-            </h1>
-            <p className="text-slate-400 mt-2 max-w-2xl text-sm leading-relaxed">
-              Live multi-chain liquidity and one-signature settlement bringing 38+ blockchains into Gigr's hyperlocal services marketplace on Solana.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchStatus}
-              className="border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loadingStatus ? 'animate-spin' : ''}`} />
-              Refresh Status
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => window.open('https://docs.intents.aurora.dev', '_blank')}
-              className="bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs"
-            >
-              Aurora Docs <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Master Switch Isolation Banner */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="bg-slate-900/60 border-slate-800 p-5 space-y-2">
-            <div className="text-xs uppercase font-mono tracking-wider text-slate-400 flex items-center justify-between">
-              Client Feature Flag
-              {isEnabledInClient ? (
-                <span className="text-emerald-400 font-semibold">[ACTIVE]</span>
-              ) : (
-                <span className="text-amber-400 font-semibold">[OFF / INERT]</span>
-              )}
-            </div>
-            <div className="text-lg font-bold font-mono text-white">
-              VITE_FEATURE_AURORA_INTENTS
-            </div>
-            <p className="text-xs text-slate-400">
-              When disabled, all Aurora UI modules disappear completely, preserving core Solana/PayPal operation.
-            </p>
-          </Card>
-
-          <Card className="bg-slate-900/60 border-slate-800 p-5 space-y-2">
-            <div className="text-xs uppercase font-mono tracking-wider text-slate-400 flex items-center justify-between">
-              Backend Gateway
-              {backendStatus?.enabled ? (
-                <span className="text-emerald-400 font-semibold">[ARMED]</span>
-              ) : (
-                <span className="text-slate-500 font-semibold">[DISABLED]</span>
-              )}
-            </div>
-            <div className="text-lg font-bold font-mono text-white">
-              FEATURE_AURORA_INTENTS
-            </div>
-            <p className="text-xs text-slate-400">
-              Outbound boundary uses circuit breakers and structured metric sinks adhering to house standards.
-            </p>
-          </Card>
-
-          <Card className="bg-slate-900/60 border-slate-800 p-5 space-y-2">
-            <div className="text-xs uppercase font-mono tracking-wider text-slate-400 flex items-center justify-between">
-              Target Settlement
-              <span className="text-sky-400 font-semibold">[DEVNET]</span>
-            </div>
-            <div className="text-lg font-bold font-mono text-white">
-              Solana USDC Program
-            </div>
-            <p className="text-xs text-slate-400">
-              Settles atomically into Gigr's Anchor Escrow PDA contracts and user wallets on Solana Devnet.
-            </p>
-          </Card>
-        </div>
-
-        {/* Main Architectural Flow Diagram */}
-        <Card className="bg-slate-900/80 border-slate-800 p-6 md:p-8 space-y-6">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-lg font-bold text-white tracking-wide">
-              Cross-Chain Intent Execution Architecture
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
-            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2">
-              <div className="text-xs font-mono text-slate-400">STEP 1: ORIGIN</div>
-              <div className="text-sm font-semibold text-white">Any External Chain</div>
-              <p className="text-[11px] text-slate-400 leading-snug">
-                Client signs one intent from MetaMask, Rabby, or Native Wallet (Ethereum, Base, TON, Bitcoin).
-              </p>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2">
-              <div className="text-xs font-mono text-emerald-400">STEP 2: ROUTING</div>
-              <div className="text-sm font-semibold text-white">NEAR Intent Shard</div>
-              <p className="text-[11px] text-slate-400 leading-snug">
-                Aurora detects deposit, finds market-maker quotes, swaps into Solana-native USDC at 0$ gas overhead.
-              </p>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2">
-              <div className="text-xs font-mono text-sky-400">STEP 3: EXECUTION</div>
-              <div className="text-sm font-semibold text-white">Intents Connect</div>
-              <p className="text-[11px] text-slate-400 leading-snug">
-                Solana Intermediary account receives USDC and triggers Gigr's Anchor Escrow program directly.
-              </p>
-            </div>
-
-            <div className="bg-slate-950/80 border border-slate-800 p-4 rounded-xl space-y-2">
-              <div className="text-xs font-mono text-violet-400">STEP 4: SETTLEMENT</div>
-              <div className="text-sm font-semibold text-white">Gigr Escrow Released</div>
-              <p className="text-[11px] text-slate-400 leading-snug">
-                Freelancer completes job, claims payout, and receives an on-chain compressed NFT reputation vouch.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Live Interactive Simulator */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <Card className="bg-slate-900 border-slate-800 p-6 space-y-5">
-            <div className="flex items-center gap-2">
-              <Globe className="w-5 h-5 text-emerald-400" />
-              <h2 className="text-base font-bold text-white">
-                Live Cross-Chain Quote & Execution Testbench
-              </h2>
-            </div>
-            <p className="text-xs text-slate-400">
-              Query real-time 1Click quotes and generate actual on-chain deposit addresses for 38+ supported blockchains.
-            </p>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
-                  Source Blockchain
-                </label>
-                <select
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm text-slate-200"
-                  value={selectedChainId}
-                  onChange={(e) => setSelectedChainId(e.target.value)}
-                >
-                  {AURORA_SUPPORTED_CHAINS.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.nativeSymbol})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-mono text-slate-400 block mb-1">
-                    Deposit Amount ({selectedChain.nativeSymbol})
-                  </label>
-                  <Input
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="bg-slate-950 border-slate-800 text-sm"
-                    placeholder="0.01"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-mono text-slate-400 block mb-1">
-                    Source Refund Address
-                  </label>
-                  <Input
-                    value={refundTo}
-                    onChange={(e) => setRefundTo(e.target.value)}
-                    className="bg-slate-950 border-slate-800 text-xs font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-mono text-slate-400 block mb-1">
-                  Destination Solana Recipient (Devnet)
-                </label>
-                <Input
-                  value={solanaRecipient}
-                  onChange={(e) => setSolanaRecipient(e.target.value)}
-                  className="bg-slate-950 border-slate-800 text-xs font-mono"
-                />
-              </div>
-
-              <Button
-                onClick={handleSimulateQuote}
-                disabled={isQuoting}
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-black font-semibold text-xs py-2.5"
-              >
-                {isQuoting ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Querying Live 1Click Engine...
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-2">
-                    Generate Live Deposit Address <ArrowRight className="w-3.5 h-3.5" />
-                  </span>
-                )}
-              </Button>
-
-              {quoteError && (
-                <p className="text-xs text-red-400 bg-red-950/40 p-2.5 rounded-lg border border-red-900/40 font-mono">
-                  {quoteError}
-                </p>
-              )}
-            </div>
-          </Card>
-
-          {/* Result / Proof Panel */}
-          <Card className="bg-slate-900 border-slate-800 p-6 flex flex-col justify-between space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold font-mono tracking-wide text-slate-300 uppercase">
-                  Live Intent Execution Settlement
-                </h3>
-                {quoteResult && (
-                  <Badge variant="outline" className="border-emerald-500/50 text-emerald-400 font-mono text-[11px]">
-                    {depositStatus ? depositStatus.status : 'QUOTE VERIFIED'}
-                  </Badge>
-                )}
-              </div>
-
-              {quoteResult ? (
-                <div className="space-y-4 text-xs">
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                    <div>
-                      <div className="text-[11px] font-mono text-slate-500 uppercase">
-                        Issued Deposit Address on {selectedChain.name}
-                      </div>
-                      <div className="flex items-center justify-between gap-2 mt-1">
-                        <code className="text-emerald-400 break-all font-mono text-xs">
-                          {quoteResult.depositAddress}
-                        </code>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleCopy(quoteResult.depositAddress)}
-                          className="h-7 w-7 text-slate-400 hover:text-white"
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                      {copied && (
-                        <p className="text-[10px] text-emerald-400 font-mono mt-1">
-                          Address copied to clipboard.
-                        </p>
-                      )}
-                    </div>
-
-                    {quoteResult.depositMemo && (
-                      <div>
-                        <div className="text-[11px] font-mono text-slate-500 uppercase">
-                          Deposit Memo (Required for {selectedChain.id.toUpperCase()})
-                        </div>
-                        <code className="text-amber-400 font-mono text-xs block mt-1">
-                          {quoteResult.depositMemo}
-                        </code>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                      <div className="text-[11px] text-slate-500 font-mono">ESTIMATED OUTPUT</div>
-                      <div className="text-base font-bold text-white mt-0.5">
-                        {quoteResult.amountOutFormatted} USDC
-                      </div>
-                      {quoteResult.amountOutUsd && (
-                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          ${quoteResult.amountOutUsd}
-                        </div>
-                      )}
-                    </div>
-                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                      <div className="text-[11px] text-slate-500 font-mono">INTEGRATOR MARGIN</div>
-                      <div className="text-base font-bold text-emerald-400 mt-0.5">
-                        60% Revenue Share
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        ~{quoteResult.timeEstimateSeconds || 35}s execution
-                      </div>
-                    </div>
-                  </div>
-
-                  {quoteResult.signature && (
-                    <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 font-mono text-[10px] space-y-1">
-                      <div className="text-slate-500 uppercase">1Click Engine Cryptographic Proof</div>
-                      <div className="text-slate-400 break-all">{quoteResult.signature}</div>
-                    </div>
-                  )}
-
-                  <div className="bg-slate-950/60 p-3 rounded-lg border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-                    <p className="flex items-center gap-1.5 text-slate-300 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      Live Polling Active
-                    </p>
-                    <p>
-                      Transfer funds to the deposit address above. The 1Click listener will track transaction confirmation and credit the recipient on Solana.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="h-64 flex flex-col items-center justify-center text-center p-6 border border-dashed border-slate-800 rounded-xl text-slate-500 space-y-2">
-                  <AlertCircle className="w-8 h-8 text-slate-600" />
-                  <p className="text-xs">No active quote simulated yet.</p>
-                  <p className="text-[11px] text-slate-600">
-                    Select a chain and click "Generate Live Deposit Address" to query the live engine.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-500 flex items-center justify-between font-mono">
-              <span>HOUSE-STANDARD VERIFIED</span>
-              <span>ZERO-EMOJI ENFORCED</span>
-            </div>
-          </Card>
-        </div>
+    <div className="judges-page">
+      <div className="judges-ambient" aria-hidden="true">
+        <div className="judges-aurora judges-aurora-a" />
+        <div className="judges-aurora judges-aurora-b" />
+        <div className="judges-grid-lines" />
       </div>
+
+      <header className="judges-header">
+        <div className="judges-header-inner">
+          <Link to="/" className="judges-brand" aria-label="Gigr home">
+            <img
+              className="judges-logo"
+              src="/brands/gigr.png"
+              alt="Gigr"
+              width={1024}
+              height={1024}
+            />
+            <span className="judges-wordmark">Gigr</span>
+            <span className="judges-brand-rule" aria-hidden="true" />
+            <span className="judges-brand-context">Encode Aurora Briefing</span>
+          </Link>
+          <OutboundLink className="judges-header-cta" href={APPLICATION_URL}>
+            Open application
+            <ExternalLink className="judges-icon" aria-hidden="true" />
+          </OutboundLink>
+        </div>
+      </header>
+
+      <main className="judges-main">
+        <section className="judges-hero" aria-labelledby="judges-title">
+          <p className="judges-eyebrow">Encode Aurora Hackathon Briefing</p>
+          <h1 id="judges-title" className="judges-title">
+            Any-Chain Liquidity on{' '}
+            <span className="judges-title-accent">Solana</span>.
+          </h1>
+          <p className="judges-lede">
+            Gigr is a hyperlocal services marketplace with milestone escrow on
+            Solana. Powered by Aurora Intents (1Click), users can fund wallets
+            and settle milestone escrows from 38+ blockchains with zero manual
+            bridging.
+          </p>
+
+          <ul className="judges-brand-strip" aria-label="Core brands">
+            {BRANDS.map((brand) => (
+              <li
+                key={brand.name}
+                className="judges-brand-tile"
+                data-tone={brand.tone}
+              >
+                <OutboundLink
+                  className="judges-brand-tile-link"
+                  href={brand.href}
+                >
+                  {brand.mark ? (
+                    <img
+                      className="judges-brand-mark"
+                      src={brand.mark.src}
+                      alt={brand.mark.alt}
+                      width={brand.mark.width}
+                      height={brand.mark.height}
+                      decoding="async"
+                    />
+                  ) : (
+                    <span className="judges-brand-wordmark">{brand.name}</span>
+                  )}
+                  <span className="judges-brand-tile-role">{brand.role}</span>
+                </OutboundLink>
+              </li>
+            ))}
+          </ul>
+
+          <div className="judges-hero-actions">
+            <OutboundLink
+              className="judges-button judges-button-primary"
+              href={APPLICATION_URL}
+            >
+              Open application
+              <ExternalLink className="judges-icon" aria-hidden="true" />
+            </OutboundLink>
+            <OutboundLink className="judges-button" href={DEMO_VIDEO_URL}>
+              Watch demo
+              <ExternalLink className="judges-icon" aria-hidden="true" />
+            </OutboundLink>
+            <OutboundLink className="judges-text-link" href={SOURCE_URL}>
+              Source on GitHub
+            </OutboundLink>
+          </div>
+
+          <ul className="judges-stats" aria-label="Project facts">
+            {STATS.map((stat) => (
+              <li key={stat.label} className="judges-stat">
+                <span className="judges-stat-value">{stat.value}</span>{' '}
+                <span className="judges-stat-label">{stat.label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <div className="judges-grid">
+          <section
+            className="judges-left"
+            aria-labelledby="judges-video-heading"
+          >
+            <div className="judges-video-head">
+              <div>
+                <h2 id="judges-video-heading" className="judges-video-title">
+                  Demo Walkthrough
+                </h2>
+                <p className="judges-video-subtitle">
+                  Four chapters. Live 1Click engine settlement. Zero bridging.
+                </p>
+              </div>
+              <OutboundLink
+                className="judges-video-external"
+                href={DEMO_VIDEO_URL}
+              >
+                YouTube
+                <ExternalLink className="judges-icon" aria-hidden="true" />
+              </OutboundLink>
+            </div>
+
+            <div ref={videoFrameRef} className="judges-video-frame">
+              <div ref={containerRef} className="judges-video-mount" />
+              {!isReady && (
+                <div
+                  className={`judges-video-status${failed ? ' is-error' : ''}`}
+                >
+                  {failed ? (
+                    <>
+                      <span>The embedded player could not start.</span>
+                      <OutboundLink
+                        className="judges-text-link"
+                        href={DEMO_VIDEO_URL}
+                      >
+                        Watch the demo on YouTube
+                      </OutboundLink>
+                    </>
+                  ) : (
+                    <span>Loading player</span>
+                  )}
+                </div>
+              )}
+              {showPlayOverlay && (
+                <button
+                  type="button"
+                  className="judges-video-play"
+                  onClick={playFromGesture}
+                  aria-label={
+                    ended
+                      ? 'Play demo video from start'
+                      : 'Play demo video'
+                  }
+                >
+                  <Play aria-hidden="true" />
+                  <span>{ended ? 'Play again' : 'Play'}</span>
+                </button>
+              )}
+            </div>
+
+            {isReady && !failed && (
+              <div className="judges-video-controls">
+                <button
+                  type="button"
+                  className="judges-video-control"
+                  onClick={isPlaying ? pauseFromGesture : playFromGesture}
+                  aria-label={
+                    isPlaying ? 'Pause demo video' : 'Play demo video'
+                  }
+                >
+                  {isPlaying ? (
+                    <Pause aria-hidden="true" />
+                  ) : (
+                    <Play aria-hidden="true" />
+                  )}
+                  <span>{isPlaying ? 'Pause' : 'Play'}</span>
+                </button>
+                <button
+                  type="button"
+                  className="judges-video-control judges-video-sound"
+                  data-muted={isMuted ? 'true' : 'false'}
+                  onClick={toggleMute}
+                  aria-label={
+                    isMuted
+                      ? 'Turn video sound on'
+                      : 'Turn video sound off'
+                  }
+                >
+                  {isMuted ? (
+                    <VolumeX aria-hidden="true" />
+                  ) : (
+                    <Volume2 aria-hidden="true" />
+                  )}
+                  <span>{isMuted ? 'Sound off' : 'Sound on'}</span>
+                </button>
+              </div>
+            )}
+
+            <nav className="judges-chapters" aria-label="Video chapters">
+              <ol className="judges-chapter-list">
+                {AURORA_CHAPTERS.map((chapter, index) => {
+                  const isActive = index === activeIndex
+                  return (
+                    <li key={chapter.id}>
+                      <button
+                        type="button"
+                        className="judges-chapter"
+                        aria-current={isActive ? 'true' : undefined}
+                        onClick={() => selectChapter(index)}
+                      >
+                        <span className="judges-chapter-time">
+                          {formatChapterTime(chapter.start)}
+                        </span>
+                        <span className="judges-chapter-text">
+                          <span className="judges-chapter-title">
+                            {chapter.title}
+                          </span>
+                          {chapter.tag && (
+                            <span className="judges-chapter-tag">
+                              {chapter.tag}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className="judges-chapter-dot"
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ol>
+            </nav>
+          </section>
+
+          <aside className="judges-panel" aria-labelledby="judges-panel-heading">
+            <div className="judges-panel-top">
+              <span className="judges-panel-kicker">
+                Chapter {activeIndex + 1} of {chapterCount}
+              </span>
+              <span className="judges-panel-range">
+                {formatChapterTime(activeChapter.start)} to{' '}
+                {nextChapter ? formatChapterTime(nextChapter.start) : 'end'}
+              </span>
+            </div>
+            {activeChapter.tag && (
+              <span className="judges-panel-tag">{activeChapter.tag}</span>
+            )}
+            <h2 id="judges-panel-heading" className="judges-panel-title">
+              {activeChapter.title}
+            </h2>
+            <div key={activeChapter.id} className="judges-copy">
+              {activeChapter.lines.map((line, lineIndex) => (
+                <p
+                  key={line}
+                  className="judges-line"
+                  style={{ animationDelay: `${lineIndex * 100}ms` }}
+                >
+                  <span>{line}</span>
+                </p>
+              ))}
+            </div>
+            <p className="sr-only" role="status" aria-live="polite">
+              Chapter {activeIndex + 1} of {chapterCount}: {activeChapter.title}
+            </p>
+          </aside>
+        </div>
+
+        <section className="judges-verify" aria-label="Verification">
+          <span className="judges-verify-label">Verification</span>
+          <p className="judges-verify-text">
+            Every feature on this page is backed by automated tests. 12 backend
+            unit tests and 318 frontend tests verify circuit breakers, intent
+            quotes, and status tracking in CI.{' '}
+            <OutboundLink className="judges-verify-link" href={CI_URL}>
+              See CI runs
+            </OutboundLink>
+          </p>
+        </section>
+
+        <section className="judges-links" aria-labelledby="judges-links-heading">
+          <h2 id="judges-links-heading" className="judges-links-title">
+            Documentation and source verification
+          </h2>
+          <div className="judges-links-grid">
+            <div className="judges-links-group">
+              <h3 className="judges-links-group-title">Aurora Intents</h3>
+              <ul className="judges-links-list">
+                <li>
+                  <OutboundLink
+                    className="judges-copy-link"
+                    href="https://docs.intents.aurora.dev"
+                  >
+                    Aurora Intents Documentation
+                  </OutboundLink>
+                </li>
+                <li>
+                  <OutboundLink
+                    className="judges-copy-link"
+                    href="https://docs.intents.aurora.dev/intents-connect/developer-guides/solana"
+                  >
+                    Solana Intents Connect Guide
+                  </OutboundLink>
+                </li>
+                <li>
+                  <OutboundLink
+                    className="judges-copy-link"
+                    href="https://studio.aurora.dev"
+                  >
+                    Aurora Developer Studio
+                  </OutboundLink>
+                </li>
+              </ul>
+            </div>
+            <div className="judges-links-group">
+              <h3 className="judges-links-group-title">Architecture and Code</h3>
+              <ul className="judges-links-list">
+                <li>
+                  <OutboundLink className="judges-copy-link" href={SOURCE_URL}>
+                    Gigr Repository on GitHub
+                  </OutboundLink>
+                </li>
+                <li>
+                  <OutboundLink className="judges-copy-link" href={CI_URL}>
+                    CI Test Execution Logs
+                  </OutboundLink>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
   )
 }
