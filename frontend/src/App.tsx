@@ -45,6 +45,8 @@ const ResetPasswordPage = lazyWithRetry(() => import('@/pages/ResetPasswordPage'
 // Public judge briefing. Deliberately not in the sidebar or mobile More sheet:
 // the URL is pasted directly to hackathon judges and must work signed out.
 const JudgesPage = lazyWithRetry(() => import('@/pages/JudgesPage'))
+// Encode Aurora Hackathon showcase (/ea and /judgesencodeaurora)
+const EncodeAuroraPage = lazyWithRetry(() => import('@/pages/EncodeAuroraPage'))
 const HomePage = lazyWithRetry(() => import('@/pages/HomePage'))
 const JobsPage = lazyWithRetry(() => import('@/pages/JobsPage'))
 const ServicesPage = lazyWithRetry(() => import('@/pages/ServicesPage'))
@@ -137,6 +139,8 @@ function App() {
             <Route path="/forgot-password" element={<Suspense fallback={<PageFallback />}><ForgotPasswordPage /></Suspense>} />
             <Route path="/reset-password" element={<Suspense fallback={<PageFallback />}><ResetPasswordPage /></Suspense>} />
             <Route path="/judges" element={<Suspense fallback={<PageFallback />}><JudgesPage /></Suspense>} />
+            <Route path="/ea" element={<Suspense fallback={<PageFallback />}><EncodeAuroraPage /></Suspense>} />
+            <Route path="/judgesencodeaurora" element={<Suspense fallback={<PageFallback />}><EncodeAuroraPage /></Suspense>} />
 
             {/* Dashboard routes: DashboardLayout renders immediately and synchronously.
                 It contains its own internal Suspense fallback around the content Outlet,

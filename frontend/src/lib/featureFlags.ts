@@ -16,6 +16,7 @@ export interface AgentFeatureFlags {
   planner: boolean
   commandPalette: boolean
   premiumGate: boolean
+  auroraIntents: boolean
 }
 
 function parseEnvBoolean(envValue: string | undefined, defaultValue: boolean): boolean {
@@ -34,6 +35,7 @@ export const agentFeatures: AgentFeatureFlags = {
   planner: parseEnvBoolean(import.meta.env.VITE_FEATURE_AGENT_PLANNER, false),
   commandPalette: parseEnvBoolean(import.meta.env.VITE_FEATURE_AGENT_COMMAND_PALETTE, true),
   premiumGate: parseEnvBoolean(import.meta.env.VITE_FEATURE_AGENT_PREMIUM, false),
+  auroraIntents: parseEnvBoolean(import.meta.env.VITE_FEATURE_AURORA_INTENTS, false),
 }
 
 export function isFeatureEnabled(flag: keyof AgentFeatureFlags): boolean {

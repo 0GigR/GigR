@@ -189,6 +189,11 @@ app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 from .api.v1.endpoints import agent_brief
 app.include_router(agent_brief.router, prefix="/api/v1/agent", tags=["agent"])
 
+# Aurora Intents: Any-Chain Liquidity & Execution for Solana.
+# Inert unless FEATURE_AURORA_INTENTS and AURORA_INTENTS_API_KEY are configured.
+from .api.v1.endpoints import aurora
+app.include_router(aurora.router, prefix="/api/v1/aurora", tags=["aurora"])
+
 from .api.v1.endpoints import announcements
 app.include_router(announcements.router, prefix="/api/v1/announcements", tags=["announcements"])
 
