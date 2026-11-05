@@ -606,6 +606,25 @@ class Settings(BaseSettings):
             and self.X402_AGENT_BRIEF_PRICE_ATOMIC > 0
         )
 
+    # ── Aurora Intents (Multi-Chain Liquidity & Execution) ────────────────────
+    # OFF by default. When false, every Aurora endpoint answers 404 or no-op
+    # and no outbound network calls are made to Aurora/1Click infrastructure.
+    FEATURE_AURORA_INTENTS: bool = Field(
+        default=False, env="FEATURE_AURORA_INTENTS"
+    )
+    AURORA_INTENTS_API_KEY: str = Field(default="", env="AURORA_INTENTS_API_KEY")
+    AURORA_INTENTS_BASE_URL: str = Field(
+        default="https://intents-api.aurora.dev", env="AURORA_INTENTS_BASE_URL"
+    )
+    # Default 1Click fee share in basis points (e.g. 50 = 0.5%)
+    AURORA_INTENTS_FEE_BPS: int = Field(default=50, env="AURORA_INTENTS_FEE_BPS")
+    AURORA_INTENTS_TIMEOUT_SECONDS: float = Field(default=10.0, env="AURORA_INTENTS_TIMEOUT_SECONDS")
+
+    @property
+    def aurora_intents_enabled(self) -> bool:
+        """True only when the operator opts in with the flag and an API key."""
+        return bool(self.FEATURE_AURORA_INTENTS and self.AURORA_INTENTS_API_KEY)
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

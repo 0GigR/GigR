@@ -17,6 +17,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from .config import settings
+from .gateways.aurora_intents_gateway import (
+    AuroraIntentsGateway,
+    DEPENDENCY as AURORA_INTENTS_DEPENDENCY,
+)
 from .gateways.geocoding_gateway import GeocodingGateway
 from .gateways.solana_usdc_transfer_gateway import SolanaUsdcTransferGateway
 from .gateways.tatum_solana_transaction_gateway import TatumSolanaTransactionGateway
@@ -28,6 +32,7 @@ from ..services.agent_brief_purchase_service import AgentBriefPurchaseService
 from ..services.agent_brief_service import AgentBriefService, BriefPaymentPolicy
 from ..services.agent_memory_service import AgentMemoryService
 from ..services.event_fact_service import EventFactService
+from ..services.aurora_intents_service import AuroraIntentsService
 from ..services.fact_memory_service import FactMemoryService
 from ..services.memory_reconcile_service import (
     KeyedLock,
@@ -117,6 +122,31 @@ def build_tatum_solana_boundary() -> Boundary:
             max_concurrency=TATUM_MAX_CONCURRENCY,
         ),
         StructuredLogMetricSink(TATUM_SOLANA_DEPENDENCY),
+    )
+
+
+def build_aurora_intents_boundary() -> Boundary:
+    """The boundary around one outbound Aurora Intents API call."""
+    return Boundary(
+        ResiliencePolicy(
+            dependency=AURORA_INTENTS_DEPENDENCY,
+            timeout_seconds=settings.AURORA_INTENTS_TIMEOUT_SECONDS,
+            failure_threshold=3,
+            reset_timeout_seconds=30.0,
+            max_attempts=2,
+            max_concurrency=10,
+        ),
+        StructuredLogMetricSink(AURORA_INTENTS_DEPENDENCY),
+    )
+
+
+def build_aurora_intents_gateway() -> AuroraIntentsGateway:
+    """Outbound gateway for Aurora Intents, or unconfigured gateway if disabled."""
+    boundary = build_aurora_intents_boundary()
+    return AuroraIntentsGateway(
+        boundary=boundary,
+        api_key=settings.AURORA_INTENTS_API_KEY,
+        base_url=settings.AURORA_INTENTS_BASE_URL,
     )
 
 
@@ -283,6 +313,7 @@ tatum_sui_gateway = build_tatum_sui_gateway()
 agent_brief_gateway = build_agent_brief_gateway()
 agent_brief_transfer_gateway = build_agent_brief_transfer_gateway()
 geocoding_gateway = build_geocoding_gateway()
+aurora_intents_gateway = build_aurora_intents_gateway()
 # One registry for the whole process: two reconciles for one user must not
 # interleave, and each request builds its own service from this root.
 memory_reconcile_locks = KeyedLock()
@@ -292,6 +323,11 @@ _log_flag_state()
 def build_agent_memory_service(db: "AsyncSession") -> AgentMemoryService:
     """Assemble the memory service for one request or one background task."""
     return AgentMemoryService(db=db, gateway=agent_memory_gateway)
+
+
+def build_aurora_intents_service() -> AuroraIntentsService:
+    """The Aurora Intents coordinator service."""
+    return AuroraIntentsService(gateway=aurora_intents_gateway)
 
 
 def build_fact_memory_service() -> FactMemoryService:

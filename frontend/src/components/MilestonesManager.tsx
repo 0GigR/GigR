@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp, Globe } from 'lucide-react'
 import api, { extractError } from '@/lib/api'
 import { useRail } from '@/lib/config'
+import { isFeatureEnabled } from '@/lib/featureFlags'
 import { startMilestoneCheckout, redirectToPayPal } from '@/lib/paypal'
 import { fmtPrice } from '@/store/currencyStore'
 import { Button } from '@/components/ui/button'
@@ -383,15 +384,30 @@ export function MilestonesManager({
                     <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                       {/* Client: Fund Pending Milestone */}
                       {isClient && isPending && isJobActive && (
-                        <Button
-                          size="sm"
-                          className="h-7 text-xs bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200"
-                          onClick={() => fundMilestoneMutation.mutate(m.id)}
-                          disabled={fundMilestoneMutation.isPending}
-                        >
-                          {fundMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <ShieldCheck className="w-3 h-3 mr-1 text-emerald-400" />}
-                          Fund Milestone
-                        </Button>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200"
+                            onClick={() => fundMilestoneMutation.mutate(m.id)}
+                            disabled={fundMilestoneMutation.isPending}
+                          >
+                            {fundMilestoneMutation.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <ShieldCheck className="w-3 h-3 mr-1 text-emerald-400" />}
+                            Fund Milestone
+                          </Button>
+
+                          {isFeatureEnabled('auroraIntents') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-emerald-600 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950 font-mono"
+                              onClick={() => navigate('/ea')}
+                              title="Fund from Ethereum, Base, Bitcoin, or other chains via Aurora Intents"
+                            >
+                              <Globe className="w-3 h-3 mr-1" />
+                              Pay Any Chain
+                            </Button>
+                          )}
+                        </div>
                       )}
 
                       {/* Worker: Deliver Milestone (1h Review) */}

@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aurora-is-near/intents-connect": "^7.29.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@marsidev/react-turnstile": "^1.5.3",
     "@onramp.money/onramp-web-sdk": "^2.0.1",
