@@ -222,20 +222,20 @@ export function FundWalletButton({ walletAddress }: Props) {
                   )}
 
                   {quoteResult && (
-                    <div className="bg-gray-50 dark:bg-muted/40 p-3.5 rounded-xl space-y-3 border border-gray-200 dark:border-border">
+                    <div className="bg-muted/50 p-3.5 rounded-xl space-y-3 border border-border">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        <span className="text-xs font-semibold text-foreground">
                           Deposit Address on {selectedChain.name}:
                         </span>
                         {depositStatus && (
-                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
                             {depositStatus.status}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 bg-white dark:bg-background p-2 rounded-lg border border-gray-200 dark:border-border">
-                        <code className="text-xs break-all font-mono text-emerald-600 dark:text-emerald-400 flex-1">
+                      <div className="flex items-center gap-2 bg-background p-2 rounded-lg border border-border">
+                        <code className="text-xs break-all font-mono text-primary flex-1">
                           {quoteResult.depositAddress}
                         </code>
                         <Button
@@ -248,32 +248,32 @@ export function FundWalletButton({ walletAddress }: Props) {
                         </Button>
                       </div>
                       {copied && (
-                        <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
+                        <p className="text-[10px] text-primary font-mono">
                           Copied to clipboard.
                         </p>
                       )}
 
                       <div className="grid grid-cols-2 gap-2 text-[11px] pt-1">
                         <div>
-                          <span className="text-gray-500 dark:text-muted-foreground block">
+                          <span className="text-muted-foreground block">
                             You Send:
                           </span>
-                          <span className="font-semibold text-gray-800 dark:text-gray-200">
+                          <span className="font-semibold text-foreground">
                             {quoteResult.amountInFormatted} {selectedChain.nativeSymbol}
                           </span>
                         </div>
                         <div>
-                          <span className="text-gray-500 dark:text-muted-foreground block">
+                          <span className="text-muted-foreground block">
                             You Receive:
                           </span>
-                          <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span className="font-semibold text-primary">
                             ~{quoteResult.amountOutFormatted} USDC (Solana)
                           </span>
                         </div>
                       </div>
 
-                      <div className="text-[11px] text-gray-500 dark:text-muted-foreground pt-1 border-t border-gray-200 dark:border-border">
-                        Send the exact amount from any {selectedChain.name} wallet. Aurora automatically swaps and credits your Solana Devnet wallet.
+                      <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
+                        Send from any {selectedChain.name} wallet. Aurora automatically routes, swaps, and credits your Solana Devnet balance.
                       </div>
                     </div>
                   )}
