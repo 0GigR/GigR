@@ -135,7 +135,7 @@ export const AURORA_SUPPORTED_CHAINS: readonly AuroraChain[] = [
     decimals: 6,
     category: 'stablecoin',
     description: 'USD Coin on Sui Network',
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+    sampleRefundAddress: '0x0000000000000000000000000000000000000000000000000000000000000002',
   },
   {
     id: 'stellar-usdc',

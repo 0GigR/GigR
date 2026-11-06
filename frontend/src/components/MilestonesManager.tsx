@@ -642,7 +642,12 @@ export function MilestonesManager({
                 </label>
                 <AuroraTokenSelect
                   selectedChainId={selectedChainId}
-                  onSelect={(chain) => setSelectedChainId(chain.id)}
+                  onSelect={(chain) => {
+                    setSelectedChainId(chain.id)
+                    setQuoteResult(null)
+                    setQuoteError(null)
+                    setDepositStatus(null)
+                  }}
                   disabled={quoteLoading}
                 />
               </div>
