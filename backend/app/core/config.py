@@ -618,7 +618,7 @@ class Settings(BaseSettings):
     )
     # Default 1Click fee share in basis points (e.g. 50 = 0.5%)
     AURORA_INTENTS_FEE_BPS: int = Field(default=50, env="AURORA_INTENTS_FEE_BPS")
-    AURORA_INTENTS_TIMEOUT_SECONDS: float = Field(default=10.0, env="AURORA_INTENTS_TIMEOUT_SECONDS")
+    AURORA_INTENTS_TIMEOUT_SECONDS: float = Field(default=25.0, env="AURORA_INTENTS_TIMEOUT_SECONDS")
 
     @property
     def aurora_intents_enabled(self) -> bool:

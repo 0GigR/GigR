@@ -64,3 +64,13 @@ class AuroraIntentsService:
                 "aurora-intents", "Aurora Intents is currently disabled."
             )
         return await self._gateway.get_swap_status(deposit_address)
+
+    async def simulate_settlement(self, recipient: str, amount_usdc: float) -> str:
+        """Simulate Devnet cross-chain settlement by transferring test USDC to recipient."""
+        if not self.is_enabled:
+            raise DependencyUnavailableError(
+                "aurora-intents", "Aurora Intents is currently disabled."
+            )
+        from .solana_client import transfer_platform_usdc
+        return await transfer_platform_usdc(recipient, amount_usdc)
+

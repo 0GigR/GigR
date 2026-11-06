@@ -444,3 +444,60 @@ async def cancel_escrow(
     except Exception as e:
         logger.error(f"cancel_escrow FAILED: {e}")
         raise
+
+
+async def transfer_platform_usdc(
+    recipient_pubkey_str: str,
+    amount_usdc: float,
+) -> str:
+    """Transfer test USDC from the platform payer reserve to a user wallet on Devnet."""
+    from spl.token.instructions import get_associated_token_address
+    from solders.message import MessageV0
+    from solders.transaction import VersionedTransaction
+    from .wallet_transfer_service import build_usdc_transfer_instruction, usdc_amount_atomic
+
+    if not settings.USDC_MINT_DEVNET:
+        raise ValueError("USDC_MINT_DEVNET is not configured on this deployment.")
+
+    platform_kp = get_platform_payer()
+    mint_pubkey = Pubkey.from_string(settings.USDC_MINT_DEVNET)
+    recipient_pubkey = Pubkey.from_string(recipient_pubkey_str)
+
+    recipient_ata = await ensure_ata_exists(platform_kp, recipient_pubkey, mint_pubkey)
+    sender_ata = get_associated_token_address(platform_kp.pubkey(), mint_pubkey)
+
+    atomic_amount = usdc_amount_atomic(amount_usdc)
+    ix = build_usdc_transfer_instruction(
+        source=sender_ata,
+        mint=mint_pubkey,
+        dest=recipient_ata,
+        owner=platform_kp.pubkey(),
+        amount_atomic=atomic_amount,
+    )
+
+    rpc_client = RoutedRpcClient(
+        "transfer_platform_usdc", open_write_client("transfer_platform_usdc")
+    )
+    try:
+        blockhash_resp = await rpc_client.get_latest_blockhash()
+        recent_blockhash = blockhash_resp.value.blockhash
+        msg = MessageV0.try_compile(
+            payer=platform_kp.pubkey(),
+            instructions=[ix],
+            address_lookup_table_accounts=[],
+            recent_blockhash=recent_blockhash,
+        )
+        tx = VersionedTransaction(msg, [platform_kp])
+        resp = await rpc_client.send_transaction(
+            tx, opts=TxOpts(skip_preflight=False, preflight_commitment=Confirmed)
+        )
+        tx_sig = str(resp.value)
+        logger.info(
+            "[solana_client] transfer_platform_usdc success: recipient=%s amount=%s tx=%s",
+            recipient_pubkey_str,
+            amount_usdc,
+            tx_sig,
+        )
+        return tx_sig
+    finally:
+        await rpc_client.close()

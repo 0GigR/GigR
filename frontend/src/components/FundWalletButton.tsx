@@ -16,6 +16,7 @@ import {
   AURORA_SUPPORTED_CHAINS,
   requestAuroraQuote,
   pollAuroraDepositStatus,
+  simulateAuroraDevnetSettlement,
   type AuroraQuoteResult,
   type AuroraStatusResult,
 } from '@/lib/auroraIntents'
@@ -122,15 +123,30 @@ export function FundWalletButton({ walletAddress }: Props) {
     }
   }
 
-  const handleSimulateDevnetDeposit = () => {
+  const handleSimulateDevnetDeposit = async () => {
     setIsSimulating(true)
-    toast.info('Simulating incoming deposit from 1Click solver network...')
-    setTimeout(() => {
-      setIsSimulating(false)
-      toast.success(`Successfully simulated ${usdcAmount} USDC deposit on Solana Devnet!`)
+    toast.info('Simulating incoming deposit from 1Click solver network on Devnet...')
+    try {
+      const amt = parseFloat(usdcAmount) || 5.0
+      const res = await simulateAuroraDevnetSettlement({
+        recipient: walletAddress,
+        amountUsdc: amt,
+      })
+      toast.success(
+        `Settlement confirmed on Solana Devnet! Credited ${amt} USDC. tx: ${res.signature?.slice(0, 8)}...`
+      )
       queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['wallet'] })
       setOpen(false)
-    }, 1800)
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.detail ||
+          err?.message ||
+          'Simulated Devnet settlement failed.'
+      )
+    } finally {
+      setIsSimulating(false)
+    }
   }
 
   const handleCopy = (text: string) => {

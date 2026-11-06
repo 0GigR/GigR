@@ -136,6 +136,8 @@ class AuroraIntentsGateway:
                         err_msg = data.get("message") or resp.text[:120]
                     except Exception:
                         err_msg = resp.text[:120]
+                    if "deposit address is not included in quote" in err_msg.lower():
+                        err_msg = "No 1Click solver liquidity route available for this token or amount. Try a different source asset or increase the deposit amount."
                     raise ValueError(err_msg)
                 elif resp.status_code >= 400:
                     logger.warning(

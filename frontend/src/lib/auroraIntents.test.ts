@@ -6,7 +6,7 @@ import {
 
 describe('auroraIntents client configuration', () => {
   it('exposes a list of verified blockchains with native and stablecoin routing', () => {
-    expect(AURORA_SUPPORTED_CHAINS.length).toBeGreaterThanOrEqual(10)
+    expect(AURORA_SUPPORTED_CHAINS.length).toBeGreaterThanOrEqual(25)
     const ids = AURORA_SUPPORTED_CHAINS.map((c) => c.id)
     const uniqueIds = new Set(ids)
     expect(uniqueIds.size).toBe(ids.length)
