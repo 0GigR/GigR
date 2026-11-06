@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useState, useEffect } from 'react'
-import { Wallet, Globe, ArrowRight, Loader2, Copy, Zap } from 'lucide-react'
+import { Wallet, Globe, ArrowRight, Loader2, Copy } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { isFeatureEnabled } from '@/lib/featureFlags'
@@ -16,7 +16,6 @@ import {
   AURORA_SUPPORTED_CHAINS,
   requestAuroraQuote,
   pollAuroraDepositStatus,
-  simulateAuroraDevnetSettlement,
   type AuroraQuoteResult,
   type AuroraStatusResult,
 } from '@/lib/auroraIntents'
@@ -38,7 +37,6 @@ export function FundWalletButton({ walletAddress }: Props) {
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [depositStatus, setDepositStatus] = useState<AuroraStatusResult | null>(null)
-  const [isSimulating, setIsSimulating] = useState(false)
 
   const auroraEnabled = isFeatureEnabled('auroraIntents')
   const appId = import.meta.env.VITE_ONRAMP_APP_ID
@@ -120,32 +118,6 @@ export function FundWalletButton({ walletAddress }: Props) {
       )
     } finally {
       setQuoteLoading(false)
-    }
-  }
-
-  const handleSimulateDevnetDeposit = async () => {
-    setIsSimulating(true)
-    toast.info('Simulating incoming deposit from 1Click solver network on Devnet...')
-    try {
-      const amt = parseFloat(usdcAmount) || 5.0
-      const res = await simulateAuroraDevnetSettlement({
-        recipient: walletAddress,
-        amountUsdc: amt,
-      })
-      toast.success(
-        `Settlement confirmed on Solana Devnet! Credited ${amt} USDC. tx: ${res.signature?.slice(0, 8)}...`
-      )
-      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
-      queryClient.invalidateQueries({ queryKey: ['wallet'] })
-      setOpen(false)
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'Simulated Devnet settlement failed.'
-      )
-    } finally {
-      setIsSimulating(false)
     }
   }
 
@@ -297,24 +269,20 @@ export function FundWalletButton({ walletAddress }: Props) {
                         </div>
                       </div>
 
-                      <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
-                        Send from your {selectedChain.name} wallet. Aurora automatically swaps and credits your Gigr Solana USDC balance.
+                      <div className="p-3 rounded-xl bg-background border border-border space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-foreground flex items-center gap-1.5">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                            Listening for deposit on {selectedChain.name}
+                          </span>
+                          <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-semibold">
+                            {depositStatus?.status || 'PENDING'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground leading-relaxed">
+                          Send exact funds from your {selectedChain.name} wallet. Aurora 1Click solver network automatically detects the transaction, routes the cross-chain swap, and credits your Gigr Solana USDC balance upon confirmation.
+                        </p>
                       </div>
-
-                      <Button
-                        variant="outline"
-                        className="w-full h-8 text-xs font-medium"
-                        disabled={isSimulating}
-                        onClick={handleSimulateDevnetDeposit}
-                        title="Simulate settlement for Devnet testing without real funds"
-                      >
-                        {isSimulating ? (
-                          <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
-                        ) : (
-                          <Zap className="w-3.5 h-3.5 mr-1 text-amber-500" />
-                        )}
-                        Simulate Deposit Settlement (Devnet Test)
-                      </Button>
                     </div>
                   )}
                 </div>

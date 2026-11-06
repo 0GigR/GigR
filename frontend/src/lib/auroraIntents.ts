@@ -434,18 +434,6 @@ export async function requestAuroraQuote(
   }
 }
 
-/** Simulate Devnet cross-chain settlement with real on-chain Devnet USDC from platform payer. */
-export async function simulateAuroraDevnetSettlement(params: {
-  recipient: string
-  amountUsdc: number
-}): Promise<{ success: boolean; signature?: string; recipient: string; amount_usdc: number }> {
-  const { data } = await api.post('/aurora/simulate-settlement', {
-    recipient: params.recipient,
-    amount_usdc: params.amountUsdc,
-  })
-  return data
-}
-
 /** Poll live settlement status of an active deposit address. */
 export async function pollAuroraDepositStatus(
   depositAddress: string

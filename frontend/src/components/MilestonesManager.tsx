@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp, Globe, Copy, ArrowRight, Zap } from 'lucide-react'
+import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp, Globe, Copy, ArrowRight } from 'lucide-react'
 import api, { extractError } from '@/lib/api'
 import { useRail } from '@/lib/config'
 import { isFeatureEnabled } from '@/lib/featureFlags'
@@ -23,7 +23,6 @@ import {
   AURORA_SUPPORTED_CHAINS,
   requestAuroraQuote,
   pollAuroraDepositStatus,
-  simulateAuroraDevnetSettlement,
   type AuroraQuoteResult,
   type AuroraStatusResult,
 } from '@/lib/auroraIntents'
@@ -85,7 +84,6 @@ export function MilestonesManager({
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [depositStatus, setDepositStatus] = useState<AuroraStatusResult | null>(null)
-  const [isSimulating, setIsSimulating] = useState(false)
 
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
@@ -190,39 +188,6 @@ export function MilestonesManager({
       )
     } finally {
       setQuoteLoading(false)
-    }
-  }
-
-  const handleSimulateDevnetSettlement = async () => {
-    if (!auroraMilestone || !walletInfo?.wallet_public_key) return
-    setIsSimulating(true)
-    toast.info('Simulating incoming any-chain deposit on Solana Devnet...')
-    try {
-      const targetUsdc = getMilestoneUsdc(auroraMilestone)
-      const creditAmt = Math.max(0.01, parseFloat(targetUsdc.toFixed(4)))
-
-      // Step 1: Fund the user's wallet with test USDC from platform payer reserve
-      const res = await simulateAuroraDevnetSettlement({
-        recipient: walletInfo.wallet_public_key,
-        amountUsdc: creditAmt,
-      })
-      toast.success(
-        `Devnet deposit settled (${creditAmt} USDC, tx: ${res.signature?.slice(0, 8)}...)! Locking milestone escrow...`
-      )
-      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
-      queryClient.invalidateQueries({ queryKey: ['wallet'] })
-
-      // Step 2: Lock into the smart contract escrow PDA
-      fundMilestoneMutation.mutate(auroraMilestone.id)
-      setAuroraMilestone(null)
-    } catch (err: any) {
-      toast.error(
-        err?.response?.data?.detail ||
-          err?.message ||
-          'Devnet settlement simulation failed.'
-      )
-    } finally {
-      setIsSimulating(false)
     }
   }
 
@@ -767,55 +732,29 @@ export function MilestonesManager({
                     </div>
                   </div>
 
-                  <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
-                    Send funds from your {selectedChain.name} wallet to the address above. Aurora solvers route and auto-settle the exact USDC into your Solana escrow.
-                  </div>
-
-                  {depositStatus?.status !== 'SUCCESS' && (
-                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        Awaiting transfer on {selectedChain.name}...
+                  <div className="p-3 rounded-xl bg-background border border-border space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+                        Listening for deposit on {selectedChain.name}
                       </span>
-                      <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-amber-500/20">
-                        {depositStatus?.status || 'POLLING'}
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground font-semibold">
+                        {depositStatus?.status || 'PENDING'}
                       </span>
                     </div>
-                  )}
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Transfer exact funds from your {selectedChain.name} wallet to the deposit address above. Aurora 1Click solver network automatically routes the swap and locks the exact USDC into your Solana milestone escrow upon receipt.
+                    </p>
+                  </div>
 
-                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <div className="flex justify-end pt-1">
                     <Button
                       variant="outline"
-                      className="flex-1 h-8 text-xs font-medium"
-                      disabled={fundMilestoneMutation.isPending || isSimulating}
-                      onClick={handleSimulateDevnetSettlement}
-                      title="Simulate cross-chain deposit by crediting test USDC from platform reserve, then locking escrow"
+                      size="sm"
+                      className="h-8 text-xs font-medium"
+                      onClick={() => setAuroraMilestone(null)}
                     >
-                      {isSimulating ? (
-                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      ) : (
-                        <Zap className="w-3 h-3 mr-1 text-amber-500" />
-                      )}
-                      Simulate Settlement (Devnet Test)
-                    </Button>
-
-                    <Button
-                      className="flex-1 h-8 text-xs font-semibold"
-                      disabled={fundMilestoneMutation.isPending || isSimulating}
-                      onClick={() => {
-                        if (auroraMilestone) {
-                          fundMilestoneMutation.mutate(auroraMilestone.id)
-                          setAuroraMilestone(null)
-                        }
-                      }}
-                      title="Lock escrow once cross-chain deposit has been sent"
-                    >
-                      {fundMilestoneMutation.isPending ? (
-                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
-                      )}
-                      {depositStatus?.status === 'SUCCESS' ? 'Lock Escrow (Settled)' : 'Lock Escrow (Manual)'}
+                      Close Window (Monitoring In Background)
                     </Button>
                   </div>
                 </div>
