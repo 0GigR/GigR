@@ -67,17 +67,3 @@ class AuroraStatusResponse(BaseModel):
     fee_bps: int
     network: str = "devnet"
 
-
-class AuroraSimulateRequest(BaseModel):
-    """Payload for simulated Devnet settlement funding."""
-
-    recipient: str = Field(..., min_length=32, max_length=64)
-    amount_usdc: float = Field(..., gt=0, le=100)
-
-    @field_validator("recipient", mode="before")
-    @classmethod
-    def _validate_recipient(cls, v: object) -> str:
-        s = str(v).strip()
-        if not re.fullmatch(r"[1-9A-HJ-NP-Za-km-z]{32,44}", s):
-            raise ValueError("Recipient must be a valid base58 Solana address.")
-        return s

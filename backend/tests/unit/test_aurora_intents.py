@@ -13,7 +13,7 @@ from app.core.config import Settings
 from app.core.errors import DependencyUnavailableError
 from app.core.gateways.aurora_intents_gateway import AuroraIntentsGateway
 from app.core.resilience import Boundary, ResiliencePolicy, StructuredLogMetricSink
-from app.schemas.aurora import AuroraQuoteRequest, AuroraSimulateRequest
+from app.schemas.aurora import AuroraQuoteRequest
 from app.services.aurora_intents_service import AuroraIntentsService
 
 
@@ -104,25 +104,4 @@ def test_aurora_quote_optional_refund_and_swap_types():
     sol_refund = AuroraIntentsGateway._resolve_safe_refund("nep141:sol.omft.near", None, req.recipient)
     assert sol_refund == req.recipient
 
-
-def test_aurora_simulate_request_validation():
-    """Verify simulate settlement validates recipient and positive amount."""
-    sim = AuroraSimulateRequest(
-        recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-        amount_usdc=5.0,
-    )
-    assert sim.amount_usdc == 5.0
-    assert sim.recipient == "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
-
-    with pytest.raises(ValueError):
-        AuroraSimulateRequest(
-            recipient="not-a-valid-solana-address",
-            amount_usdc=5.0,
-        )
-
-    with pytest.raises(ValueError):
-        AuroraSimulateRequest(
-            recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
-            amount_usdc=-1.0,
-        )
 
