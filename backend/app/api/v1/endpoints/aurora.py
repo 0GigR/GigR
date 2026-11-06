@@ -18,6 +18,7 @@ from ....core.container import build_aurora_intents_service
 from ....core.errors import DependencyUnavailableError
 from ....schemas.aurora import (
     AuroraQuoteRequest,
+    AuroraSimulateRequest,
     AuroraStatusResponse,
 )
 
@@ -100,3 +101,43 @@ async def check_deposit_status(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Unable to fetch deposit status: {exc.message}",
         )
+
+
+@router.post("/simulate-settlement")
+async def simulate_devnet_settlement(request: AuroraSimulateRequest) -> dict[str, Any]:
+    """Credit Devnet test USDC to simulate a settled cross-chain deposit."""
+    if not settings.aurora_intents_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aurora Intents integration is not enabled on this deployment.",
+        )
+
+    service = build_aurora_intents_service()
+    try:
+        tx_sig = await service.simulate_settlement(
+            recipient=request.recipient,
+            amount_usdc=request.amount_usdc,
+        )
+        return {
+            "success": True,
+            "signature": tx_sig,
+            "recipient": request.recipient,
+            "amount_usdc": request.amount_usdc,
+        }
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+    except DependencyUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Aurora settlement simulation unavailable: {exc.message}",
+        )
+    except Exception as exc:
+        logger.exception("[aurora] simulate_settlement failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Simulated settlement failed on Devnet: {exc}",
+        )
+
