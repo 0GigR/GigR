@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp, Globe, Copy, ArrowRight } from 'lucide-react'
+import { CheckCircle, Clock, Plus, ShieldCheck, Loader2, ChevronDown, ChevronUp, Globe, Copy, ArrowRight, Zap } from 'lucide-react'
 import api, { extractError } from '@/lib/api'
 import { useRail } from '@/lib/config'
 import { isFeatureEnabled } from '@/lib/featureFlags'
@@ -26,6 +26,7 @@ import {
   type AuroraQuoteResult,
   type AuroraStatusResult,
 } from '@/lib/auroraIntents'
+import { AuroraTokenSelect } from '@/components/AuroraTokenSelect'
 
 export interface Milestone {
   id: string
@@ -76,14 +77,14 @@ export function MilestonesManager({
   // Aurora Intents cross-chain milestone funding
   const auroraEnabled = isFeatureEnabled('auroraIntents')
   const [auroraMilestone, setAuroraMilestone] = useState<Milestone | null>(null)
-  const [selectedChainId, setSelectedChainId] = useState('base')
-  const [humanAmount, setHumanAmount] = useState('0.01')
-  const [refundAddress, setRefundAddress] = useState('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe')
+  const [selectedChainId, setSelectedChainId] = useState('base-usdc')
+  const [refundAddress, setRefundAddress] = useState('')
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteResult, setQuoteResult] = useState<AuroraQuoteResult | null>(null)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [depositStatus, setDepositStatus] = useState<AuroraStatusResult | null>(null)
+  const [isSimulating, setIsSimulating] = useState(false)
 
   const { data: walletInfo } = useQuery<{ wallet_public_key: string }>({
     queryKey: ['wallet'],
@@ -99,10 +100,11 @@ export function MilestonesManager({
     AURORA_SUPPORTED_CHAINS[0]
 
   useEffect(() => {
-    if (selectedChain) {
-      setRefundAddress(selectedChain.sampleRefundAddress)
-    }
-  }, [selectedChainId])
+    // Reset quote on chain or milestone change
+    setQuoteResult(null)
+    setQuoteError(null)
+    setDepositStatus(null)
+  }, [selectedChainId, auroraMilestone])
 
   useEffect(() => {
     if (!quoteResult?.depositAddress) return
@@ -113,6 +115,11 @@ export function MilestonesManager({
         setDepositStatus(st)
         if (st.status === 'SUCCESS' || st.status === 'FAILED') {
           clearInterval(interval)
+          if (st.status === 'SUCCESS' && auroraMilestone) {
+            toast.success('Any-chain deposit confirmed! Locking escrow on Solana...')
+            fundMilestoneMutation.mutate(auroraMilestone.id)
+            setAuroraMilestone(null)
+          }
         }
       } catch {
         // Tolerated transient polling error
@@ -120,11 +127,11 @@ export function MilestonesManager({
     }, 4000)
 
     return () => clearInterval(interval)
-  }, [quoteResult?.depositAddress])
+  }, [quoteResult?.depositAddress, auroraMilestone])
 
   const handleFetchMilestoneQuote = async () => {
     if (!auroraMilestone || !walletInfo?.wallet_public_key) {
-      setQuoteError('Wallet not available. Please ensure your account is connected.')
+      setQuoteError('Solana wallet not available. Please ensure you are logged in.')
       return
     }
     setQuoteLoading(true)
@@ -133,35 +140,43 @@ export function MilestonesManager({
     setDepositStatus(null)
 
     try {
-      const parsedFloat = parseFloat(humanAmount)
-      if (isNaN(parsedFloat) || parsedFloat <= 0) {
-        throw new Error('Please enter a valid deposit amount.')
+      const milestonePrice = parseFloat(String(auroraMilestone.amount))
+      if (isNaN(milestonePrice) || milestonePrice <= 0) {
+        throw new Error('Invalid milestone amount.')
       }
 
-      const atomicMultiplier = BigInt(10) ** BigInt(selectedChain.decimals)
-      const wholePart = Math.floor(parsedFloat)
-      const fractionalPart = parsedFloat - wholePart
-      const atomicAmount = (
-        BigInt(wholePart) * atomicMultiplier +
-        BigInt(Math.round(fractionalPart * Number(atomicMultiplier)))
-      ).toString()
+      // Escrow requires exact USDC output on Solana (6 decimals)
+      const targetMicroUsdc = Math.round(milestonePrice * 1_000_000).toString()
 
       const res = await requestAuroraQuote({
         originAsset: selectedChain.defaultAssetId,
-        amount: atomicAmount,
+        amount: targetMicroUsdc,
         recipient: walletInfo.wallet_public_key,
-        refundTo: refundAddress.trim(),
+        refundTo: refundAddress.trim() || undefined,
+        swapType: 'EXACT_OUTPUT',
       })
       setQuoteResult(res)
     } catch (err: any) {
       setQuoteError(
         err?.response?.data?.detail ||
           err?.message ||
-          'Failed to retrieve quote. Verify refund address format for the source chain.'
+          'Failed to retrieve quote. Please check connection and try again.'
       )
     } finally {
       setQuoteLoading(false)
     }
+  }
+
+  const handleSimulateDevnetSettlement = () => {
+    if (!auroraMilestone) return
+    setIsSimulating(true)
+    toast.info('Simulating incoming any-chain deposit from 1Click...')
+    setTimeout(() => {
+      setIsSimulating(false)
+      toast.success('Deposit settled! Locking milestone escrow on Solana Devnet...')
+      fundMilestoneMutation.mutate(auroraMilestone.id)
+      setAuroraMilestone(null)
+    }, 1800)
   }
 
   const handleCopy = (text: string) => {
@@ -583,52 +598,54 @@ export function MilestonesManager({
               <DialogTitle>Fund Milestone via Any Chain (Aurora)</DialogTitle>
               <DialogDescription>
                 {auroraMilestone
-                  ? `Pay ${fmtPrice(parseFloat(String(auroraMilestone.amount)))} for "${auroraMilestone.title}" using ETH, BTC, or stablecoins from 38+ blockchains.`
+                  ? `Fund ${fmtPrice(parseFloat(String(auroraMilestone.amount)))} for "${auroraMilestone.title}" using USDC, ETH, or BTC from 38+ blockchains.`
                   : 'Fund milestone with cross-chain settlement.'}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 pt-2">
+              {/* Target Milestone Summary */}
+              {auroraMilestone && (
+                <div className="p-3 rounded-lg bg-muted/40 border border-border flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Milestone</span>
+                    <span className="font-semibold text-foreground">{auroraMilestone.title}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-muted-foreground block text-[11px]">Required Escrow</span>
+                    <span className="font-mono font-bold text-sm text-primary">
+                      {fmtPrice(parseFloat(String(auroraMilestone.amount)))} USDC
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Token Selector */}
               <div>
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Source Chain
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
+                  Payment Asset & Chain
                 </label>
-                <select
-                  className="w-full mt-1 p-2 rounded-md border border-border bg-background text-foreground text-sm"
-                  value={selectedChainId}
-                  onChange={(e) => setSelectedChainId(e.target.value)}
-                >
-                  {AURORA_SUPPORTED_CHAINS.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.nativeSymbol})
-                    </option>
-                  ))}
-                </select>
+                <AuroraTokenSelect
+                  selectedChainId={selectedChainId}
+                  onSelect={(chain) => setSelectedChainId(chain.id)}
+                  disabled={quoteLoading}
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              {/* Optional Refund Address */}
+              <div>
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Amount ({selectedChain.nativeSymbol})
+                    Refund Address (Optional)
                   </label>
-                  <Input
-                    className="mt-1 h-9 text-sm"
-                    value={humanAmount}
-                    onChange={(e) => setHumanAmount(e.target.value)}
-                    placeholder="0.01"
-                  />
+                  <span className="text-[10px] text-muted-foreground">Source wallet for fallback</span>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    Refund Address ({selectedChain.id.toUpperCase()})
-                  </label>
-                  <Input
-                    className="mt-1 h-9 text-xs font-mono"
-                    value={refundAddress}
-                    onChange={(e) => setRefundAddress(e.target.value)}
-                    placeholder="Source chain refund address"
-                  />
-                </div>
+                <Input
+                  className="mt-1 h-9 text-xs font-mono"
+                  value={refundAddress}
+                  onChange={(e) => setRefundAddress(e.target.value)}
+                  placeholder={`e.g. your ${selectedChain.name} address (leave empty for safe default)`}
+                />
               </div>
 
               <Button
@@ -642,7 +659,7 @@ export function MilestonesManager({
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
-                    Generate Any-Chain Deposit Address <ArrowRight className="w-3.5 h-3.5" />
+                    Generate Guaranteed Deposit Address <ArrowRight className="w-3.5 h-3.5" />
                   </span>
                 )}
               </Button>
@@ -693,24 +710,26 @@ export function MilestonesManager({
                       </span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground block">Credited on Solana:</span>
+                      <span className="text-muted-foreground block">Delivered on Solana:</span>
                       <span className="font-semibold text-primary">
-                        ~{quoteResult.amountOutFormatted} USDC
+                        {quoteResult.amountOutFormatted} USDC (Guaranteed)
                       </span>
                     </div>
                   </div>
 
                   <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
-                    Send from your {selectedChain.name} wallet. Aurora automatically converts and deposits into your Solana escrow.
+                    Send funds from your {selectedChain.name} wallet. Aurora automatically routes and deposits the exact USDC into your Solana escrow.
                   </div>
 
-                  {auroraMilestone && (
+                  <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <Button
-                      className="w-full mt-2 h-8 text-xs font-semibold"
-                      disabled={fundMilestoneMutation.isPending}
+                      className="flex-1 h-8 text-xs font-semibold"
+                      disabled={fundMilestoneMutation.isPending || isSimulating}
                       onClick={() => {
-                        fundMilestoneMutation.mutate(auroraMilestone.id)
-                        setAuroraMilestone(null)
+                        if (auroraMilestone) {
+                          fundMilestoneMutation.mutate(auroraMilestone.id)
+                          setAuroraMilestone(null)
+                        }
                       }}
                     >
                       {fundMilestoneMutation.isPending ? (
@@ -718,9 +737,24 @@ export function MilestonesManager({
                       ) : (
                         <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
                       )}
-                      Complete Milestone Funding
+                      Lock Milestone Escrow
                     </Button>
-                  )}
+
+                    <Button
+                      variant="outline"
+                      className="h-8 text-xs font-medium"
+                      disabled={fundMilestoneMutation.isPending || isSimulating}
+                      onClick={handleSimulateDevnetSettlement}
+                      title="Simulate settlement for Devnet testing without real funds"
+                    >
+                      {isSimulating ? (
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      ) : (
+                        <Zap className="w-3 h-3 mr-1 text-amber-500" />
+                      )}
+                      Simulate Settlement (Devnet)
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

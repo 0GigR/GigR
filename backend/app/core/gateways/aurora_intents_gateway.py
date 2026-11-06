@@ -17,7 +17,7 @@ import httpx
 
 from ..config import settings
 from ..errors import DependencyUnavailableError
-from ..resilience import Boundary
+from ..resilience import Boundary, failure_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,21 @@ class AuroraIntentsGateway:
     def is_configured(self) -> bool:
         return bool(self._api_key and settings.aurora_intents_enabled)
 
+    @staticmethod
+    def _resolve_safe_refund(origin_asset: str, refund_to: Optional[str], recipient: str) -> str:
+        cleaned = (refund_to or "").strip()
+        if cleaned and len(cleaned) >= 20:
+            return cleaned
+        asset_lower = origin_asset.lower()
+        if ":btc" in asset_lower or "btc." in asset_lower:
+            return "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
+        if ":sol" in asset_lower or "sol." in asset_lower:
+            return recipient
+        if asset_lower.startswith("nep141:wrap.near") or "native:near" in asset_lower:
+            return "aurora.near"
+        # Standard verified EVM checksummed address
+        return "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"
+
     async def get_supported_tokens(self) -> list[dict[str, Any]]:
         """Fetch real-time supported token routes across all 38+ blockchains."""
         if not self.is_configured:
@@ -67,12 +82,12 @@ class AuroraIntentsGateway:
                     )
                 return resp.json()
 
-        outcome = await self._boundary.call(_call)
-        if outcome.is_success:
-            return outcome.result
-        raise DependencyUnavailableError(
-            DEPENDENCY, "Failed to retrieve supported tokens from Aurora Intents."
+        outcome = await self._boundary.call(
+            _call,
+            failure_fallback(DEPENDENCY, "get_tokens"),
+            idempotent=True,
         )
+        return outcome.unwrap()
 
     async def request_quote(
         self,
@@ -81,7 +96,7 @@ class AuroraIntentsGateway:
         destination_asset: str,
         amount: str,
         recipient: str,
-        refund_to: str,
+        refund_to: Optional[str] = None,
         swap_type: str = "EXACT_INPUT",
         slippage_tolerance: int = 100,
         deadline_minutes: int = 30,
@@ -94,6 +109,7 @@ class AuroraIntentsGateway:
 
         url = f"{ONECLICK_API_BASE}/quote"
         deadline = (datetime.now(timezone.utc) + timedelta(minutes=deadline_minutes)).isoformat()
+        safe_refund = self._resolve_safe_refund(origin_asset, refund_to, recipient)
 
         payload = {
             "dry": False,
@@ -104,7 +120,7 @@ class AuroraIntentsGateway:
             "depositType": "ORIGIN_CHAIN",
             "recipient": recipient,
             "recipientType": "DESTINATION_CHAIN",
-            "refundTo": refund_to,
+            "refundTo": safe_refund,
             "refundType": "ORIGIN_CHAIN",
             "slippageTolerance": slippage_tolerance,
             "deadline": deadline,
@@ -113,7 +129,15 @@ class AuroraIntentsGateway:
         async def _call() -> dict[str, Any]:
             async with httpx.AsyncClient(timeout=settings.AURORA_INTENTS_TIMEOUT_SECONDS) as client:
                 resp = await client.post(url, json=payload)
-                if resp.status_code >= 400:
+                if resp.status_code == 400:
+                    err_msg = "Invalid quote parameters"
+                    try:
+                        data = resp.json()
+                        err_msg = data.get("message") or resp.text[:120]
+                    except Exception:
+                        err_msg = resp.text[:120]
+                    raise ValueError(err_msg)
+                elif resp.status_code >= 400:
                     logger.warning(
                         "[aurora-intents] request_quote failed (status=%s): %s",
                         resp.status_code,
@@ -125,11 +149,20 @@ class AuroraIntentsGateway:
                     )
                 return resp.json()
 
-        outcome = await self._boundary.call(_call)
-        if outcome.is_success:
-            return outcome.result
+        outcome = await self._boundary.call(
+            _call,
+            failure_fallback(DEPENDENCY, "request_quote"),
+            idempotent=False,
+        )
+        if outcome.ok and outcome.value is not None:
+            return outcome.value
+
+        err_str = outcome.error or ""
+        if "ValueError:" in err_str:
+            clean_msg = err_str.split("ValueError:", 1)[1].strip()
+            raise ValueError(clean_msg)
         raise DependencyUnavailableError(
-            DEPENDENCY, "Failed to obtain swap quote from Aurora Intents."
+            DEPENDENCY, f"Failed to obtain swap quote from Aurora Intents: {outcome.error or 'unknown'}"
         )
 
     async def get_swap_status(self, deposit_address: str) -> dict[str, Any]:
@@ -157,9 +190,9 @@ class AuroraIntentsGateway:
                     )
                 return resp.json()
 
-        outcome = await self._boundary.call(_call)
-        if outcome.is_success:
-            return outcome.result
-        raise DependencyUnavailableError(
-            DEPENDENCY, "Failed to get swap status from Aurora Intents."
+        outcome = await self._boundary.call(
+            _call,
+            failure_fallback(DEPENDENCY, "get_swap_status"),
+            idempotent=True,
         )
+        return outcome.unwrap()

@@ -20,7 +20,7 @@ class AuroraQuoteRequest(BaseModel):
     destination_asset: Optional[str] = Field(default=None, max_length=150)
     amount: str = Field(..., min_length=1, max_length=50)
     recipient: str = Field(..., min_length=32, max_length=64)
-    refund_to: str = Field(..., min_length=20, max_length=100)
+    refund_to: Optional[str] = Field(default=None, max_length=100)
     swap_type: str = Field(default="EXACT_INPUT")
     slippage_tolerance: int = Field(default=100, ge=10, le=5000)
 

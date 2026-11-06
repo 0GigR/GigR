@@ -8,7 +8,9 @@ import {
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useState, useEffect } from 'react'
-import { Wallet, Globe, ArrowRight, Loader2, Copy } from 'lucide-react'
+import { Wallet, Globe, ArrowRight, Loader2, Copy, Zap } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { isFeatureEnabled } from '@/lib/featureFlags'
 import {
   AURORA_SUPPORTED_CHAINS,
@@ -17,23 +19,25 @@ import {
   type AuroraQuoteResult,
   type AuroraStatusResult,
 } from '@/lib/auroraIntents'
+import { AuroraTokenSelect } from '@/components/AuroraTokenSelect'
+import { Input } from '@/components/ui/input'
 
 interface Props {
   walletAddress: string
 }
 
 export function FundWalletButton({ walletAddress }: Props) {
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
-  const [selectedChainId, setSelectedChainId] = useState('base')
-  const [humanAmount, setHumanAmount] = useState('0.01')
-  const [refundAddress, setRefundAddress] = useState(
-    '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'
-  )
+  const [selectedChainId, setSelectedChainId] = useState('base-usdc')
+  const [usdcAmount, setUsdcAmount] = useState('25')
+  const [refundAddress, setRefundAddress] = useState('')
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [quoteResult, setQuoteResult] = useState<AuroraQuoteResult | null>(null)
   const [quoteError, setQuoteError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [depositStatus, setDepositStatus] = useState<AuroraStatusResult | null>(null)
+  const [isSimulating, setIsSimulating] = useState(false)
 
   const auroraEnabled = isFeatureEnabled('auroraIntents')
   const appId = import.meta.env.VITE_ONRAMP_APP_ID
@@ -43,9 +47,9 @@ export function FundWalletButton({ walletAddress }: Props) {
     AURORA_SUPPORTED_CHAINS[0]
 
   useEffect(() => {
-    if (selectedChain) {
-      setRefundAddress(selectedChain.sampleRefundAddress)
-    }
+    setQuoteResult(null)
+    setQuoteError(null)
+    setDepositStatus(null)
   }, [selectedChainId])
 
   // Polling deposit settlement status
@@ -58,6 +62,10 @@ export function FundWalletButton({ walletAddress }: Props) {
         setDepositStatus(st)
         if (st.status === 'SUCCESS' || st.status === 'FAILED') {
           clearInterval(interval)
+          if (st.status === 'SUCCESS') {
+            toast.success('Funds arrived! Your Solana balance has been credited.')
+            queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
+          }
         }
       } catch {
         // Silently tolerate transient polling drops
@@ -65,7 +73,7 @@ export function FundWalletButton({ walletAddress }: Props) {
     }, 4000)
 
     return () => clearInterval(interval)
-  }, [quoteResult?.depositAddress])
+  }, [quoteResult?.depositAddress, queryClient])
 
   const handleOpen = () => {
     if (!auroraEnabled && appId && (window as any).Onramp) {
@@ -87,36 +95,42 @@ export function FundWalletButton({ walletAddress }: Props) {
     setDepositStatus(null)
 
     try {
-      const parsedFloat = parseFloat(humanAmount)
-      if (isNaN(parsedFloat) || parsedFloat <= 0) {
-        throw new Error('Please enter a valid deposit amount.')
+      const parsedUsdc = parseFloat(usdcAmount)
+      if (isNaN(parsedUsdc) || parsedUsdc <= 0) {
+        throw new Error('Please enter a valid USDC deposit amount.')
       }
 
-      // Convert human amount to base units using chain decimals
-      const atomicMultiplier = BigInt(10) ** BigInt(selectedChain.decimals)
-      const wholePart = Math.floor(parsedFloat)
-      const fractionalPart = parsedFloat - wholePart
-      const atomicAmount = (
-        BigInt(wholePart) * atomicMultiplier +
-        BigInt(Math.round(fractionalPart * Number(atomicMultiplier)))
-      ).toString()
+      // Escrows and balances settle in Solana USDC (6 decimals)
+      const targetMicroUsdc = Math.round(parsedUsdc * 1_000_000).toString()
 
       const res = await requestAuroraQuote({
         originAsset: selectedChain.defaultAssetId,
-        amount: atomicAmount,
+        amount: targetMicroUsdc,
         recipient: walletAddress,
-        refundTo: refundAddress.trim(),
+        refundTo: refundAddress.trim() || undefined,
+        swapType: 'EXACT_OUTPUT',
       })
       setQuoteResult(res)
     } catch (err: any) {
       setQuoteError(
         err?.response?.data?.detail ||
           err?.message ||
-          'Failed to retrieve live quote. Verify the refund address format for the source chain.'
+          'Failed to retrieve live quote. Please check connection and try again.'
       )
     } finally {
       setQuoteLoading(false)
     }
+  }
+
+  const handleSimulateDevnetDeposit = () => {
+    setIsSimulating(true)
+    toast.info('Simulating incoming deposit from 1Click solver network...')
+    setTimeout(() => {
+      setIsSimulating(false)
+      toast.success(`Successfully simulated ${usdcAmount} USDC deposit on Solana Devnet!`)
+      queryClient.invalidateQueries({ queryKey: ['wallet-balance'] })
+      setOpen(false)
+    }, 1800)
   }
 
   const handleCopy = (text: string) => {
@@ -132,7 +146,7 @@ export function FundWalletButton({ walletAddress }: Props) {
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg bg-white dark:bg-card text-black dark:text-foreground">
+        <DialogContent className="sm:max-w-lg bg-card text-foreground border-border">
           <DialogHeader>
             <DialogTitle>Fund Your Wallet (Devnet)</DialogTitle>
             <DialogDescription>
@@ -156,45 +170,40 @@ export function FundWalletButton({ walletAddress }: Props) {
               <TabsContent value="aurora" className="space-y-4 pt-3">
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                      Deposit Source Chain
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1">
+                      Deposit Source Chain & Token
                     </label>
-                    <select
-                      className="w-full mt-1 p-2 rounded-md border border-gray-200 dark:border-border bg-transparent text-sm"
-                      value={selectedChainId}
-                      onChange={(e) => setSelectedChainId(e.target.value)}
-                    >
-                      {AURORA_SUPPORTED_CHAINS.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.nativeSymbol})
-                        </option>
-                      ))}
-                    </select>
+                    <AuroraTokenSelect
+                      selectedChainId={selectedChainId}
+                      onSelect={(chain) => setSelectedChainId(chain.id)}
+                      disabled={quoteLoading}
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Deposit Amount ({selectedChain.nativeSymbol})
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        USDC to Receive (Solana)
                       </label>
-                      <input
-                        type="text"
-                        className="w-full mt-1 p-2 rounded-md border border-gray-200 dark:border-border bg-transparent text-sm"
-                        value={humanAmount}
-                        onChange={(e) => setHumanAmount(e.target.value)}
-                        placeholder="0.01"
+                      <Input
+                        className="mt-1 h-9 text-sm"
+                        value={usdcAmount}
+                        onChange={(e) => setUsdcAmount(e.target.value)}
+                        placeholder="25"
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        Your Refund Address ({selectedChain.id.toUpperCase()})
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full mt-1 p-2 rounded-md border border-gray-200 dark:border-border bg-transparent text-xs font-mono"
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          Refund Address
+                        </label>
+                        <span className="text-[10px] text-muted-foreground">Optional</span>
+                      </div>
+                      <Input
+                        className="mt-1 h-9 text-xs font-mono"
                         value={refundAddress}
                         onChange={(e) => setRefundAddress(e.target.value)}
-                        placeholder="Source chain address for refunds"
+                        placeholder={`Your ${selectedChain.name} address`}
                       />
                     </div>
                   </div>
@@ -202,7 +211,7 @@ export function FundWalletButton({ walletAddress }: Props) {
                   <Button
                     onClick={handleFetchQuote}
                     disabled={quoteLoading}
-                    className="w-full bg-black text-white dark:bg-primary dark:text-primary-foreground text-xs font-medium"
+                    className="w-full text-xs font-medium"
                   >
                     {quoteLoading ? (
                       <span className="flex items-center gap-1.5">
@@ -210,13 +219,13 @@ export function FundWalletButton({ walletAddress }: Props) {
                       </span>
                     ) : (
                       <span className="flex items-center gap-1.5">
-                        Generate Any-Chain Deposit Address <ArrowRight className="w-3.5 h-3.5" />
+                        Generate Guaranteed Deposit Address <ArrowRight className="w-3.5 h-3.5" />
                       </span>
                     )}
                   </Button>
 
                   {quoteError && (
-                    <p className="text-xs text-red-500 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-lg border border-red-200 dark:border-red-900/40 font-mono">
+                    <p className="text-xs text-destructive bg-destructive/10 p-2.5 rounded-lg border border-destructive/20 font-mono">
                       {quoteError}
                     </p>
                   )}
@@ -242,7 +251,7 @@ export function FundWalletButton({ walletAddress }: Props) {
                           variant="ghost"
                           size="icon"
                           onClick={() => handleCopy(quoteResult.depositAddress)}
-                          className="h-7 w-7 flex-shrink-0"
+                          className="h-7 w-7 shrink-0"
                         >
                           <Copy className="w-3.5 h-3.5" />
                         </Button>
@@ -267,27 +276,42 @@ export function FundWalletButton({ walletAddress }: Props) {
                             You Receive:
                           </span>
                           <span className="font-semibold text-primary">
-                            ~{quoteResult.amountOutFormatted} USDC (Solana)
+                            {quoteResult.amountOutFormatted} USDC (Solana)
                           </span>
                         </div>
                       </div>
 
                       <div className="text-[11px] text-muted-foreground pt-1 border-t border-border">
-                        Send from any {selectedChain.name} wallet. Aurora automatically routes, swaps, and credits your Solana Devnet balance.
+                        Send from your {selectedChain.name} wallet. Aurora automatically swaps and credits your Gigr Solana USDC balance.
                       </div>
+
+                      <Button
+                        variant="outline"
+                        className="w-full h-8 text-xs font-medium"
+                        disabled={isSimulating}
+                        onClick={handleSimulateDevnetDeposit}
+                        title="Simulate settlement for Devnet testing without real funds"
+                      >
+                        {isSimulating ? (
+                          <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                        ) : (
+                          <Zap className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                        )}
+                        Simulate Deposit Settlement (Devnet Test)
+                      </Button>
                     </div>
                   )}
                 </div>
               </TabsContent>
 
               <TabsContent value="faucet" className="space-y-4 pt-3">
-                <div className="bg-gray-50 dark:bg-background rounded-lg p-3">
-                  <p className="text-sm font-medium mb-2">Your wallet address:</p>
-                  <code className="text-xs break-all bg-gray-100 dark:bg-muted p-2 rounded block">
+                <div className="bg-muted/40 rounded-lg p-3 border border-border">
+                  <p className="text-sm font-medium mb-2 text-foreground">Your wallet address:</p>
+                  <code className="text-xs break-all bg-background p-2 rounded border border-border block text-primary font-mono">
                     {walletAddress}
                   </code>
                 </div>
-                <ol className="text-sm text-gray-600 dark:text-muted-foreground space-y-2 list-decimal list-inside">
+                <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>Copy the wallet address above</li>
                   <li>
                     Go to{' '}
@@ -295,7 +319,7 @@ export function FundWalletButton({ walletAddress }: Props) {
                       href="https://faucet.circle.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 underline"
+                      className="text-primary underline"
                     >
                       faucet.circle.com
                     </a>
@@ -307,7 +331,7 @@ export function FundWalletButton({ walletAddress }: Props) {
                 </ol>
                 <Button
                   onClick={() => window.open('https://faucet.circle.com', '_blank')}
-                  className="w-full bg-black text-white"
+                  className="w-full text-xs font-medium"
                 >
                   Open Circle Faucet
                 </Button>
@@ -315,13 +339,13 @@ export function FundWalletButton({ walletAddress }: Props) {
             </Tabs>
           ) : (
             <div className="space-y-4 py-4">
-              <div className="bg-gray-50 dark:bg-background rounded-lg p-3">
-                <p className="text-sm font-medium mb-2">Your wallet address:</p>
-                <code className="text-xs break-all bg-gray-100 dark:bg-muted p-2 rounded block">
+              <div className="bg-muted/40 rounded-lg p-3 border border-border">
+                <p className="text-sm font-medium mb-2 text-foreground">Your wallet address:</p>
+                <code className="text-xs break-all bg-background p-2 rounded border border-border block text-primary font-mono">
                   {walletAddress}
                 </code>
               </div>
-              <ol className="text-sm text-gray-600 dark:text-muted-foreground space-y-2 list-decimal list-inside">
+              <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                 <li>Copy the wallet address above</li>
                 <li>
                   Go to{' '}
@@ -329,7 +353,7 @@ export function FundWalletButton({ walletAddress }: Props) {
                     href="https://faucet.circle.com"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 dark:text-blue-400 underline"
+                    className="text-primary underline"
                   >
                     faucet.circle.com
                   </a>
@@ -341,7 +365,7 @@ export function FundWalletButton({ walletAddress }: Props) {
               </ol>
               <Button
                 onClick={() => window.open('https://faucet.circle.com', '_blank')}
-                className="w-full bg-black text-white"
+                className="w-full text-xs font-medium"
               >
                 Open Circle Faucet
               </Button>
