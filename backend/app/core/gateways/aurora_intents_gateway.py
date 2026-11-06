@@ -46,14 +46,45 @@ class AuroraIntentsGateway:
     @staticmethod
     def _resolve_safe_refund(origin_asset: str, refund_to: Optional[str], recipient: str) -> str:
         cleaned = (refund_to or "").strip()
-        if cleaned and len(cleaned) >= 20:
-            return cleaned
         asset_lower = origin_asset.lower()
-        if ":btc" in asset_lower or "btc." in asset_lower:
+
+        is_sui = "sui" in asset_lower
+        is_btc = ":btc" in asset_lower or "btc." in asset_lower
+        is_sol = ":sol" in asset_lower or "sol." in asset_lower
+        is_tron = "tron" in asset_lower or ":trx" in asset_lower or "trx." in asset_lower
+        is_ton = "ton" in asset_lower
+        is_stellar = "stellar" in asset_lower or "xlm" in asset_lower
+        is_near = asset_lower.startswith("nep141:wrap.near") or "native:near" in asset_lower
+
+        if cleaned and len(cleaned) >= 20:
+            if is_sui and len(cleaned) != 66:
+                pass  # invalid Sui length, fall through to safe Sui address
+            elif is_btc and cleaned.startswith("0x"):
+                pass  # invalid BTC address, fall through
+            elif is_sol and cleaned.startswith("0x"):
+                pass  # invalid Solana address, fall through
+            elif is_tron and cleaned.startswith("0x"):
+                pass  # invalid Tron address, fall through
+            elif is_ton and cleaned.startswith("0x"):
+                pass  # invalid TON address, fall through
+            elif is_stellar and cleaned.startswith("0x"):
+                pass  # invalid Stellar address, fall through
+            else:
+                return cleaned
+
+        if is_sui:
+            return "0x0000000000000000000000000000000000000000000000000000000000000002"
+        if is_btc:
             return "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"
-        if ":sol" in asset_lower or "sol." in asset_lower:
+        if is_sol:
             return recipient
-        if asset_lower.startswith("nep141:wrap.near") or "native:near" in asset_lower:
+        if is_tron:
+            return "TLyqz4YGLFi9WPGQmaDregqKZTxt1HpW26"
+        if is_ton:
+            return "EQCD39VS5jcptHL8vMjEXrzGaRcCVYto7HUn4bpAOg8xqB2N"
+        if is_stellar:
+            return "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"
+        if is_near:
             return "aurora.near"
         # Standard verified EVM checksummed address
         return "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe"
