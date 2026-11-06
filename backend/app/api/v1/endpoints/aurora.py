@@ -69,6 +69,11 @@ async def request_aurora_quote(request: AuroraQuoteRequest) -> dict[str, Any]:
     service = build_aurora_intents_service()
     try:
         return await service.create_quote(request)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
     except DependencyUnavailableError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,

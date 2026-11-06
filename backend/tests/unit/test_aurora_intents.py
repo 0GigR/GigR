@@ -83,3 +83,23 @@ async def test_aurora_service_rejects_when_unconfigured():
     assert service.is_enabled is False
     with pytest.raises(DependencyUnavailableError):
         await service.get_tokens()
+
+
+def test_aurora_quote_optional_refund_and_swap_types():
+    """Verify refund_to is optional and swap_type handles EXACT_OUTPUT."""
+    req = AuroraQuoteRequest(
+        origin_asset="nep141:base.omft.near",
+        amount="25000000",
+        recipient="9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+        swap_type="EXACT_OUTPUT",
+    )
+    assert req.refund_to is None
+    assert req.swap_type == "EXACT_OUTPUT"
+
+    # Gateway helper safely resolves valid fallback addresses
+    evm_refund = AuroraIntentsGateway._resolve_safe_refund("nep141:base.omft.near", None, req.recipient)
+    assert evm_refund.startswith("0x")
+    btc_refund = AuroraIntentsGateway._resolve_safe_refund("nep141:btc.omft.near", None, req.recipient)
+    assert btc_refund.startswith("bc1")
+    sol_refund = AuroraIntentsGateway._resolve_safe_refund("nep141:sol.omft.near", None, req.recipient)
+    assert sol_refund == req.recipient

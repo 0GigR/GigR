@@ -90,10 +90,34 @@ export default function DashboardLayout() {
     setWebMCPNavigate(navigate)
   }, [navigate])
 
+  const isInstallDismissed = (): boolean => {
+    if (typeof window === 'undefined') return true
+    try {
+      const raw = localStorage.getItem('gigr:pwa_install_dismissed')
+      if (!raw) return false
+      const dismissedAt = Number(raw)
+      return Date.now() - dismissedAt < 14 * 24 * 60 * 60 * 1000
+    } catch {
+      return false
+    }
+  }
+
+  const handleDismissInstall = () => {
+    try {
+      localStorage.setItem('gigr:pwa_install_dismissed', String(Date.now()))
+    } catch {
+      // Ignored
+    }
+    setDeferredPrompt(null)
+  }
+
   useEffect(() => {
+    if (isInstallDismissed()) return
     const handler = (e: any) => {
       e.preventDefault()
-      setDeferredPrompt(e)
+      if (!isInstallDismissed()) {
+        setDeferredPrompt(e)
+      }
     }
     window.addEventListener('beforeinstallprompt', handler)
     return () => window.removeEventListener('beforeinstallprompt', handler)
@@ -104,7 +128,7 @@ export default function DashboardLayout() {
     deferredPrompt.prompt()
     const { outcome } = await deferredPrompt.userChoice
     if (outcome === 'accepted') {
-      setDeferredPrompt(null)
+      handleDismissInstall()
     }
   }
 
@@ -288,7 +312,7 @@ export default function DashboardLayout() {
             <button onClick={handleInstallClick} className="bg-white dark:bg-card text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded font-medium hover:bg-gray-100 dark:hover:bg-muted transition-colors">
               Install
             </button>
-            <button onClick={() => setDeferredPrompt(null)} className="opacity-70 hover:opacity-100">
+            <button onClick={handleDismissInstall} aria-label="Dismiss install banner" className="opacity-70 hover:opacity-100">
               <X className="w-4 h-4" />
             </button>
           </div>

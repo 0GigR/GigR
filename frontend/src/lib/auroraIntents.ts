@@ -9,12 +9,16 @@
 
 import api from './api'
 
+export type AuroraTokenCategory = 'stablecoin' | 'native'
+
 export interface AuroraChain {
   id: string
   name: string
   nativeSymbol: string
   defaultAssetId: string
   decimals: number
+  category: AuroraTokenCategory
+  description: string
   sampleRefundAddress: string
 }
 
@@ -32,7 +36,8 @@ export interface AuroraQuoteParams {
   destinationAsset?: string
   amount: string
   recipient: string
-  refundTo: string
+  refundTo?: string
+  swapType?: 'EXACT_INPUT' | 'EXACT_OUTPUT'
   slippageTolerance?: number
 }
 
@@ -59,30 +64,99 @@ export interface AuroraStatusResult {
   destinationChainTxHashes?: string[]
 }
 
-/** Pre-configured 1Click verified blockchains with native asset routing. */
+/** Pre-configured 1Click verified blockchains and tokens with tested liquidity. */
 export const AURORA_SUPPORTED_CHAINS: readonly AuroraChain[] = [
+  // ── Stablecoins (Recommended: 1:1, Zero Volatility) ──────────────────────
   {
-    id: 'eth',
+    id: 'base-usdc',
+    name: 'Base',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Base (Low gas, sub-cent fees)',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'arb-usdc',
+    name: 'Arbitrum',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Arbitrum One',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'eth-usdc',
+    name: 'Ethereum',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Ethereum Mainnet',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'pol-usdc',
+    name: 'Polygon',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep245:v2_1.omni.hot.tg:137_qiStmoQJDQPTebaPjgx5VBxZv6L',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Polygon PoS',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'op-usdc',
+    name: 'Optimism',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep245:v2_1.omni.hot.tg:10_A2ewyUyDp6qsue1jqZsGypkCxRJ',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Optimism (OP Mainnet)',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'avax-usdc',
+    name: 'Avalanche',
+    nativeSymbol: 'USDC',
+    defaultAssetId: 'nep245:v2_1.omni.hot.tg:43114_3atVJH3r5c4GqiSYmg9fECvjc47o',
+    decimals: 6,
+    category: 'stablecoin',
+    description: 'USD Coin on Avalanche C-Chain',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+
+  // ── Native Cryptocurrencies ─────────────────────────────────────────────
+  {
+    id: 'base-eth',
+    name: 'Base',
+    nativeSymbol: 'ETH',
+    defaultAssetId: 'nep141:base.omft.near',
+    decimals: 18,
+    category: 'native',
+    description: 'Native Ether on Base',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'arb-eth',
+    name: 'Arbitrum',
+    nativeSymbol: 'ETH',
+    defaultAssetId: 'nep141:arb.omft.near',
+    decimals: 18,
+    category: 'native',
+    description: 'Native Ether on Arbitrum One',
+    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
+  },
+  {
+    id: 'eth-eth',
     name: 'Ethereum',
     nativeSymbol: 'ETH',
     defaultAssetId: 'nep141:eth.omft.near',
     decimals: 18,
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
-  },
-  {
-    id: 'base',
-    name: 'Base',
-    nativeSymbol: 'ETH',
-    defaultAssetId: 'nep141:base-0x4200000000000000000000000000000000000006.omft.near',
-    decimals: 18,
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
-  },
-  {
-    id: 'arb',
-    name: 'Arbitrum',
-    nativeSymbol: 'ETH',
-    defaultAssetId: 'nep141:arb-0x912ce59144191c1204e64559fe8253a0e49e6548.omft.near',
-    decimals: 18,
+    category: 'native',
+    description: 'Native Ether on Ethereum Mainnet',
     sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
   },
   {
@@ -91,39 +165,9 @@ export const AURORA_SUPPORTED_CHAINS: readonly AuroraChain[] = [
     nativeSymbol: 'BTC',
     defaultAssetId: 'nep141:btc.omft.near',
     decimals: 8,
+    category: 'native',
+    description: 'Native Bitcoin network asset',
     sampleRefundAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq',
-  },
-  {
-    id: 'bsc',
-    name: 'BNB Chain',
-    nativeSymbol: 'BNB',
-    defaultAssetId: 'nep141:bsc-0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c.omft.near',
-    decimals: 18,
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
-  },
-  {
-    id: 'pol',
-    name: 'Polygon',
-    nativeSymbol: 'POL',
-    defaultAssetId: 'nep141:pol-0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270.omft.near',
-    decimals: 18,
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
-  },
-  {
-    id: 'op',
-    name: 'Optimism',
-    nativeSymbol: 'ETH',
-    defaultAssetId: 'nep141:op-0x4200000000000000000000000000000000000006.omft.near',
-    decimals: 18,
-    sampleRefundAddress: '0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe',
-  },
-  {
-    id: 'near',
-    name: 'NEAR',
-    nativeSymbol: 'wNEAR',
-    defaultAssetId: 'nep141:wrap.near',
-    decimals: 24,
-    sampleRefundAddress: 'wrap.near',
   },
   {
     id: 'sol',
@@ -131,6 +175,8 @@ export const AURORA_SUPPORTED_CHAINS: readonly AuroraChain[] = [
     nativeSymbol: 'SOL',
     defaultAssetId: 'nep141:sol.omft.near',
     decimals: 9,
+    category: 'native',
+    description: 'Native Solana token',
     sampleRefundAddress: '72sWqFv9Qp5qPj9k9wB3x8X3fVwE7qR8kL9mZ2yP4xW',
   },
 ]
@@ -192,7 +238,8 @@ export async function requestAuroraQuote(
     destination_asset: params.destinationAsset,
     amount: params.amount,
     recipient: params.recipient,
-    refund_to: params.refundTo,
+    refund_to: params.refundTo?.trim() || undefined,
+    swap_type: params.swapType || 'EXACT_INPUT',
     slippage_tolerance: params.slippageTolerance || 100,
   })
 
