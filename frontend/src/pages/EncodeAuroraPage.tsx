@@ -52,8 +52,8 @@ const BRANDS: readonly BrandTile[] = [
     mark: {
       src: '/brands/gigr.png',
       alt: 'Gigr logo',
-      width: 64,
-      height: 64,
+      width: 24,
+      height: 24,
     },
   },
   {
@@ -61,18 +61,36 @@ const BRANDS: readonly BrandTile[] = [
     role: 'Cross-chain engine',
     tone: 'sky',
     href: 'https://intents.aurora.dev',
+    mark: {
+      src: '/brands/aurora.svg',
+      alt: 'Aurora Intents logo',
+      width: 24,
+      height: 24,
+    },
   },
   {
     name: 'NEAR Intents',
     role: '1Click routing',
     tone: 'blue',
     href: 'https://near.org',
+    mark: {
+      src: '/brands/near.svg',
+      alt: 'NEAR Intents logo',
+      width: 24,
+      height: 24,
+    },
   },
   {
     name: 'Solana',
     role: 'Settlement layer',
     tone: 'violet',
     href: 'https://solana.com',
+    mark: {
+      src: '/brands/solana.svg',
+      alt: 'Solana logo',
+      width: 24,
+      height: 24,
+    },
   },
 ]
 
@@ -239,10 +257,10 @@ export default function EncodeAuroraPage() {
 
       <main className="judges-main">
         <section className="judges-hero" aria-labelledby="judges-title">
-          <p className="judges-eyebrow">Encode Aurora Hackathon Briefing</p>
+          <p className="judges-eyebrow">Demo</p>
           <h1 id="judges-title" className="judges-title">
             Any-Chain Liquidity on{' '}
-            <span className="judges-title-accent">Solana</span>.
+            <span className="judges-title-accent">Solana</span>
           </h1>
           <p className="judges-lede">
             Gigr is a hyperlocal services marketplace with milestone escrow on
@@ -274,28 +292,12 @@ export default function EncodeAuroraPage() {
                   ) : (
                     <span className="judges-brand-wordmark">{brand.name}</span>
                   )}
-                  <span className="judges-brand-tile-role">{brand.role}</span>
+                  <span className="judges-brand-tile-name">{brand.name}</span>
+                  <span className="judges-brand-tile-role">• {brand.role}</span>
                 </OutboundLink>
               </li>
             ))}
           </ul>
-
-          <div className="judges-hero-actions">
-            <OutboundLink
-              className="judges-button judges-button-primary"
-              href={APPLICATION_URL}
-            >
-              Open application
-              <ExternalLink className="judges-icon" aria-hidden="true" />
-            </OutboundLink>
-            <OutboundLink className="judges-button" href={DEMO_VIDEO_URL}>
-              Watch demo
-              <ExternalLink className="judges-icon" aria-hidden="true" />
-            </OutboundLink>
-            <OutboundLink className="judges-text-link" href={SOURCE_URL}>
-              Source on GitHub
-            </OutboundLink>
-          </div>
 
           <ul className="judges-stats" aria-label="Project facts">
             {STATS.map((stat) => (
