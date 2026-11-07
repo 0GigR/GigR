@@ -20,11 +20,11 @@ import {
 import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import AgentPaymentFlow from '@/components/judges/AgentPaymentFlow'
 import './judges.css'
 
-// Placeholder video ID until user records their live walkthrough
-const DEMO_VIDEO_ID = 'HM9IAKpiks0'
-const DEMO_VIDEO_URL = 'https://youtu.be/HM9IAKpiks0'
+const DEMO_VIDEO_ID = '851MpwbjewY'
+const DEMO_VIDEO_URL = 'https://youtu.be/851MpwbjewY'
 const APPLICATION_URL = 'https://gigrr.vercel.app'
 const SOURCE_URL = 'https://github.com/0GigR/GigR'
 const CI_URL = 'https://github.com/0GigR/GigR/actions'
@@ -78,8 +78,8 @@ const BRANDS: readonly BrandTile[] = [
 
 const STATS = [
   { value: '38+', label: 'Supported blockchains' },
-  { value: '0.5%', label: 'Custom fee margin' },
-  { value: '10s', label: 'Circuit breaker gateway' },
+  { value: '0.01 USDC', label: 'x402 micro-settlement' },
+  { value: 'Anchor PDA', label: 'Non-custodial escrow' },
   { value: '318', label: 'Tests passing in CI' },
 ]
 
@@ -318,7 +318,7 @@ export default function EncodeAuroraPage() {
                   Demo Walkthrough
                 </h2>
                 <p className="judges-video-subtitle">
-                  Four chapters. Live 1Click engine settlement. Zero bridging.
+                  Eight chapters. Live Anchor escrow. 38+ chains via Aurora Intents. cNFT reputation. x402 agent payments.
                 </p>
               </div>
               <OutboundLink
@@ -475,6 +475,8 @@ export default function EncodeAuroraPage() {
             </p>
           </aside>
         </div>
+
+        <AgentPaymentFlow />
 
         <section className="judges-verify" aria-label="Verification">
           <span className="judges-verify-label">Verification</span>
