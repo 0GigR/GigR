@@ -123,7 +123,7 @@ function OutboundLink({
 }
 
 export default function EncodeAuroraPage() {
-  const [isLightMode, setIsLightMode] = useState(false)
+  const [isLightMode, setIsLightMode] = useState(true)
   const [activeIndex, setActiveIndex] = useState(0)
   const seekLockRef = useRef<{ index: number; expires: number } | null>(null)
   const [visibleRatio, setVisibleRatio] = useState(0)
@@ -370,7 +370,7 @@ export default function EncodeAuroraPage() {
 
                   <button
                     type="button"
-                    className="ea-video-btn"
+                    className="ea-video-btn-sound"
                     onClick={toggleMute}
                     aria-label={isMuted ? 'Turn video sound on' : 'Turn video sound off'}
                   >
