@@ -21,23 +21,23 @@
 
 html:has(.judges-page),
 body:has(.judges-page) {
-  background-color: #14131a;
+  background-color: #100e17;
 }
 
 .judges-page {
-  --judges-bg: #14131a;
-  --judges-bg-deep: #0c0b11;
-  --judges-card: #1a1922;
-  --judges-card-raised: #201e2a;
+  --judges-bg: #100e17;
+  --judges-bg-deep: #09080f;
+  --judges-card: #181524;
+  --judges-card-raised: #201c30;
   --judges-border: rgba(255, 255, 255, 0.08);
-  --judges-border-accent: rgba(167, 139, 250, 0.18);
-  --judges-border-strong: rgba(167, 139, 250, 0.42);
+  --judges-border-accent: rgba(139, 92, 246, 0.22);
+  --judges-border-strong: rgba(139, 92, 246, 0.45);
   --judges-text: #f3f2f8;
   --judges-text-soft: #d4d2df;
-  --judges-muted: #9a9aa8;
-  --judges-primary: #a78bfa;
-  --judges-primary-bright: #c4b5fd;
-  --judges-primary-ink: #17131f;
+  --judges-muted: #9ca3af;
+  --judges-primary: #8b5cf6;
+  --judges-primary-bright: #a78bfa;
+  --judges-primary-ink: #100e17;
 
   /* Page padding: 12px at 390px wide, 48px at 1440px wide. */
   --judges-pad: clamp(12px, calc(3.4286vw - 1.3714px), 48px);
@@ -236,42 +236,41 @@ body:has(.judges-page) {
 
 .judges-hero {
   max-width: 900px;
-  padding: clamp(26px, 2.9vw, 42px) 0 clamp(22px, 2.4vw, 34px);
+  padding: 8px 0 10px;
   animation: judges-rise 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
 
 .judges-eyebrow {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 16px;
-  color: #b9b7c9;
-  font-size: clamp(11px, calc(0.0476vw + 10.814px), 11.5px);
-  font-weight: 540;
-  letter-spacing: 0.15em;
+  gap: 6px;
+  margin: 0 0 4px;
+  color: var(--judges-primary-bright);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   line-height: 1;
   text-transform: uppercase;
 }
 
 .judges-eyebrow::before {
   content: '';
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--judges-primary);
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.85);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.85);
 }
 
 .judges-title {
   max-width: 720px;
   margin: 0;
   color: var(--judges-text);
-  /* 26px floor at 390px, the 3.45rem desktop size from 1024px up. */
-  font-size: clamp(26px, calc(4.6vw + 8px), 3.45rem);
-  font-weight: 640;
-  letter-spacing: -0.038em;
-  line-height: 1.04;
-  scroll-margin-top: 92px;
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  scroll-margin-top: 80px;
 }
 
 .judges-title-accent {
@@ -283,19 +282,14 @@ body:has(.judges-page) {
 
 .judges-lede {
   max-width: 640px;
-  margin: 16px 0 0;
+  margin: 4px 0 0;
   color: var(--judges-muted);
-  /* Body copy: 12px floor, 16px cap. */
-  font-size: clamp(12px, calc(1.1vw + 8px), 16px);
-  line-height: 1.62;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .judges-hero-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 24px;
+  display: none;
 }
 
 .judges-button {
@@ -303,14 +297,14 @@ body:has(.judges-page) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: clamp(40px, 3.2vw, 44px);
-  padding: 0 clamp(14px, 1.3vw, 18px);
+  min-height: clamp(34px, 2.8vw, 38px);
+  padding: 0 clamp(12px, 1.1vw, 16px);
   border: 1px solid var(--judges-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--judges-card);
   color: var(--judges-text);
-  font-size: clamp(12px, calc(0.1905vw + 11.257px), 14px);
-  font-weight: 580;
+  font-size: 12px;
+  font-weight: 560;
   line-height: 1;
   text-decoration: none;
   transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
@@ -318,26 +312,26 @@ body:has(.judges-page) {
 
 .judges-button:hover {
   background: var(--judges-card-raised);
-  border-color: rgba(167, 139, 250, 0.34);
+  border-color: rgba(139, 92, 246, 0.34);
   transform: translateY(-1px);
 }
 
 .judges-button-primary {
   border-color: transparent;
-  background: linear-gradient(135deg, #b9a4ff 0%, #8b5cf6 100%);
+  background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
   color: var(--judges-primary-ink);
-  box-shadow: 0 12px 32px -14px rgba(139, 92, 246, 0.75);
+  box-shadow: 0 8px 24px -10px rgba(124, 58, 237, 0.75);
 }
 
 .judges-button-primary:hover {
   border-color: transparent;
-  background: linear-gradient(135deg, #c8b7ff 0%, #9a70f8 100%);
+  background: linear-gradient(135deg, #c4b5fd 0%, #8b5cf6 100%);
   color: var(--judges-primary-ink);
 }
 
 .judges-text-link {
   color: var(--judges-primary-bright);
-  font-size: clamp(12px, calc(0.1905vw + 11.257px), 14px);
+  font-size: 12px;
   font-weight: 500;
   text-decoration: underline;
   text-decoration-color: rgba(196, 181, 253, 0.38);
@@ -358,11 +352,11 @@ body:has(.judges-page) {
 }
 
 .judges-brand-strip {
-  display: grid;
-  /* Five tiles at every width: the strip is the composition, not a reflow. */
-  grid-template-columns: 1.35fr 1.15fr 1fr 1fr 1fr;
-  gap: clamp(4px, calc(0.381vw + 2.514px), 8px);
-  margin: clamp(18px, 1.9vw, 24px) 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -378,31 +372,24 @@ body:has(.judges-page) {
    link among five, never a single link around the strip. */
 .judges-brand-tile-link {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: clamp(2px, 0.2vw, 3px);
-  width: 100%;
-  min-width: 0;
-  min-height: clamp(52px, calc(1.3333vw + 46.8px), 66px);
-  padding: clamp(6px, calc(0.6667vw + 3.4px), 13px);
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-top: 2px solid var(--brand-tone);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, var(--brand-wash), rgba(26, 25, 34, 0.82) 70%),
-    var(--judges-card);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 2px solid var(--brand-tone);
+  border-radius: 6px;
+  background: var(--judges-card);
   color: inherit;
   text-decoration: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  transition: all 140ms ease;
 }
 
 .judges-brand-tile-link:hover {
-  border-color: rgba(196, 181, 253, 0.45);
-  border-top-color: var(--brand-tone);
-  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.9);
+  border-color: rgba(167, 139, 250, 0.45);
+  background: var(--judges-card-raised);
   transform: translateY(-1px);
 }
 
@@ -431,77 +418,70 @@ body:has(.judges-page) {
   --brand-wash: rgba(34, 211, 238, 0.12);
 }
 
-/* The real marks. Height is fixed and width follows, so no asset is ever
-   stretched: object-fit keeps the artwork inside its box when the tile is
-   narrower than the aspect ratio wants. */
 .judges-brand-mark {
   display: block;
-  height: clamp(28px, calc(1.2vw + 24px), 40px);
-  width: auto;
-  max-width: 100%;
+  height: 16px;
+  width: 16px;
+  max-width: 16px;
   object-fit: contain;
-  object-position: left center;
+  flex-shrink: 0;
 }
 
-/* Dark artwork shipped on its supplied white chip, rounded so the card reads as
-   a surface rather than a pasted rectangle. */
 .judges-brand-mark.is-chip {
-  border-radius: 7px;
+  border-radius: 4px;
   background-color: #ffffff;
 }
 
-/* Walrus ships a dark mark on transparency; on this page it is white. */
 .judges-brand-mark.is-invert {
   filter: invert(1);
 }
 
-/* x402 has no logo asset. It is set as type in a chip, never drawn. */
 .judges-brand-wordmark {
   display: inline-block;
-  max-width: 100%;
-  padding: 2px clamp(5px, 0.5vw, 7px);
-  border: 1px solid rgba(167, 139, 250, 0.45);
-  border-radius: 7px;
-  background: rgba(167, 139, 250, 0.14);
+  padding: 1px 4px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.12);
   color: #ddd6fe;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: clamp(12.5px, calc(0.3333vw + 11.2px), 16px);
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  line-height: 1.3;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.judges-brand-tile-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--judges-text);
+  white-space: nowrap;
 }
 
 .judges-brand-tile-role {
-  max-width: 100%;
+  font-size: 10px;
   color: var(--judges-muted);
-  font-size: 11px;
-  font-weight: 550;
-  letter-spacing: 0.08em;
-  line-height: 1.25;
-  text-transform: uppercase;
-  overflow-wrap: break-word;
+  white-space: nowrap;
 }
 
 .judges-stats {
-  display: grid;
-  /* Four cells at every width, like the desktop row. */
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: clamp(18px, 1.9vw, 24px) 0 0;
-  padding: 0;
-  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 6px 0 0;
+  padding: 4px 10px;
   border: 1px solid var(--judges-border);
-  border-radius: 14px;
-  background: rgba(26, 25, 34, 0.58);
+  border-radius: 8px;
+  background: rgba(24, 21, 36, 0.5);
   list-style: none;
 }
 
 .judges-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  padding: clamp(8px, calc(0.6667vw + 5.4px), 15px);
-  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  padding: 0;
+  border-right: none;
 }
 
 .judges-stat:last-child {
@@ -510,18 +490,14 @@ body:has(.judges-page) {
 
 .judges-stat-value {
   color: #ece8ff;
-  font-size: clamp(13.5px, calc(0.4286vw + 11.828px), 18px);
-  font-weight: 660;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
-  overflow-wrap: break-word;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .judges-stat-label {
   color: var(--judges-muted);
-  font-size: 11px;
-  line-height: 1.4;
-  overflow-wrap: break-word;
+  font-size: 10px;
 }
 
 /* -- Two panes ------------------------------------------------------------
