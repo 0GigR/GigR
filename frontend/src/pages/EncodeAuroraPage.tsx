@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ExternalLink, Pause, Play, ShieldCheck, Volume2, VolumeX } from 'lucide-react'
+import { ExternalLink, Moon, Pause, Play, ShieldCheck, Sun, Volume2, VolumeX } from 'lucide-react'
 import {
   AURORA_CHAPTERS,
   chapterIndexAt,
@@ -21,7 +21,7 @@ import {
 import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
-import AgentPaymentFlow from '@/components/judges/AgentPaymentFlow'
+import MonkeyAgent3DFlow from '@/components/judges/MonkeyAgent3DFlow'
 import './encodeAurora.css'
 
 const DEMO_VIDEO_ID = '851MpwbjewY'
@@ -123,6 +123,7 @@ function OutboundLink({
 }
 
 export default function EncodeAuroraPage() {
+  const [isLightMode, setIsLightMode] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const seekLockRef = useRef<{ index: number; expires: number } | null>(null)
   const [visibleRatio, setVisibleRatio] = useState(0)
@@ -224,7 +225,7 @@ export default function EncodeAuroraPage() {
   )
 
   return (
-    <div className="ea-page">
+    <div className={`ea-page${isLightMode ? ' is-light' : ''}`}>
       <div className="ea-ambient" aria-hidden="true">
         <div className="ea-ambient-glow ea-ambient-glow-a" />
         <div className="ea-ambient-glow ea-ambient-glow-b" />
@@ -245,10 +246,21 @@ export default function EncodeAuroraPage() {
             <span className="ea-brand-rule" aria-hidden="true" />
             <span className="ea-brand-context">Encode Aurora Briefing</span>
           </Link>
-          <OutboundLink className="ea-header-cta" href={APPLICATION_URL}>
-            Open application
-            <ExternalLink size={13} aria-hidden="true" />
-          </OutboundLink>
+          <div className="ea-header-actions">
+            <button
+              type="button"
+              className="ea-theme-toggle"
+              onClick={() => setIsLightMode((prev) => !prev)}
+              aria-label={isLightMode ? 'Switch to pure black dark mode' : 'Switch to light mode'}
+              title={isLightMode ? 'Pure Black Dark Mode' : 'Light Mode'}
+            >
+              {isLightMode ? <Moon size={15} aria-hidden="true" /> : <Sun size={15} aria-hidden="true" />}
+            </button>
+            <OutboundLink className="ea-header-cta" href={APPLICATION_URL}>
+              Open application
+              <ExternalLink size={13} aria-hidden="true" />
+            </OutboundLink>
+          </div>
         </div>
       </header>
 
@@ -446,7 +458,7 @@ export default function EncodeAuroraPage() {
           </div>
         </div>
 
-        <AgentPaymentFlow />
+        <MonkeyAgent3DFlow />
 
         <section className="ea-verify" aria-label="Automated test verification">
           <span className="ea-verify-badge">
@@ -465,10 +477,10 @@ export default function EncodeAuroraPage() {
 
         <section className="ea-docs-section" aria-labelledby="ea-docs-heading">
           <h2 id="ea-docs-heading" className="ea-docs-title">
-            Documentation and Source Verification
+            Documentation, Guides, and Source Code
           </h2>
           <p className="ea-docs-subtitle">
-            Direct reference links for Aurora Intents, Solana integration guides, and Gigr source code.
+            Links, docs, and resources used in the build of the project, including developer guides, smart contracts, and source code.
           </p>
 
           <div className="ea-docs-grid">
