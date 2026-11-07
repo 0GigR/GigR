@@ -512,6 +512,27 @@ body:has(.ea-page.is-light) {
   color: var(--ea-text);
 }
 
+/* Sound button is visually distinct - inverted pill */
+.ea-video-btn-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 2px solid var(--ea-text);
+  border-radius: 20px;
+  background: var(--ea-text);
+  color: var(--ea-primary-ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 140ms ease;
+  letter-spacing: 0.01em;
+}
+
+.ea-video-btn-sound:hover {
+  opacity: 0.82;
+}
+
 .ea-video-external-btn {
   text-decoration: none;
 }
@@ -779,25 +800,20 @@ body:has(.ea-page.is-light) {
   line-height: 1.5;
 }
 
-/* 3D Canvas Container */
+/* Canvas Container (2D cartoon animation) */
 .ea-canvas-wrap {
   position: relative;
   width: 100%;
-  height: 340px;
-  background: #000000;
+  height: 320px;
+  background: var(--ea-bg-alt);
   overflow: hidden;
   border-bottom: 1px solid var(--ea-border);
 }
 
-.ea-three-canvas {
-  width: 100%;
-  height: 100%;
-}
-
-.ea-three-canvas canvas {
-  width: 100% !important;
-  height: 100% !important;
+.ea-cartoon-canvas {
   display: block;
+  width: 100%;
+  height: 320px;
 }
 
 /* Floating Callout Badges over the 3D Stage */
