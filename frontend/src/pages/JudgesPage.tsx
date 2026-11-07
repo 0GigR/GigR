@@ -221,9 +221,9 @@ export default function JudgesPage() {
 
       <main className="judges-main">
         <section className="judges-hero" aria-labelledby="judges-title">
-          <p className="judges-eyebrow">Demo</p>
+          <p className="judges-eyebrow">Hackathon judge briefing</p>
           <h1 id="judges-title" className="judges-title">
-            The agent that <span className="judges-title-accent">remembers</span>
+            The agent that <span className="judges-title-accent">remembers</span>.
           </h1>
           <p className="judges-lede">
             Gigr is a local-services marketplace with milestone escrow. Its agent
@@ -250,12 +250,25 @@ export default function JudgesPage() {
                   ) : (
                     <span className="judges-brand-wordmark">{brand.name}</span>
                   )}
-                  <span className="judges-brand-tile-name">{brand.name}</span>
-                  <span className="judges-brand-tile-role">• {brand.role}</span>
+                  <span className="judges-brand-tile-role">{brand.role}</span>
                 </OutboundLink>
               </li>
             ))}
           </ul>
+
+          <div className="judges-hero-actions">
+            <OutboundLink className="judges-button judges-button-primary" href={APPLICATION_URL}>
+              Open application
+              <ExternalLink className="judges-icon" aria-hidden="true" />
+            </OutboundLink>
+            <OutboundLink className="judges-button" href={DEMO_VIDEO_URL}>
+              Watch demo
+              <ExternalLink className="judges-icon" aria-hidden="true" />
+            </OutboundLink>
+            <OutboundLink className="judges-text-link" href={SOURCE_URL}>
+              Source on GitHub
+            </OutboundLink>
+          </div>
 
           <ul className="judges-stats" aria-label="Project facts">
             {JUDGES_STATS.map((stat) => (
