@@ -589,7 +589,7 @@ export default function EncodeAuroraPage() {
                 <li>
                   <OutboundLink
                     className="ea-docs-link"
-                    href="https://github.com/0GigR/GigR/tree/main/contracts/gigr-escrow"
+                    href="https://github.com/0GigR/GigR/blob/main/backend/solana/lib.rs"
                   >
                     <span>Anchor Escrow Solana Program</span>
                     <ExternalLink className="ea-docs-icon" aria-hidden="true" />
@@ -607,7 +607,7 @@ export default function EncodeAuroraPage() {
                 <li>
                   <OutboundLink
                     className="ea-docs-link"
-                    href="https://github.com/0GigR/GigR/blob/main/frontend/src/services/auroraIntents.ts"
+                    href="https://github.com/0GigR/GigR/blob/main/frontend/src/lib/auroraIntents.ts"
                   >
                     <span>Frontend Aurora Intents Service</span>
                     <ExternalLink className="ea-docs-icon" aria-hidden="true" />
