@@ -197,5 +197,4 @@ Frictionless onboarding using Google OAuth, which automatically pulls and syncs 
 ### 6. Agent-native (WebMCP)
 Gigr is **built for humans and their agents together** via [WebMCP](WEBMCP_TOOLS.md). AI agents browsing the app can call structured tools — `search_providers`, `get_provider_reputation`, `post_job`, `fund_escrow`, `release_escrow`, `accept_job`, `send_message`, … — that run in the user's authenticated tab. An agent can find a real provider, verify their on-chain vouches, hire them, fund the Solana escrow and release payment on the user's behalf. Payment tools are only ever **exposed** (registered) while the user is signed in.
 
----# GigR
 # GigR
