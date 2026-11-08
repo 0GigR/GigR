@@ -867,6 +867,17 @@ body:has(.ea-page.is-light) {
   line-height: 1.2;
 }
 
+/* The gate is drawn at the exact centre of the stage, so its title is pinned
+   there too instead of being spaced between two badges of different widths. */
+@media (min-width: 641px) {
+  .ea-callout-center {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
 @media (max-width: 640px) {
   .ea-stage-callouts {
     flex-direction: column;
@@ -1193,4 +1204,157 @@ body:has(.ea-page.is-light) {
 
 .ea-docs-link:hover .ea-docs-icon {
   opacity: 1;
+}
+
+/* Stage callouts follow the page theme instead of staying dark in light mode */
+.ea-page.is-light .ea-callout {
+  border-color: var(--ea-border);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ea-text);
+  box-shadow: 0 6px 18px -12px rgba(0, 0, 0, 0.25);
+}
+
+.ea-page.is-light .ea-callout-icon {
+  background: var(--ea-bg-alt);
+  color: var(--ea-text);
+}
+
+.ea-page.is-light .ea-callout-role {
+  color: var(--ea-muted);
+}
+
+.ea-canvas-wrap {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* -- Scroll-tied motion --------------------------------------------------------
+   useScrollScrub feeds these numbers: --rest runs 1 to 0 as a piece arrives,
+   --gone 0 to 1 as it leaves, --page 0 to 1 over the document. Unset means the
+   designed position, which is also the reduced-motion state.
+
+   Targets are wrappers rather than the buttons inside them, because those carry
+   `transition: all` and would lag behind the scrollbar. The phone frame holds
+   the video iframe and is left alone. */
+
+.ea-page {
+  /* clip, not hidden: a scroll container here would break the sticky header */
+  overflow: clip;
+}
+
+.ea-scroll-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ea-text);
+  pointer-events: none;
+  transform-origin: 0 50%;
+  scale: var(--page, 0) 1;
+}
+
+.ea-ambient-glow {
+  translate: 0 calc(var(--page, 0) * 1100px);
+}
+
+.ea-grid-lines {
+  translate: 0 calc(var(--page, 0) * -120px);
+}
+
+.ea-eyebrow {
+  translate: 0 calc(var(--gone, 0) * -72px);
+  opacity: calc(1 - var(--gone, 0) * 0.7);
+}
+
+.ea-title {
+  translate: 0 calc(var(--gone, 0) * -40px);
+  scale: calc(1 - var(--gone, 0) * 0.05);
+  transform-origin: 0 50%;
+  opacity: calc(1 - var(--gone, 0) * 0.5);
+}
+
+.ea-lede {
+  translate: 0 calc(var(--gone, 0) * -16px);
+  opacity: calc(1 - var(--gone, 0) * 0.4);
+}
+
+.ea-brand-strip > li,
+.ea-stat {
+  translate: 0 calc(var(--rest, 0) * 34px);
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+.ea-video-controls {
+  translate: 0 calc(var(--rest, 0) * 26px);
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+.ea-active-panel {
+  translate: calc(var(--rest, 0) * 48px) 0;
+  opacity: calc(1 - var(--rest, 0) * 0.75);
+}
+
+.ea-chapters-card {
+  translate: 0 calc(var(--rest, 0) * 44px);
+  opacity: calc(1 - var(--rest, 0) * 0.75);
+}
+
+.ea-chapter-list > li {
+  translate: calc(var(--rest, 0) * 40px) 0;
+  opacity: calc(1 - var(--rest, 0) * 0.85);
+}
+
+.ea-monkey-head {
+  translate: 0 calc(var(--rest, 0) * 40px);
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+/* The stage comes forward, then its three labels close in from their sides. */
+.ea-canvas-wrap {
+  transform-origin: 50% 100%;
+  translate: 0 calc(var(--rest, 0) * 70px);
+  scale: calc(1 - var(--rest, 0) * 0.07);
+  opacity: calc(1 - var(--rest, 0) * 0.6);
+}
+
+.ea-callout-left {
+  translate: calc(var(--rest, 0) * -70px) 0;
+}
+
+.ea-callout-center {
+  translate: 0 calc(var(--rest, 0) * -40px);
+}
+
+.ea-callout-right {
+  translate: calc(var(--rest, 0) * 70px) 0;
+}
+
+.ea-narrative-card {
+  translate: 0 calc(var(--rest, 0) * 56px);
+  opacity: calc(1 - var(--rest, 0) * 0.75);
+}
+
+.ea-verify {
+  translate: calc(var(--rest, 0) * -60px) 0;
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+.ea-verify-badge {
+  scale: calc(1 + var(--rest, 0) * 0.5);
+}
+
+.ea-docs-title,
+.ea-docs-subtitle {
+  translate: 0 calc(var(--rest, 0) * 30px);
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+.ea-docs-group {
+  translate: 0 calc(var(--rest, 0) * 60px);
+  opacity: calc(1 - var(--rest, 0) * 0.8);
+}
+
+.ea-docs-list > li {
+  translate: calc(var(--rest, 0) * -22px) 0;
+  opacity: calc(1 - var(--rest, 0) * 0.7);
 }

@@ -15,6 +15,10 @@
  * own resolution. Every font-size is a clamp whose minimum is at least 11px,
  * so no label on the page can render smaller than that at 390px.
  *
+ * Look: the page is built from cut cardboard and paper in its own dark palette.
+ * Flat colour, hard angled corners, corrugated edges, no gradients and no glow.
+ * The cardboard layer at the end of this file holds the sheet construction.
+ *
  * Motion rules: transforms and opacity only, everything decorative stops under
  * prefers-reduced-motion, and no animation touches the iframe.
  */
@@ -60,61 +64,6 @@ body:has(.judges-page) {
   color: #ffffff;
 }
 
-/* -- Ambient background -----------------------------------------------------
-   Two slow radial washes and a static grid. They are fixed, pointer-free and
-   behind everything; the video never shares a stacking context with them. */
-
-.judges-ambient {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.judges-aurora {
-  position: absolute;
-  width: 70vmax;
-  height: 70vmax;
-  border-radius: 50%;
-  opacity: 0.55;
-  background: radial-gradient(circle at center, rgba(124, 92, 246, 0.2), rgba(124, 92, 246, 0) 62%);
-  animation: judges-drift 28s ease-in-out infinite alternate;
-}
-
-.judges-aurora-a {
-  top: -34vmax;
-  right: -22vmax;
-}
-
-.judges-aurora-b {
-  bottom: -40vmax;
-  left: -26vmax;
-  background: radial-gradient(circle at center, rgba(56, 189, 248, 0.11), rgba(56, 189, 248, 0) 62%);
-  animation-duration: 36s;
-  animation-delay: -9s;
-}
-
-.judges-grid-lines {
-  position: absolute;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(167, 139, 250, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(167, 139, 250, 0.045) 1px, transparent 1px);
-  background-size: 64px 64px;
-  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 72%);
-  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 0%, transparent 72%);
-}
-
-@keyframes judges-drift {
-  from {
-    transform: translate3d(-2%, -1%, 0) scale(1);
-  }
-  to {
-    transform: translate3d(3%, 2%, 0) scale(1.08);
-  }
-}
-
 /* -- Header --------------------------------------------------------------- */
 
 .judges-header {
@@ -123,14 +72,6 @@ body:has(.judges-page) {
   z-index: 20;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(20, 19, 26, 0.94);
-}
-
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .judges-header {
-    background: rgba(20, 19, 26, 0.78);
-    -webkit-backdrop-filter: blur(14px) saturate(130%);
-    backdrop-filter: blur(14px) saturate(130%);
-  }
 }
 
 .judges-header-inner {
@@ -156,7 +97,6 @@ body:has(.judges-page) {
 .judges-logo {
   width: clamp(30px, 2.4vw, 34px);
   height: clamp(30px, 2.4vw, 34px);
-  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -188,7 +128,6 @@ body:has(.judges-page) {
   min-height: clamp(38px, 2.9vw, 40px);
   padding: 8px clamp(11px, 1vw, 14px);
   border: 1px solid var(--judges-border-strong);
-  border-radius: 999px;
   background: rgba(167, 139, 250, 0.1);
   color: #ddd6fe;
   font-size: clamp(11.5px, calc(0.1429vw + 10.943px), 13px);
@@ -257,9 +196,7 @@ body:has(.judges-page) {
   content: '';
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   background: var(--judges-primary);
-  box-shadow: 0 0 12px rgba(167, 139, 250, 0.85);
 }
 
 .judges-title {
@@ -275,10 +212,7 @@ body:has(.judges-page) {
 }
 
 .judges-title-accent {
-  background: linear-gradient(115deg, #e9e2ff 0%, #c4b5fd 38%, #8b5cf6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--judges-primary-ink);
 }
 
 .judges-lede {
@@ -306,7 +240,6 @@ body:has(.judges-page) {
   min-height: clamp(40px, 3.2vw, 44px);
   padding: 0 clamp(14px, 1.3vw, 18px);
   border: 1px solid var(--judges-border);
-  border-radius: 12px;
   background: var(--judges-card);
   color: var(--judges-text);
   font-size: clamp(12px, calc(0.1905vw + 11.257px), 14px);
@@ -324,14 +257,11 @@ body:has(.judges-page) {
 
 .judges-button-primary {
   border-color: transparent;
-  background: linear-gradient(135deg, #b9a4ff 0%, #8b5cf6 100%);
   color: var(--judges-primary-ink);
-  box-shadow: 0 12px 32px -14px rgba(139, 92, 246, 0.75);
 }
 
 .judges-button-primary:hover {
   border-color: transparent;
-  background: linear-gradient(135deg, #c8b7ff 0%, #9a70f8 100%);
   color: var(--judges-primary-ink);
 }
 
@@ -369,7 +299,6 @@ body:has(.judges-page) {
 
 .judges-brand-tile {
   --brand-tone: #a78bfa;
-  --brand-wash: rgba(167, 139, 250, 0.14);
   display: flex;
   min-width: 0;
 }
@@ -390,45 +319,35 @@ body:has(.judges-page) {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-top: 2px solid var(--brand-tone);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, var(--brand-wash), rgba(26, 25, 34, 0.82) 70%),
-    var(--judges-card);
   color: inherit;
   text-decoration: none;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, transform 160ms ease;
 }
 
 .judges-brand-tile-link:hover {
   border-color: rgba(196, 181, 253, 0.45);
   border-top-color: var(--brand-tone);
-  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.9);
   transform: translateY(-1px);
 }
 
 .judges-brand-tile[data-tone='blue'] {
   --brand-tone: #60a5fa;
-  --brand-wash: rgba(96, 165, 250, 0.16);
 }
 
 .judges-brand-tile[data-tone='amber'] {
   --brand-tone: #fbbf24;
-  --brand-wash: rgba(251, 191, 36, 0.13);
 }
 
 .judges-brand-tile[data-tone='violet'] {
   --brand-tone: #a78bfa;
-  --brand-wash: rgba(167, 139, 250, 0.15);
 }
 
 .judges-brand-tile[data-tone='sky'] {
   --brand-tone: #38bdf8;
-  --brand-wash: rgba(56, 189, 248, 0.13);
 }
 
 .judges-brand-tile[data-tone='cyan'] {
   --brand-tone: #22d3ee;
-  --brand-wash: rgba(34, 211, 238, 0.12);
 }
 
 /* The real marks. Height is fixed and width follows, so no asset is ever
@@ -446,7 +365,6 @@ body:has(.judges-page) {
 /* Dark artwork shipped on its supplied white chip, rounded so the card reads as
    a surface rather than a pasted rectangle. */
 .judges-brand-mark.is-chip {
-  border-radius: 7px;
   background-color: #ffffff;
 }
 
@@ -461,7 +379,6 @@ body:has(.judges-page) {
   max-width: 100%;
   padding: 2px clamp(5px, 0.5vw, 7px);
   border: 1px solid rgba(167, 139, 250, 0.45);
-  border-radius: 7px;
   background: rgba(167, 139, 250, 0.14);
   color: #ddd6fe;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -490,7 +407,6 @@ body:has(.judges-page) {
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--judges-border);
-  border-radius: 14px;
   background: rgba(26, 25, 34, 0.58);
   list-style: none;
 }
@@ -610,11 +526,7 @@ body:has(.judges-page) {
   aspect-ratio: 16 / 9;
   overflow: hidden;
   border: 1px solid var(--judges-border-accent);
-  border-radius: clamp(10px, 1.1vw, 16px);
   background: var(--judges-bg-deep);
-  box-shadow:
-    0 30px 70px -40px rgba(0, 0, 0, 0.95),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .judges-video-mount {
@@ -639,9 +551,7 @@ body:has(.judges-page) {
   justify-content: center;
   gap: 10px;
   padding: clamp(10px, 2vw, 20px);
-  background:
-    radial-gradient(80% 80% at 50% 40%, rgba(124, 92, 246, 0.1), transparent 70%),
-    var(--judges-bg-deep);
+  background: var(--judges-bg-deep);
   color: var(--judges-muted);
   font-size: clamp(11.5px, calc(0.1429vw + 10.943px), 13px);
   line-height: 1.5;
@@ -674,7 +584,6 @@ body:has(.judges-page) {
   min-height: clamp(28px, 2.4vw, 34px);
   padding: 0 clamp(7px, 0.6vw, 11px);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
   background: rgba(26, 25, 34, 0.9);
   color: #d8d6e3;
   font: inherit;
@@ -722,7 +631,6 @@ body:has(.judges-page) {
   height: 100%;
   padding: 0;
   border: 0;
-  border-radius: inherit;
   background: rgba(12, 11, 17, 0.66);
   color: #f3f2f8;
   font: inherit;
@@ -730,8 +638,6 @@ body:has(.judges-page) {
   font-weight: 600;
   letter-spacing: 0.02em;
   cursor: pointer;
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
 }
 
 .judges-video-play svg {
@@ -777,7 +683,6 @@ body:has(.judges-page) {
   padding: clamp(6px, calc(0.7619vw + 3.029px), 14px)
     clamp(7px, calc(0.5714vw + 4.771px), 13px);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: clamp(9px, 0.9vw, 12px);
   background: rgba(26, 25, 34, 0.78);
   color: #c9c7d5;
   font: inherit;
@@ -795,8 +700,6 @@ body:has(.judges-page) {
 
 .judges-chapter[aria-current='true'] {
   border-color: rgba(167, 139, 250, 0.48);
-  background: linear-gradient(90deg, rgba(167, 139, 250, 0.16), rgba(167, 139, 250, 0.035) 72%);
-  box-shadow: inset 2px 0 0 var(--judges-primary);
   color: #ffffff;
 }
 
@@ -840,14 +743,12 @@ body:has(.judges-page) {
   width: 7px;
   height: 7px;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 50%;
   background: transparent;
 }
 
 .judges-chapter[aria-current='true'] .judges-chapter-dot {
   border-color: var(--judges-primary);
   background: var(--judges-primary);
-  box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.13), 0 0 12px rgba(167, 139, 250, 0.7);
 }
 
 /* -- Copy panel ----------------------------------------------------------- */
@@ -857,24 +758,7 @@ body:has(.judges-page) {
   overflow: hidden;
   padding: var(--judges-panel-pad);
   border: 1px solid var(--judges-border-accent);
-  border-radius: clamp(14px, 1.6vw, 20px);
-  background:
-    radial-gradient(120% 80% at 100% 0%, rgba(167, 139, 250, 0.1), transparent 55%),
-    linear-gradient(180deg, #1d1b25 0%, #191821 58%, #17161e 100%);
-  box-shadow:
-    0 34px 80px -52px rgba(0, 0, 0, 1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
   animation: judges-rise 520ms 110ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.judges-panel::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: var(--judges-panel-pad);
-  right: var(--judges-panel-pad);
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.55), transparent);
 }
 
 .judges-panel-top {
@@ -907,7 +791,6 @@ body:has(.judges-page) {
   margin-top: 12px;
   padding: 3px 8px;
   border: 1px solid rgba(167, 139, 250, 0.3);
-  border-radius: 999px;
   background: rgba(167, 139, 250, 0.08);
   color: #c4b5fd;
   font-size: 11px;
@@ -940,7 +823,6 @@ body:has(.judges-page) {
   font-size: clamp(12px, calc(1.1vw + 8px), 16px);
   line-height: 1.56;
   opacity: 0;
-  filter: blur(4px);
   transform: translateY(6px);
   animation: judges-line-in 460ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
@@ -962,7 +844,6 @@ body:has(.judges-page) {
 @keyframes judges-line-in {
   to {
     opacity: 1;
-    filter: blur(0);
     transform: translateY(0);
   }
 }
@@ -987,7 +868,6 @@ body:has(.judges-page) {
 .judges-copy-link:focus-visible {
   outline: 2px solid var(--judges-primary-bright);
   outline-offset: 2px;
-  border-radius: 2px;
 }
 
 /* -- Links ---------------------------------------------------------------- */
@@ -1037,7 +917,6 @@ body:has(.judges-page) {
   min-height: 66px;
   padding: 13px 16px;
   border: 1px solid var(--judges-border);
-  border-radius: 12px;
   background: rgba(26, 25, 34, 0.72);
   color: var(--judges-text);
   text-decoration: none;
@@ -1090,7 +969,6 @@ body:has(.judges-page) {
   margin-top: 22px;
   padding: 14px 16px;
   border: 1px solid var(--judges-border-accent);
-  border-radius: 12px;
   background: rgba(26, 25, 34, 0.55);
 }
 
@@ -1157,7 +1035,6 @@ body:has(.judges-page) {
   padding: 13px 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-top: 2px solid var(--brand-tone);
-  border-radius: 12px;
   background: rgba(26, 25, 34, 0.72);
   color: var(--judges-text);
   text-decoration: none;
@@ -1246,7 +1123,6 @@ body:has(.judges-page) {
   gap: 4px 10px;
   padding: 8px 11px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9px;
   background: rgba(26, 25, 34, 0.6);
   color: var(--judges-text-soft);
   text-decoration: none;
@@ -1428,14 +1304,9 @@ body:has(.judges-page) {
     animation: none;
   }
 
-  .judges-aurora {
-    animation: none;
-  }
-
   .judges-line {
     animation: none;
     opacity: 1;
-    filter: none;
     transform: none;
   }
 
@@ -1460,23 +1331,6 @@ body:has(.judges-page) {
   margin-top: clamp(30px, 3.9vw, 56px);
   padding: clamp(14px, calc(1.7143vw + 7.314px), 32px);
   border: 1px solid var(--judges-border-accent);
-  border-radius: clamp(14px, 1.6vw, 22px);
-  background:
-    radial-gradient(110% 80% at 50% 0%, rgba(167, 139, 250, 0.09), transparent 62%),
-    linear-gradient(180deg, rgba(26, 25, 34, 0.94), rgba(20, 19, 26, 0.94));
-  box-shadow:
-    0 34px 90px -64px rgba(0, 0, 0, 1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.045);
-}
-
-.agent-flow::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: clamp(14px, calc(1.7143vw + 7.314px), 32px);
-  right: clamp(14px, calc(1.7143vw + 7.314px), 32px);
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.5), transparent);
 }
 
 .agent-flow-head {
@@ -1494,7 +1348,6 @@ body:has(.judges-page) {
 .agent-flow-brandtag {
   padding: 3px 8px;
   border: 1px solid rgba(167, 139, 250, 0.3);
-  border-radius: 999px;
   background: rgba(167, 139, 250, 0.08);
   color: #c4b5fd;
   font-size: 11px;
@@ -1553,9 +1406,6 @@ body:has(.judges-page) {
   min-width: 0;
   padding: clamp(8px, 1.2vw, 16px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: clamp(10px, 1.1vw, 16px);
-  background: linear-gradient(180deg, #201e2a 0%, #191821 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .agent-card-left {
@@ -1590,7 +1440,6 @@ body:has(.judges-page) {
   gap: 5px;
   padding: 4px 8px;
   border: 1px solid rgba(52, 211, 153, 0.35);
-  border-radius: 999px;
   background: rgba(52, 211, 153, 0.1);
   color: #6ee7b7;
   font-size: 11px;
@@ -1605,9 +1454,7 @@ body:has(.judges-page) {
   width: 5px;
   height: 5px;
   flex: 0 0 auto;
-  border-radius: 50%;
   background: #34d399;
-  box-shadow: 0 0 8px rgba(52, 211, 153, 0.9);
 }
 
 .agent-machine {
@@ -1616,8 +1463,7 @@ body:has(.judges-page) {
   width: clamp(34px, 3.6vw, 52px);
   height: clamp(34px, 3.6vw, 52px);
   border: 1px solid rgba(96, 165, 250, 0.35);
-  border-radius: clamp(9px, 1vw, 14px);
-  background: radial-gradient(circle at 50% 35%, rgba(96, 165, 250, 0.2), rgba(96, 165, 250, 0.03));
+  background: rgba(96, 165, 250, 0.14);
   color: #93c5fd;
 }
 
@@ -1633,13 +1479,11 @@ body:has(.judges-page) {
   gap: 3px;
   padding: clamp(6px, 0.8vw, 12px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
   background: rgba(12, 11, 17, 0.55);
 }
 
 .agent-card-left.is-signing .agent-wallet {
   border-color: rgba(52, 211, 153, 0.5);
-  animation: agent-wallet-pulse 1.8s ease-in-out both;
 }
 
 .agent-wallet-label {
@@ -1690,7 +1534,6 @@ body:has(.judges-page) {
   right: 10px;
   padding: 2px 6px;
   border: 1px solid rgba(52, 211, 153, 0.5);
-  border-radius: 999px;
   background: #072a20;
   color: #6ee7b7;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1714,7 +1557,6 @@ body:has(.judges-page) {
   min-height: 26px;
   padding: 4px 8px;
   border: 1px dashed rgba(167, 139, 250, 0.32);
-  border-radius: 8px;
   color: #c4b5fd;
   font-size: 11px;
   font-weight: 560;
@@ -1750,7 +1592,6 @@ body:has(.judges-page) {
 .agent-gigr-mark {
   width: clamp(28px, 3.05vw, 44px);
   height: clamp(28px, 3.05vw, 44px);
-  border-radius: 50%;
   object-fit: cover;
 }
 
@@ -1758,7 +1599,6 @@ body:has(.judges-page) {
   display: block;
   padding: clamp(5px, 0.6vw, 9px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
   background: rgba(12, 11, 17, 0.55);
   color: #d8d6e3;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1775,7 +1615,6 @@ body:has(.judges-page) {
   min-height: 24px;
   padding: 3px 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
   color: var(--judges-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
@@ -1814,14 +1653,8 @@ body:has(.judges-page) {
   top: 50%;
   left: 0;
   right: 0;
-  height: 1px;
-  background-image: repeating-linear-gradient(
-    90deg,
-    rgba(167, 139, 250, 0.38) 0 6px,
-    transparent 6px 12px
-  );
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  height: 0;
+  border-top: 2px dashed rgba(167, 139, 250, 0.38);
 }
 
 .agent-lane-tatum {
@@ -1832,7 +1665,6 @@ body:has(.judges-page) {
   gap: 5px;
   padding: clamp(4px, 0.5vw, 7px) clamp(6px, 0.7vw, 10px);
   border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 999px;
   background: #1a1922;
   color: #fcd34d;
   font-size: 11px;
@@ -1840,14 +1672,12 @@ body:has(.judges-page) {
   letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
-  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  transition: border-color 180ms ease, background-color 180ms ease;
 }
 
 .agent-lane-tatum[data-active='true'] {
   border-color: rgba(251, 191, 36, 0.85);
   background: #2a2414;
-  box-shadow: 0 0 0 5px rgba(251, 191, 36, 0.12), 0 0 22px rgba(251, 191, 36, 0.35);
-  animation: agent-tatum-glow 1.6s ease-in-out both;
 }
 
 .agent-lane-tick {
@@ -1876,7 +1706,6 @@ body:has(.judges-page) {
   height: clamp(20px, 1.7vw, 24px);
   padding: 0 clamp(5px, 0.5vw, 7px);
   border: 1px solid rgba(167, 139, 250, 0.58);
-  border-radius: 999px;
   background: #2a2440;
   color: #e9e2ff;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -1886,7 +1715,6 @@ body:has(.judges-page) {
   line-height: 1;
   white-space: nowrap;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.38);
 }
 
 .agent-packet[data-document='true'] {
@@ -1936,16 +1764,6 @@ body:has(.judges-page) {
   }
 }
 
-@keyframes agent-wallet-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
-  }
-  45% {
-    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0.14);
-  }
-}
-
 @keyframes agent-balance-tick {
   from {
     color: #c4b5fd;
@@ -1954,16 +1772,6 @@ body:has(.judges-page) {
   to {
     color: var(--judges-text);
     transform: translateY(0);
-  }
-}
-
-@keyframes agent-tatum-glow {
-  0%,
-  100% {
-    box-shadow: 0 0 0 5px rgba(251, 191, 36, 0.12), 0 0 22px rgba(251, 191, 36, 0.35);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(251, 191, 36, 0.07), 0 0 30px rgba(251, 191, 36, 0.5);
   }
 }
 
@@ -1978,14 +1786,12 @@ body:has(.judges-page) {
 
 .agent-flow-segment {
   height: 3px;
-  border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
-  transition: background-color 240ms ease, box-shadow 240ms ease;
+  transition: background-color 240ms ease;
 }
 
 .agent-flow-segment.is-done {
-  background: linear-gradient(90deg, #8b5cf6, #c4b5fd);
-  box-shadow: 0 0 8px rgba(167, 139, 250, 0.4);
+  background: var(--judges-primary);
 }
 
 .agent-flow-now {
@@ -2039,15 +1845,13 @@ body:has(.judges-page) {
   gap: 10px;
   padding: clamp(8px, 0.85vw, 12px);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
   background: rgba(12, 11, 17, 0.35);
-  transition: border-color 200ms ease, background-color 200ms ease, box-shadow 200ms ease;
+  transition: border-color 200ms ease, background-color 200ms ease;
 }
 
 .agent-flow-beat.is-current {
   border-color: rgba(167, 139, 250, 0.5);
   background: rgba(167, 139, 250, 0.09);
-  box-shadow: inset 2px 0 0 var(--judges-primary);
 }
 
 .agent-flow-beat-number {
@@ -2056,7 +1860,6 @@ body:has(.judges-page) {
   width: clamp(20px, 1.7vw, 24px);
   height: clamp(20px, 1.7vw, 24px);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 50%;
   color: var(--judges-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
@@ -2120,7 +1923,6 @@ body:has(.judges-page) {
   min-height: clamp(34px, 3.05vw, 44px);
   padding: 0 clamp(10px, 1vw, 14px);
   border: 1px solid rgba(167, 139, 250, 0.35);
-  border-radius: 10px;
   background: rgba(167, 139, 250, 0.1);
   color: #e9e2ff;
   font: inherit;
@@ -2197,4 +1999,1273 @@ body:has(.judges-page) {
   .agent-lane-tatum {
     animation: none !important;
   }
+}
+
+/* ==========================================================================
+   Cardboard layer. Every panel is a piece of board cut by hand: flat colour,
+   angled corners, no gradients and no glow. The colours are the page's own
+   palette. Textures are small SVG tiles, so nothing here is a CSS gradient.
+
+   To recolour the corrugated edge (kraft brown, say) change --judges-board-edge.
+   ========================================================================== */
+
+.judges-page {
+  --judges-board-edge: #2a2440;
+
+  /* The ribs on a cut edge of corrugated board. */
+  --judges-flutes: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='8'%3E%3Crect width='2' height='8' fill='%23000' fill-opacity='.42'/%3E%3Crect x='2' width='1' height='8' fill='%23fff' fill-opacity='.09'/%3E%3C/svg%3E");
+  /* Paper fibre: only ever adds a faint fleck on top of the flat colour. */
+  --judges-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .3 -.13'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* A split pin holding two sheets together. */
+  --judges-pin: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23a78bfa' stroke='%2317131f' stroke-width='2'/%3E%3Cpath d='M6 15 18 9' stroke='%2317131f' stroke-width='3'/%3E%3C/svg%3E");
+  /* The rough bottom edge of the header strip, with its shadow. */
+  --judges-torn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='9'%3E%3Cpath d='M0 0H120V5L112 7 104 5 97 8 90 5.5 81 7.5 74 5 66 8 58 5.5 50 7 43 4.8 35 8 27 5.5 19 7.5 11 5 5 7 0 5Z' fill='%230c0b11' fill-opacity='.8'/%3E%3Cpath d='M0 0H120V3L112 5 104 3 97 6 90 3.5 81 5.5 74 3 66 6 58 3.5 50 5 43 2.8 35 6 27 3.5 19 5.5 11 3 5 5 0 3Z' fill='%23201e2a'/%3E%3C/svg%3E");
+
+  /* Three uneven cuts, so neighbouring pieces never match. */
+  --judges-cut-a: polygon(9px 0, calc(100% - 5px) 2px, 100% 8px, calc(100% - 2px) calc(100% - 11px), calc(100% - 9px) 100%, 6px calc(100% - 2px), 0 calc(100% - 8px), 2px 7px);
+  --judges-cut-b: polygon(3px 2px, calc(100% - 12px) 0, 100% 10px, 100% calc(100% - 5px), calc(100% - 4px) 100%, 13px 100%, 1px calc(100% - 12px), 0 6px);
+  --judges-cut-c: polygon(0 6px, 6px 1px, calc(100% - 3px) 0, calc(100% - 1px) calc(100% - 9px), calc(100% - 12px) calc(100% - 1px), 4px 100%, 1px calc(100% - 4px));
+  --judges-cut-tag: polygon(5px 0, 100% 1px, calc(100% - 3px) 100%, 2px calc(100% - 1px), 0 6px);
+  --judges-cut-octagon: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+
+  background-image: var(--judges-grain);
+}
+
+/* -- A sheet: two layers behind the content ----------------------------------
+   ::before is the board's corrugated edge, showing below and to the right.
+   ::after is the printed face. Only those two layers are clipped, so the text
+   inside is never cut and stays selectable. */
+
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-stat,
+    .judges-chapter, .judges-panel, .judges-verify, .judges-brand-link, .judges-issue,
+    .judges-link, .judges-video-control, .agent-flow, .agent-card, .agent-flow-beat,
+    .agent-flow-replay
+  ) {
+  --sheet-face: var(--judges-card);
+  --sheet-edge: var(--judges-board-edge);
+  --sheet-cut: var(--judges-cut-a);
+  --sheet-depth: 5px;
+  isolation: isolate;
+  overflow: visible;
+  border: 0;
+  background: none;
+  filter: drop-shadow(3px 4px 0 rgba(0, 0, 0, 0.5));
+}
+
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-stat,
+    .judges-chapter, .judges-verify, .judges-brand-link, .judges-issue,
+    .judges-link, .judges-video-control, .agent-flow, .agent-flow-beat, .agent-flow-replay
+  ) {
+  position: relative;
+}
+
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-stat,
+    .judges-chapter, .judges-panel, .judges-verify, .judges-brand-link, .judges-issue,
+    .judges-link, .judges-video-control, .agent-flow, .agent-card, .agent-flow-beat,
+    .agent-flow-replay
+  )::before {
+  content: '';
+  position: absolute;
+  z-index: -2;
+  inset: 1px calc(var(--sheet-depth) * -1) calc(var(--sheet-depth) * -1.2) 1px;
+  background-color: var(--sheet-edge);
+  background-image: var(--judges-flutes);
+  clip-path: var(--sheet-cut);
+  pointer-events: none;
+}
+
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-stat,
+    .judges-chapter, .judges-panel, .judges-verify, .judges-brand-link, .judges-issue,
+    .judges-link, .judges-video-control, .agent-flow, .agent-card, .agent-flow-beat,
+    .agent-flow-replay
+  )::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: var(--sheet-face);
+  background-image: var(--judges-grain);
+  clip-path: var(--sheet-cut);
+  pointer-events: none;
+}
+
+/* Pieces picked up and pressed back down. */
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-chapter,
+    .judges-brand-link, .judges-issue, .judges-link, .judges-video-control, .agent-flow-replay
+  ):hover {
+  --sheet-face: var(--judges-card-raised);
+  --sheet-edge: var(--judges-primary);
+  transform: translate(-1px, -2px);
+}
+
+.judges-page :is(
+    .judges-header-cta, .judges-button, .judges-brand-tile-link, .judges-chapter,
+    .judges-brand-link, .judges-issue, .judges-link, .judges-video-control, .agent-flow-replay
+  ):active {
+  --sheet-depth: 1.5px;
+  transform: translate(2px, 3px);
+}
+
+/* Neighbours are cut differently. */
+.judges-brand-tile:nth-child(2n) .judges-brand-tile-link,
+.judges-chapter-list li:nth-child(2n) .judges-chapter,
+.judges-brand-links li:nth-child(2n) .judges-brand-link,
+.judges-issues li:nth-child(2n) .judges-issue,
+.judges-link-grid li:nth-child(2n) .judges-link,
+.judges-page .agent-flow-beat:nth-child(2n),
+.judges-page .agent-card-right,
+.judges-page .judges-verify {
+  --sheet-cut: var(--judges-cut-b);
+}
+
+.judges-brand-tile:nth-child(3n) .judges-brand-tile-link,
+.judges-chapter-list li:nth-child(3n) .judges-chapter,
+.judges-brand-links li:nth-child(3n) .judges-brand-link,
+.judges-issues li:nth-child(3n) .judges-issue,
+.judges-link-grid li:nth-child(3n) .judges-link,
+.judges-page .agent-flow-beat:nth-child(3n) {
+  --sheet-cut: var(--judges-cut-c);
+}
+
+/* Smaller pieces are cut from thinner board. */
+.judges-page :is(
+    .judges-header-cta, .judges-video-control, .judges-issue, .judges-chapter,
+    .agent-flow-beat, .agent-flow-replay
+  ) {
+  --sheet-depth: 3px;
+}
+
+/* -- Header: a strip of corrugated board ------------------------------------- */
+
+.judges-page .judges-header {
+  border: 0;
+  background-color: #201e2a;
+  background-image: var(--judges-flutes);
+}
+
+.judges-header::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 9px;
+  background-image: var(--judges-torn);
+  background-repeat: repeat-x;
+  pointer-events: none;
+}
+
+.judges-logo,
+.agent-gigr-mark {
+  clip-path: var(--judges-cut-octagon);
+}
+
+.judges-brand-rule {
+  width: 2px;
+}
+
+.judges-page .judges-header-cta {
+  --sheet-face: #2a2440;
+  --sheet-edge: var(--judges-primary);
+}
+
+/* -- Paper tags ---------------------------------------------------------------- */
+
+.judges-page :is(
+    .judges-eyebrow, .judges-panel-kicker, .judges-panel-tag, .agent-flow-brandtag,
+    .agent-badge, .agent-wallet-delta, .agent-http, .agent-lane-tatum, .agent-packet,
+    .judges-chapter-time, .judges-brand-wordmark, .judges-video-external
+  ) {
+  border: 0;
+  clip-path: var(--judges-cut-tag);
+}
+
+.judges-eyebrow {
+  padding: 7px 13px 7px 12px;
+  background: var(--judges-board-edge);
+  transform: rotate(-1.2deg);
+  transform-origin: left center;
+}
+
+.judges-eyebrow::before,
+.judges-page .agent-badge-dot {
+  transform: rotate(45deg);
+}
+
+.judges-panel-kicker {
+  padding: 3px 9px;
+  background: #2a2440;
+}
+
+.judges-chapter-time {
+  justify-self: start;
+  padding: 3px 7px;
+  background: var(--judges-bg-deep);
+  text-align: center;
+}
+
+.judges-video-external {
+  padding: 6px 10px;
+  background: var(--judges-card);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.judges-video-external:hover {
+  background: #2a2440;
+}
+
+/* -- Hero: letters cut out and a label stuck over one word ---------------------- */
+
+.judges-hero {
+  position: relative;
+}
+
+.judges-title {
+  filter: drop-shadow(2px 3px 0 var(--judges-bg-deep));
+}
+
+.judges-title-accent {
+  display: inline-block;
+  padding: 0 0.18em 0.04em;
+  background: var(--judges-primary);
+  clip-path: polygon(0.12em 0, 100% 0.05em, calc(100% - 0.07em) 100%, 0 calc(100% - 0.06em));
+  transform: rotate(-1.4deg);
+  animation: judges-stick 420ms 300ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes judges-stick {
+  from {
+    transform: rotate(-7deg) scale(1.12);
+  }
+  to {
+    transform: rotate(-1.4deg) scale(1);
+  }
+}
+
+.judges-page .judges-button {
+  --sheet-cut: var(--judges-cut-b);
+}
+
+.judges-page .judges-button-primary {
+  --sheet-face: var(--judges-primary);
+  --sheet-edge: #8b5cf6;
+}
+
+.judges-page .judges-button-primary:hover {
+  --sheet-face: var(--judges-primary-bright);
+  --sheet-edge: #8b5cf6;
+}
+
+/* -- Stat row: a paper strip laid along a perforated line ----------------------- */
+
+.judges-stats-wrap {
+  --judges-rail: 0;
+  position: relative;
+  margin-top: clamp(18px, 1.9vw, 24px);
+}
+
+.judges-stats-wrap .judges-stats {
+  margin: 0;
+}
+
+.judges-stat-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.judges-stats-rail {
+  position: absolute;
+  z-index: 1;
+  top: 11px;
+  right: 18px;
+  left: 18px;
+  height: 3px;
+  pointer-events: none;
+}
+
+.judges-stats-rail::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  border-top: 2px dashed rgba(167, 139, 250, 0.3);
+}
+
+.judges-stats-rail-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--judges-primary);
+  transform: scaleX(var(--judges-rail));
+  transform-origin: left center;
+}
+
+/* The leading corner of the strip. Only shown while it is moving. */
+.judges-stats-rail::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: calc(var(--judges-rail) * 100%);
+  width: 9px;
+  height: 9px;
+  background: var(--judges-primary-bright);
+  opacity: 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+  transition: opacity 240ms ease;
+}
+
+.judges-stats-wrap.is-drawing .judges-stats-rail::after {
+  opacity: 1;
+}
+
+/* Each cell is pinned where the strip reaches it. The rail is inset 18px from
+   the card on both sides, which the calc undoes. */
+.judges-stats-node {
+  position: absolute;
+  top: 50%;
+  left: calc((100% + 36px) * var(--stat-share) - 18px + clamp(8px, calc(0.6667vw + 5.4px), 15px));
+  width: 14px;
+  height: 14px;
+  background-image: var(--judges-pin);
+  background-size: contain;
+  opacity: 0.3;
+  transform: translate(0, -50%) scale(0.75);
+  transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 200ms ease;
+}
+
+.judges-stats-node.is-lit {
+  opacity: 1;
+  transform: translate(0, -50%) scale(1);
+}
+
+.judges-stats-wrap .judges-stat {
+  padding-top: clamp(24px, calc(0.6667vw + 21px), 32px);
+}
+
+.judges-stats-wrap .judges-stat-value {
+  font-size: clamp(15px, calc(0.5vw + 12.5px), 21px);
+}
+
+.judges-stats-wrap .judges-stat-value,
+.judges-stats-wrap .judges-stat-label {
+  opacity: 0.24;
+  transform: translateY(9px);
+  transition: opacity 380ms ease, transform 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.judges-stats-wrap .judges-stat-label {
+  transition-delay: 70ms;
+}
+
+.judges-stats-wrap .judges-stat.is-lit .judges-stat-value,
+.judges-stats-wrap .judges-stat.is-lit .judges-stat-label {
+  opacity: 1;
+  transform: none;
+}
+
+/* -- Video: a window cut in a sheet ---------------------------------------------
+   The sheet sits outside the frame, so the video keeps exactly 16:9, and no
+   filter touches the iframe. */
+
+.judges-video-head {
+  padding-bottom: 10px;
+  border-bottom: 2px dashed var(--judges-border);
+}
+
+.judges-page .judges-video-frame {
+  isolation: isolate;
+  overflow: visible;
+  width: calc(100% - 22px);
+  margin: 10px 14px 18px 8px;
+  border: 0;
+  --sheet-cut: var(--judges-cut-a);
+}
+
+.judges-video-frame::before,
+.judges-video-frame::after {
+  content: '';
+  position: absolute;
+  clip-path: var(--sheet-cut);
+  pointer-events: none;
+}
+
+.judges-video-frame::before {
+  z-index: -2;
+  inset: -9.5px -14px -16px -9.5px;
+  background-color: var(--judges-board-edge);
+  background-image: var(--judges-flutes);
+}
+
+.judges-video-frame::after {
+  z-index: -1;
+  inset: -8px;
+  background-color: var(--judges-card-raised);
+  background-image: var(--judges-grain);
+}
+
+.judges-video-play svg {
+  box-sizing: content-box;
+  padding: clamp(8px, 1vw, 13px);
+  background: var(--judges-primary);
+  color: var(--judges-primary-ink);
+  clip-path: var(--judges-cut-octagon);
+  transition: transform 200ms ease;
+}
+
+.judges-video-play:hover svg {
+  transform: scale(1.1);
+}
+
+.judges-page .judges-video-sound[data-muted='true'] {
+  --sheet-face: #2a2414;
+  --sheet-edge: #fbbf24;
+  border: 0;
+  background: none;
+}
+
+/* -- Chapters and copy panel ---------------------------------------------------- */
+
+.judges-page .judges-chapter[aria-current='true'] {
+  --sheet-face: #2a2440;
+  --sheet-edge: var(--judges-primary);
+  background: none;
+}
+
+.judges-page .judges-chapter[aria-current='true'] .judges-chapter-time {
+  background: var(--judges-bg-deep);
+}
+
+.judges-chapter-dot {
+  border-width: 1.5px;
+  transform: rotate(45deg);
+}
+
+.judges-page :is(.judges-panel, .agent-flow, .judges-verify) {
+  --sheet-depth: 8px;
+}
+
+.judges-panel-top {
+  padding-bottom: 10px;
+  border-bottom: 2px dashed rgba(255, 255, 255, 0.12);
+}
+
+.judges-line {
+  position: relative;
+  padding-left: 16px;
+}
+
+.judges-line::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  background: var(--judges-primary);
+  transform: rotate(45deg);
+}
+
+.judges-copy-link:hover {
+  background: #2a2440;
+}
+
+/* -- Links ----------------------------------------------------------------------- */
+
+.judges-link-group {
+  position: relative;
+}
+
+.judges-link-group-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.judges-link-group-title::after {
+  content: '';
+  flex: 1 1 auto;
+  border-top: 2px dashed var(--judges-border-accent);
+}
+
+.judges-link .judges-icon,
+.judges-brand-link .judges-icon,
+.judges-issue .judges-icon {
+  transition: transform 180ms ease;
+}
+
+.judges-link:hover .judges-icon,
+.judges-brand-link:hover .judges-icon,
+.judges-issue:hover .judges-icon {
+  transform: translate(2px, -2px);
+}
+
+/* -- Agent flow ------------------------------------------------------------------ */
+
+.judges-page .agent-card {
+  position: relative;
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-page .agent-card-left {
+  --sheet-edge: #60a5fa;
+}
+
+.judges-page .agent-card-right {
+  --sheet-edge: var(--judges-primary);
+}
+
+/* Windows punched through the card. */
+.judges-page :is(.agent-wallet, .agent-endpoint) {
+  border: 0;
+  background: var(--judges-bg-deep);
+  box-shadow: inset 2px 3px 0 #000000;
+}
+
+.agent-machine {
+  border: 0;
+  clip-path: var(--judges-cut-octagon);
+}
+
+.agent-lane-tatum {
+  background: #2a2414;
+}
+
+.judges-page .agent-lane-tatum[data-active='true'] {
+  background: #fbbf24;
+  color: var(--judges-primary-ink);
+  animation: agent-stamp 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes agent-stamp {
+  from {
+    transform: scale(1.3) rotate(-4deg);
+  }
+  to {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.agent-packet {
+  background: var(--judges-primary);
+  color: var(--judges-primary-ink);
+}
+
+.judges-page .agent-packet[data-document='true'] {
+  background: var(--judges-primary-bright);
+  color: var(--judges-primary-ink);
+}
+
+.agent-flow-segment {
+  height: 4px;
+}
+
+.judges-page .agent-flow-beat {
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-page .agent-flow-beat.is-current {
+  --sheet-face: #2a2440;
+  --sheet-edge: var(--judges-primary);
+}
+
+.agent-flow-beat-number {
+  border-width: 1.5px;
+  clip-path: var(--judges-cut-octagon);
+}
+
+.judges-page .agent-card-left.is-signing .agent-wallet {
+  outline: 2px dashed rgba(52, 211, 153, 0.7);
+  outline-offset: 2px;
+}
+
+/* -- Footer: a strip of the same board as the header ----------------------------- */
+
+.judges-page .judges-footer {
+  position: relative;
+  border-top: 0;
+  padding-top: 26px;
+}
+
+.judges-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background-color: var(--judges-board-edge);
+  background-image: var(--judges-flutes);
+  clip-path: polygon(0 1px, 22% 0, 58% 2px, 100% 0, 100% 100%, 76% calc(100% - 2px), 35% 100%, 0 calc(100% - 1px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .judges-page .judges-title-accent,
+  .judges-page .agent-lane-tatum[data-active='true'] {
+    animation: none;
+  }
+
+  .judges-page .judges-brand-tile-link:hover,
+  .judges-page :is(
+      .judges-header-cta, .judges-button, .judges-chapter, .judges-brand-link,
+      .judges-issue, .judges-link, .judges-video-control, .agent-flow-replay
+    ):hover {
+    transform: none;
+  }
+
+  .judges-stats-wrap .judges-stat-value,
+  .judges-stats-wrap .judges-stat-label,
+  .judges-stats-node,
+  .judges-stats-rail::after {
+    transition: none;
+  }
+}
+
+/* -- Every section is a different object --------------------------------------
+   The sheet above is only the construction. What stops the page looking like
+   one card repeated is below: each group has its own shape, size, tilt, colour
+   and way of being stuck down. */
+
+.judges-page {
+  --judges-tape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='20'%3E%3Cpath d='M2 0 62 1 60 5 64 9 60 14 63 20 1 19 4 14 0 9 4 5Z' fill='%23c4b5fd' fill-opacity='.42'/%3E%3C/svg%3E");
+  /* Big offcuts lying on the table under everything else. */
+  --judges-scraps: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1600' height='1400'%3E%3Cg fill-opacity='.75'%3E%3Cpolygon points='0,60 520,0 700,240 380,520 0,430' fill='%231a1922'/%3E%3Cpolygon points='1600,180 1120,90 940,420 1260,760 1600,640' fill='%23100f16'/%3E%3Cpolygon points='120,820 640,700 860,1080 420,1360 60,1200' fill='%23100f16'/%3E%3Cpolygon points='1600,980 1180,900 1010,1240 1360,1400 1600,1340' fill='%231a1922'/%3E%3C/g%3E%3C/svg%3E");
+  --judges-cut-torn-top: polygon(0 8px, 6% 3px, 13% 9px, 21% 2px, 30% 7px, 39% 1px, 47% 8px, 56% 3px, 64% 9px, 73% 2px, 82% 7px, 91% 2px, 100% 8px, 100% calc(100% - 9px), calc(100% - 8px) 100%, 5px calc(100% - 1px), 0 calc(100% - 10px));
+  --judges-cut-torn-ends: polygon(0 0, 100% 2px, calc(100% - 7px) 22%, 100% 44%, calc(100% - 6px) 66%, 100% 84%, calc(100% - 4px) 100%, 3px calc(100% - 2px), 8px 74%, 1px 52%, 7px 28%);
+  --judges-cut-torn-right: polygon(1px 0, 100% 1px, calc(100% - 6px) 20%, 100% 38%, calc(100% - 5px) 60%, 100% 78%, calc(100% - 7px) 100%, 0 calc(100% - 1px));
+  --judges-cut-arrow: polygon(0 2px, calc(100% - 15px) 0, 100% 50%, calc(100% - 14px) 100%, 3px calc(100% - 1px), 7px 50%);
+  --judges-cut-dog-ear: polygon(0 3px, calc(100% - 20px) 0, 100% 20px, calc(100% - 2px) 100%, 4px calc(100% - 1px));
+
+  background-image: var(--judges-grain);
+  background-repeat: repeat;
+}
+
+/* Hero buttons: a solid arrow tag beside a plain offcut. */
+.judges-page .judges-button-primary {
+  --sheet-cut: var(--judges-cut-arrow);
+  padding-right: calc(clamp(14px, 1.3vw, 18px) + 12px);
+}
+
+.judges-page .judges-button:not(.judges-button-primary) {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-cut: var(--judges-cut-c);
+  transform: rotate(0.8deg);
+}
+
+/* Brand strip: swatches taped down one at a time, none of them level. */
+.judges-page .judges-brand-strip {
+  gap: clamp(6px, 0.9vw, 12px);
+  padding-top: 8px;
+}
+
+.judges-brand-tile {
+  position: relative;
+}
+
+.judges-brand-tile::before {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  top: -7px;
+  left: 34%;
+  width: clamp(26px, 3.4vw, 44px);
+  height: 13px;
+  background: var(--brand-tone);
+  opacity: 0.9;
+  clip-path: polygon(3% 0, 97% 8%, 93% 30%, 100% 52%, 94% 74%, 98% 100%, 2% 94%, 7% 72%, 0 50%, 6% 26%);
+  transform: rotate(-6deg);
+  pointer-events: none;
+}
+
+.judges-brand-tile:nth-child(2)::before {
+  left: 12%;
+  transform: rotate(5deg);
+}
+
+.judges-brand-tile:nth-child(3)::before {
+  left: 54%;
+  transform: rotate(-11deg);
+}
+
+.judges-brand-tile:nth-child(4)::before {
+  left: 26%;
+  transform: rotate(9deg);
+}
+
+.judges-brand-tile:nth-child(5)::before {
+  left: 44%;
+  transform: rotate(3deg);
+}
+
+.judges-brand-tile:nth-child(1) {
+  transform: rotate(-1.3deg);
+}
+
+.judges-brand-tile:nth-child(2) {
+  transform: translateY(5px) rotate(0.9deg);
+}
+
+.judges-brand-tile:nth-child(3) {
+  transform: translateY(-3px) rotate(-0.6deg);
+}
+
+.judges-brand-tile:nth-child(4) {
+  transform: translateY(6px) rotate(1.5deg);
+}
+
+.judges-brand-tile:nth-child(5) {
+  transform: translateY(1px) rotate(-1deg);
+}
+
+.judges-brand-tile:nth-child(even) .judges-brand-tile-link {
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-page .judges-brand-tile-link:hover {
+  transform: translate(-1px, -3px);
+}
+
+/* Stats: four loose slips, each dropped into place as the line reaches it. */
+.judges-page .judges-stats-wrap {
+  padding-top: 10px;
+}
+
+.judges-page .judges-stats {
+  gap: clamp(4px, 0.8vw, 10px);
+  overflow: visible;
+  border: 0;
+  background: none;
+}
+
+.judges-page .judges-stats-rail {
+  top: 3px;
+  right: 8px;
+  left: 8px;
+}
+
+.judges-page .judges-stats-node {
+  left: calc(100% * var(--stat-share) + clamp(8px, calc(0.6667vw + 5.4px), 15px));
+}
+
+.judges-page .judges-stats-wrap .judges-stat {
+  --tilt: -0.9deg;
+  --drop: 0px;
+  padding-top: clamp(16px, calc(0.6667vw + 13px), 24px);
+  padding-bottom: clamp(12px, 1.2vw, 18px);
+  transform: translateY(calc(var(--drop) + 12px)) rotate(calc(var(--tilt) + 2.4deg));
+  transition: transform 460ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.judges-page .judges-stats-wrap .judges-stat.is-lit {
+  transform: translateY(var(--drop)) rotate(var(--tilt));
+}
+
+.judges-page .judges-stats-wrap .judges-stat:nth-child(2) {
+  --tilt: 0.7deg;
+  --drop: 7px;
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+  --sheet-cut: var(--judges-cut-b);
+}
+
+.judges-page .judges-stats-wrap .judges-stat:nth-child(3) {
+  --tilt: -0.4deg;
+  --drop: -2px;
+  --sheet-face: var(--judges-card-raised);
+  --sheet-cut: var(--judges-cut-c);
+}
+
+.judges-page .judges-stats-wrap .judges-stat:nth-child(4) {
+  --tilt: 1.1deg;
+  --drop: 5px;
+  --sheet-face: var(--judges-primary);
+  --sheet-edge: #8b5cf6;
+  --sheet-cut: var(--judges-cut-torn-right);
+}
+
+.judges-page .judges-stats-wrap .judges-stat:nth-child(4) :is(.judges-stat-value, .judges-stat-label) {
+  color: var(--judges-primary-ink);
+}
+
+/* Video: a window cut through bare corrugated board. */
+.judges-page .judges-video-frame {
+  width: calc(100% - 28px);
+  margin: 14px 16px 22px 12px;
+}
+
+.judges-page .judges-video-frame::before {
+  inset: -11px -18px -20px -11px;
+  background-color: #100f16;
+  background-image: none;
+}
+
+.judges-page .judges-video-frame::after {
+  inset: -12px;
+  background-color: var(--judges-board-edge);
+  background-image: var(--judges-flutes);
+}
+
+/* Chapters: ticket stubs of different lengths, the current one pulled out. */
+.judges-page .judges-chapter-list {
+  gap: clamp(5px, 0.6vw, 8px);
+}
+
+.judges-page .judges-chapter {
+  --stub: clamp(44px, calc(1.7143vw + 39px), 64px);
+  --sheet-cut: polygon(0 0, calc(var(--stub) - 6px) 0, var(--stub) 7px, calc(var(--stub) + 6px) 0, 100% 0, calc(100% - 9px) 50%, 100% 100%, calc(var(--stub) + 6px) 100%, var(--stub) calc(100% - 7px), calc(var(--stub) - 6px) 100%, 0 100%);
+  transition: transform 180ms ease;
+}
+
+.judges-chapter-list li:nth-child(4n + 1) .judges-chapter {
+  width: 97%;
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-chapter-list li:nth-child(4n + 2) .judges-chapter {
+  width: 91%;
+}
+
+.judges-chapter-list li:nth-child(4n + 3) .judges-chapter {
+  width: 95%;
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+}
+
+.judges-chapter-list li:nth-child(4n) .judges-chapter {
+  width: 88%;
+}
+
+.judges-page .judges-chapter-list li .judges-chapter[aria-current='true'] {
+  --sheet-face: var(--judges-primary);
+  --sheet-edge: #8b5cf6;
+  width: 100%;
+  color: var(--judges-primary-ink);
+  transform: translateX(4px) rotate(-0.4deg);
+}
+
+.judges-page .judges-chapter[aria-current='true'] .judges-chapter-tag {
+  color: var(--judges-primary-ink);
+}
+
+.judges-page .judges-chapter[aria-current='true'] .judges-chapter-dot {
+  border-color: var(--judges-primary-ink);
+  background: var(--judges-primary-ink);
+}
+
+/* Copy panel: a page torn from a pad and taped along the top. */
+.judges-page .judges-panel {
+  --sheet-face: var(--judges-card-raised);
+  --sheet-cut: var(--judges-cut-torn-top);
+  padding-top: calc(var(--judges-panel-pad) + 12px);
+}
+
+/* Verification: a torn strip with a rubber stamp on it. */
+.judges-page .judges-verify {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+  --sheet-cut: var(--judges-cut-torn-ends);
+  --sheet-depth: 3px;
+  padding-right: 22px;
+  padding-left: 22px;
+  transform: rotate(-0.4deg);
+}
+
+.judges-page .judges-verify-label {
+  padding: 2px 8px;
+  border: 2px dashed var(--judges-primary-bright);
+  transform: rotate(-3deg);
+}
+
+/* Built on: four folders of coloured card, tabs at different points. */
+.judges-page .judges-brand-links {
+  align-items: start;
+}
+
+.judges-page .judges-brand-link {
+  --sheet-face: var(--brand-tone);
+  --sheet-edge: var(--judges-board-edge);
+  --sheet-cut: polygon(0 15px, 3px 1px, 44% 0, 50% 14px, 100% 13px, calc(100% - 1px) calc(100% - 6px), calc(100% - 7px) 100%, 2px 100%);
+  padding-top: 25px;
+  color: var(--judges-primary-ink);
+}
+
+.judges-page .judges-brand-link:hover {
+  --sheet-face: var(--brand-tone);
+  --sheet-edge: var(--judges-board-edge);
+}
+
+.judges-brand-links li:nth-child(2) .judges-brand-link {
+  --sheet-cut: polygon(0 14px, 28% 13px, 33% 0, 76% 1px, 81% 14px, 100% 15px, 100% calc(100% - 3px), calc(100% - 5px) 100%, 6px calc(100% - 1px), 1px calc(100% - 7px));
+  min-height: 94px;
+}
+
+.judges-brand-links li:nth-child(3) .judges-brand-link {
+  --sheet-cut: polygon(0 13px, 55% 14px, 60% 1px, calc(100% - 4px) 0, 100% 15px, calc(100% - 2px) 100%, 8px 100%, 0 calc(100% - 8px));
+  min-height: 88px;
+}
+
+.judges-brand-links li:nth-child(4) .judges-brand-link {
+  --sheet-cut: polygon(0 15px, 12% 14px, 17% 0, 58% 1px, 63% 13px, 100% 14px, calc(100% - 2px) calc(100% - 9px), calc(100% - 9px) 100%, 1px calc(100% - 2px));
+  min-height: 100px;
+}
+
+.judges-page .judges-brand-link .judges-brand-link-name,
+.judges-page .judges-brand-link .judges-brand-link-note,
+.judges-page .judges-brand-link .judges-icon,
+.judges-page .judges-brand-link:hover .judges-icon {
+  color: var(--judges-primary-ink);
+}
+
+/* Upstream issues: torn strips of uneven length, slightly out of line. */
+.judges-page .judges-issues {
+  gap: 3px;
+}
+
+.judges-page .judges-issue {
+  --sheet-cut: var(--judges-cut-torn-right);
+  padding-right: 18px;
+}
+
+.judges-page .judges-issue-number {
+  padding: 3px 6px;
+  background: var(--judges-primary);
+  color: var(--judges-primary-ink);
+  clip-path: var(--judges-cut-tag);
+}
+
+.judges-issues li:nth-child(1) {
+  margin-right: 3%;
+  transform: rotate(-0.25deg);
+}
+
+.judges-issues li:nth-child(2) {
+  margin-left: 2%;
+  transform: rotate(0.3deg);
+}
+
+.judges-issues li:nth-child(2) .judges-issue {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+}
+
+.judges-issues li:nth-child(3) {
+  margin-right: 9%;
+  margin-left: 1%;
+  transform: rotate(-0.15deg);
+}
+
+.judges-issues li:nth-child(4) {
+  margin-right: 1%;
+  margin-left: 4%;
+  transform: rotate(0.25deg);
+}
+
+.judges-issues li:nth-child(4) .judges-issue {
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-issues li:nth-child(5) {
+  margin-right: 6%;
+  transform: rotate(-0.35deg);
+}
+
+/* Gigr links: cards with a corner folded over. */
+.judges-link-grid li {
+  position: relative;
+  transition: transform 180ms ease;
+}
+
+.judges-link-grid li::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  background: var(--judges-primary);
+  clip-path: polygon(0 0, 100% 100%, 8% 100%);
+  pointer-events: none;
+}
+
+.judges-page .judges-link-grid .judges-link {
+  --sheet-cut: var(--judges-cut-dog-ear);
+}
+
+.judges-page .judges-link-grid .judges-link:hover,
+.judges-page .judges-link-grid .judges-link:active {
+  transform: none;
+}
+
+.judges-link-grid li:nth-child(1) {
+  transform: rotate(-0.8deg);
+}
+
+.judges-link-grid li:nth-child(2) {
+  transform: translateY(7px) rotate(0.6deg);
+}
+
+.judges-link-grid li:nth-child(2) .judges-link {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+}
+
+.judges-link-grid li:nth-child(3) {
+  transform: translateY(-2px) rotate(-0.3deg);
+}
+
+.judges-link-grid li:nth-child(3) .judges-link {
+  --sheet-face: var(--judges-card-raised);
+}
+
+.judges-link-grid li:nth-child(4) {
+  transform: translateY(5px) rotate(1deg);
+}
+
+.judges-link-grid li:hover {
+  transform: translateY(-3px);
+}
+
+/* Agent flow: the lid of a box, with two cards pinned inside it. */
+.judges-page .agent-flow {
+  --sheet-face: var(--judges-bg-deep);
+}
+
+.judges-page .agent-card-left {
+  transform: rotate(-0.9deg);
+}
+
+.judges-page .agent-card-right {
+  --sheet-face: var(--judges-board-edge);
+  transform: rotate(0.8deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(1) {
+  transform: rotate(-0.5deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(2) {
+  --sheet-face: var(--judges-card);
+  transform: translateY(4px) rotate(0.6deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(3) {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+  transform: translateY(-2px) rotate(-0.3deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(4) {
+  --sheet-face: var(--judges-card);
+  transform: translateY(3px) rotate(0.4deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(5) {
+  transform: rotate(-0.7deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(6) {
+  --sheet-face: var(--judges-board-edge);
+  --sheet-edge: #1a1922;
+  transform: translateY(5px) rotate(0.5deg);
+}
+
+.judges-page .agent-flow-beat.is-current {
+  --sheet-face: var(--judges-primary);
+  --sheet-edge: #8b5cf6;
+}
+
+.judges-page .agent-flow-beat.is-current :is(.agent-flow-beat-title, .agent-flow-beat-caption) {
+  color: var(--judges-primary-ink);
+}
+
+.judges-page .agent-flow-beat.is-current .agent-flow-beat-number {
+  background: var(--judges-primary-ink);
+  color: var(--judges-primary-bright);
+}
+
+@media (min-width: 640px) {
+  .judges-page .judges-panel::after {
+    background-image: var(--judges-tape), var(--judges-tape), var(--judges-grain);
+    background-repeat: no-repeat, no-repeat, repeat;
+    background-size: 64px 20px, 64px 20px, auto;
+    background-position: 14% 0, 82% 0, 0 0;
+  }
+
+  /* A strip of bare flutes along the top of the box lid */
+  .judges-page .agent-flow::after {
+    background-image: var(--judges-pin), var(--judges-pin), var(--judges-flutes), var(--judges-grain);
+    background-repeat: no-repeat, no-repeat, repeat-x, repeat;
+    background-size: 11px 11px, 11px 11px, 5px 14px, auto;
+    background-position: 5px 16px, calc(100% - 7px) 16px, 0 0, 0 0;
+  }
+
+  .judges-page .agent-flow {
+    padding-top: calc(clamp(14px, calc(1.7143vw + 7.314px), 32px) + 12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .judges-page .judges-stats-wrap .judges-stat,
+  .judges-link-grid li,
+  .judges-page .judges-chapter {
+    transition: none;
+  }
+
+  .judges-link-grid li:hover {
+    transform: none;
+  }
+}
+
+/* -- Scroll-tied motion --------------------------------------------------------
+   useScrollScrub feeds these numbers: --rest runs 1 to 0 as a piece arrives,
+   --gone 0 to 1 as it leaves, --page 0 to 1 over the document. Unset means the
+   designed position, which is also the reduced-motion state.
+
+   These are the individual transform properties, so the tilts and hovers written
+   with `transform` above still apply on top. Paper does not fade, so each piece
+   is moved into place, and each section moves differently. The video frame and
+   the sticky panel are left alone. */
+
+.judges-page {
+  position: relative;
+  /* clip, not hidden: a scroll container here would break the sticky panel */
+  overflow: clip;
+}
+
+.judges-main {
+  position: relative;
+  z-index: 1;
+}
+
+/* The offcuts lie deeper than the page and drift behind it. */
+.judges-table {
+  position: absolute;
+  inset: 0 0 -260px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--judges-scraps);
+  background-repeat: repeat-y;
+  background-size: 1600px 1400px;
+  background-position: center top;
+  translate: 0 calc(var(--page, 0) * -240px);
+}
+
+/* A strip of purple tape run along the header as you read down the page. */
+.judges-scroll-tape {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  height: 5px;
+  background: var(--judges-primary);
+  pointer-events: none;
+  transform-origin: 0 50%;
+  scale: var(--page, 0) 1;
+}
+
+/* Hero: three layers leaving at three speeds, the purple label peeling last. */
+.judges-page .judges-eyebrow {
+  translate: 0 calc(var(--gone, 0) * -70px);
+}
+
+.judges-page .judges-title {
+  transform-origin: 0 100%;
+  translate: 0 calc(var(--gone, 0) * -36px);
+  rotate: calc(var(--gone, 0) * -1.6deg);
+}
+
+.judges-page .judges-title-accent {
+  transform-origin: 0 100%;
+  rotate: calc(var(--gone, 0) * 10deg);
+}
+
+.judges-page .judges-lede {
+  translate: 0 calc(var(--gone, 0) * -14px);
+}
+
+/* Swatches swing down off their tape. */
+.judges-page .judges-brand-tile {
+  --swing: -9deg;
+  transform-origin: 50% 0;
+  translate: 0 calc(var(--rest, 0) * -26px);
+  rotate: calc(var(--rest, 0) * var(--swing));
+}
+
+.judges-page .judges-brand-tile:nth-child(even) {
+  --swing: 11deg;
+}
+
+.judges-page .judges-video-head {
+  translate: calc(var(--rest, 0) * -30px) 0;
+}
+
+/* Ticket stubs are torn off the roll from the left, one at a time. */
+.judges-page .judges-chapter-list > li {
+  translate: calc(var(--rest, 0) * -56px) 0;
+  rotate: calc(var(--rest, 0) * -2.5deg);
+}
+
+/* The box is slid in along the table and straightens as it comes. */
+.judges-page .agent-flow {
+  transform-origin: 50% 100%;
+  translate: 0 calc(var(--rest, 0) * 90px);
+  rotate: calc(var(--rest, 0) * 2deg);
+  scale: calc(1 - var(--rest, 0) * 0.05);
+}
+
+/* Each beat is dealt onto the box from alternate sides. */
+.judges-page .agent-flow-beat {
+  --deal: -46px;
+  translate: calc(var(--rest, 0) * var(--deal)) calc(var(--rest, 0) * 24px);
+  rotate: calc(var(--rest, 0) * -4deg);
+}
+
+.judges-page .agent-flow-beat:nth-child(even) {
+  --deal: 46px;
+}
+
+/* The verification strip pulls across, then the stamp comes down on it. */
+.judges-page .judges-verify {
+  translate: calc(var(--rest, 0) * 80px) 0;
+  rotate: calc(var(--rest, 0) * 1.2deg);
+}
+
+.judges-page .judges-verify-label {
+  scale: calc(1 + var(--rest, 0) * 1.1);
+  rotate: calc(var(--rest, 0) * -14deg);
+}
+
+.judges-page :is(.judges-section-head, .judges-link-group-title) {
+  translate: calc(var(--rest, 0) * -24px) 0;
+}
+
+/* Folders come up out of a drawer. */
+.judges-page .judges-brand-links > li {
+  translate: 0 calc(var(--rest, 0) * 76px);
+  rotate: calc(var(--rest, 0) * 1.5deg);
+}
+
+/* Torn strips meet from both sides. */
+.judges-page .judges-issues > li {
+  --meet: -64px;
+  translate: calc(var(--rest, 0) * var(--meet)) 0;
+}
+
+.judges-page .judges-issues > li:nth-child(even) {
+  --meet: 64px;
+}
+
+/* Dog-eared cards fan open from their bottom corner. */
+.judges-page .judges-link-grid > li {
+  transform-origin: 0 100%;
+  translate: 0 calc(var(--rest, 0) * 30px);
+  rotate: calc(var(--rest, 0) * -10deg);
+}
+
+.judges-page .judges-footer {
+  translate: 0 calc(var(--rest, 0) * 40px);
 }

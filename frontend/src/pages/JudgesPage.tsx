@@ -7,9 +7,11 @@
  * needed to check every claim. It is not in the dashboard navigation, it does
  * not read the auth store, and it renders for a signed-out visitor.
  *
- * Visual rules: fixed dark palette (the app's dark theme, hue 265), no images
- * beyond the brand marks in public/brands, no animation library, and every
- * motion is CSS that stops under prefers-reduced-motion. The copy panel reveals
+ * Visual rules: cut cardboard and paper in a fixed dark palette (the app's dark
+ * theme, hue 265), no gradients, no images beyond the brand marks in
+ * public/brands, no animation library, and every
+ * motion is CSS that stops under prefers-reduced-motion (scrolling only feeds it
+ * numbers, see useScrollScrub). The copy panel reveals
  * lines instead of characters so playback is never tied to a JavaScript
  * animation loop.
  *
@@ -26,7 +28,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ExternalLink, Pause, Play, Volume2, VolumeX } from 'lucide-react'
 import {
@@ -46,6 +48,8 @@ import {
 import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { useScrollScrub } from '@/hooks/useScrollScrub'
+import type { ScrubRule } from '@/lib/scrollScrub'
 import AgentPaymentFlow from '@/components/judges/AgentPaymentFlow'
 import './judges.css'
 
@@ -54,6 +58,23 @@ const DEMO_VIDEO_URL = 'https://youtu.be/HM9IAKpiks0'
 const APPLICATION_URL = 'https://gigrr.vercel.app'
 const SOURCE_URL = 'https://github.com/0GigR/GigR'
 const CI_URL = 'https://github.com/0GigR/GigR/actions'
+
+const JUDGES_SCRUB: readonly ScrubRule[] = [
+  { selector: '.judges-table, .judges-scroll-tape', kind: 'page' },
+  { selector: '.judges-eyebrow, .judges-title, .judges-lede', kind: 'exit', from: 0.1, to: -0.45 },
+  { selector: '.judges-brand-tile', from: 0.98, to: 0.72, stagger: 0.035 },
+  { selector: '.judges-video-head', from: 0.96, to: 0.74 },
+  { selector: '.judges-chapter-list > li', from: 0.98, to: 0.78 },
+  { selector: '.agent-flow', from: 1, to: 0.62 },
+  { selector: '.agent-flow-beat', from: 0.98, to: 0.76, stagger: 0.03 },
+  { selector: '.judges-verify', from: 0.98, to: 0.74 },
+  { selector: '.judges-verify-label', from: 0.82, to: 0.68 },
+  { selector: '.judges-section-head, .judges-link-group-title', from: 0.96, to: 0.78 },
+  { selector: '.judges-brand-links > li', from: 1, to: 0.76, stagger: 0.03 },
+  { selector: '.judges-issues > li', from: 0.98, to: 0.78 },
+  { selector: '.judges-link-grid > li', from: 0.98, to: 0.76, stagger: 0.03 },
+  { selector: '.judges-footer', from: 1, to: 0.86 },
+]
 
 function OutboundLink({
   href,
@@ -90,6 +111,8 @@ export default function JudgesPage() {
   const [visibleRatio, setVisibleRatio] = useState(0)
   const videoFrameRef = useRef<HTMLDivElement | null>(null)
   const reducedMotion = usePrefersReducedMotion()
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  useScrollScrub(pageRef, JUDGES_SCRUB, !reducedMotion)
 
   const handleTime = useCallback((seconds: number) => {
     const next = chapterIndexAt(seconds)
@@ -122,6 +145,60 @@ export default function JudgesPage() {
     pauseFromGesture,
     toggleMute,
   } = useYouTubePlayer(DEMO_VIDEO_ID, handleTime)
+
+  // Stat row: the rail draws with the scroll position and each cell lights as
+  // the line reaches it. Scrolling back up retracts it. Written straight to the
+  // DOM so scrolling never re-renders the page.
+  const statsRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const node = statsRef.current
+    if (!node) return
+    const lit = Array.from(node.querySelectorAll<HTMLElement>('[data-stat-index]'))
+    const paint = (progress: number) => {
+      node.style.setProperty('--judges-rail', progress.toFixed(4))
+      node.classList.toggle('is-drawing', progress > 0.004 && progress < 0.996)
+      for (const element of lit) {
+        const index = Number(element.dataset.statIndex)
+        element.classList.toggle('is-lit', progress >= index / JUDGES_STATS.length + 0.04)
+      }
+    }
+    if (reducedMotion) {
+      paint(1)
+      return
+    }
+
+    let current = 0
+    let frame = 0
+    let last = 0
+    const target = () => {
+      const top = node.getBoundingClientRect().top
+      const height = window.innerHeight
+      // Starts as the row enters at the bottom, done by 60 percent of the viewport
+      return Math.min(1, Math.max(0, (height - top) / (height * 0.4)))
+    }
+    const tick = (now: number) => {
+      const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016
+      last = now
+      const goal = target()
+      current += (goal - current) * Math.min(1, dt * 4.5)
+      if (Math.abs(goal - current) < 0.002) current = goal
+      paint(current)
+      frame = current === goal ? 0 : requestAnimationFrame(tick)
+      if (!frame) last = 0
+    }
+    const wake = () => {
+      if (!frame) frame = requestAnimationFrame(tick)
+    }
+    paint(0)
+    wake()
+    window.addEventListener('scroll', wake, { passive: true })
+    window.addEventListener('resize', wake)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('scroll', wake)
+      window.removeEventListener('resize', wake)
+    }
+  }, [reducedMotion])
 
   useEffect(() => {
     const node = videoFrameRef.current
@@ -191,13 +268,8 @@ export default function JudgesPage() {
   )
 
   return (
-    <div className="judges-page">
-      <div className="judges-ambient" aria-hidden="true">
-        <div className="judges-aurora judges-aurora-a" />
-        <div className="judges-aurora judges-aurora-b" />
-        <div className="judges-grid-lines" />
-      </div>
-
+    <div ref={pageRef} className="judges-page">
+      <div className="judges-table" aria-hidden="true" />
       <header className="judges-header">
         <div className="judges-header-inner">
           <Link to="/" className="judges-brand" aria-label="Gigr home">
@@ -217,6 +289,7 @@ export default function JudgesPage() {
             <ExternalLink className="judges-icon" aria-hidden="true" />
           </OutboundLink>
         </div>
+        <span className="judges-scroll-tape" aria-hidden="true" />
       </header>
 
       <main className="judges-main">
@@ -270,14 +343,27 @@ export default function JudgesPage() {
             </OutboundLink>
           </div>
 
-          <ul className="judges-stats" aria-label="Project facts">
-            {JUDGES_STATS.map((stat) => (
-              <li key={stat.phrase} className="judges-stat">
-                <span className="judges-stat-value">{stat.value}</span>{' '}
-                <span className="judges-stat-label">{stat.label}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="judges-stats-wrap" ref={statsRef}>
+            <div className="judges-stats-rail" aria-hidden="true">
+              <span className="judges-stats-rail-fill" />
+              {JUDGES_STATS.map((stat, index) => (
+                <span
+                  key={stat.phrase}
+                  className="judges-stats-node"
+                  data-stat-index={index}
+                  style={{ '--stat-share': index / JUDGES_STATS.length } as CSSProperties}
+                />
+              ))}
+            </div>
+            <ul className="judges-stats" aria-label="Project facts">
+              {JUDGES_STATS.map((stat, index) => (
+                <li key={stat.phrase} className="judges-stat" data-stat-index={index}>
+                  <span className="judges-stat-value">{stat.value}</span>{' '}
+                  <span className="judges-stat-label">{stat.label}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </section>
 
         <div className="judges-grid">

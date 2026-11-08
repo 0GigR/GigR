@@ -12,8 +12,39 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Mic, Loader2, X, Send } from 'lucide-react'
 import { useAgentStore } from '@/store/agentStore'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useAnimationControls, useMotionValue, useSpring, useTransform, type MotionValue } from 'framer-motion'
 import { agentAudio } from '@/lib/agentAudio'
+
+const BUTTON_RADIUS = 28
+/** The body is fully stretched once it trails the pointer by this many pixels. */
+const MAX_PULL = 56
+
+/** A blob that lags behind the dragged button, so pulling leaves a tail of it behind. */
+function TrailBlob({
+  dragX,
+  dragY,
+  stiffness,
+  size,
+  colorClass,
+}: {
+  dragX: MotionValue<number>
+  dragY: MotionValue<number>
+  stiffness: number
+  size: number
+  colorClass: string
+}) {
+  const lx = useSpring(dragX, { stiffness, damping: 20, mass: 0.9 })
+  const ly = useSpring(dragY, { stiffness, damping: 20, mass: 0.9 })
+  const x = useTransform([lx, dragX] as const, ([a, b]: number[]) => a - b)
+  const y = useTransform([ly, dragY] as const, ([a, b]: number[]) => a - b)
+  return (
+    <motion.span
+      aria-hidden="true"
+      className={`absolute inset-0 rounded-full transition-colors duration-300 ${colorClass}`}
+      style={{ x, y, scale: size }}
+    />
+  )
+}
 
 export default function VoiceAssistant() {
   const { aiSettings, submitCommand, openPanel } = useAgentStore()
@@ -23,6 +54,34 @@ export default function VoiceAssistant() {
   const [transcript, setTranscript] = useState('')
   const [typedCommand, setTypedCommand] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // The body is a soft mass on a spring. How far that mass trails the pointer
+  // sets the stretch along the pull and the squash across it. When the pointer
+  // stops the mass overshoots, which is the wobble.
+  const dragX = useMotionValue(0)
+  const dragY = useMotionValue(0)
+  const massX = useSpring(dragX, { stiffness: 340, damping: 15, mass: 0.7 })
+  const massY = useSpring(dragY, { stiffness: 340, damping: 15, mass: 0.7 })
+  const pullX = useTransform([massX, dragX] as const, ([m, d]: number[]) => m - d)
+  const pullY = useTransform([massY, dragY] as const, ([m, d]: number[]) => m - d)
+  const pullAmount = useTransform([pullX, pullY] as const, ([x, y]: number[]) =>
+    Math.min(1, Math.hypot(x, y) / MAX_PULL),
+  )
+  // Below a pixel of pull the direction is noise, so hold the last one
+  const lastAngleRef = useRef(0)
+  const pullAngle = useTransform([pullX, pullY] as const, ([x, y]: number[]) => {
+    if (Math.hypot(x, y) > 1) lastAngleRef.current = (Math.atan2(y, x) * 180) / Math.PI
+    return lastAngleRef.current
+  })
+  const stretchX = useTransform(pullAmount, (a: number) => 1 + a * 0.8)
+  const stretchY = useTransform(pullAmount, (a: number) => 1 - a * 0.34)
+  // Slide the stretched body backward so its leading edge stays under the pointer
+  const bodyX = useTransform([pullAmount, pullAngle] as const, ([a, deg]: number[]) => Math.cos((deg * Math.PI) / 180) * a * 0.8 * BUTTON_RADIUS)
+  const bodyY = useTransform([pullAmount, pullAngle] as const, ([a, deg]: number[]) => Math.sin((deg * Math.PI) / 180) * a * 0.8 * BUTTON_RADIUS)
+  const squash = useAnimationControls()
+  const [isDragging, setIsDragging] = useState(false)
+  const draggedRef = useRef(false)
+  const [ripples, setRipples] = useState<number[]>([])
 
   const recognitionRef = useRef<any>(null)
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -167,6 +226,14 @@ export default function VoiceAssistant() {
     }
   }
 
+  const handleButtonClick = () => {
+    if (draggedRef.current) return
+    const id = Date.now()
+    setRipples((prev) => [...prev, id])
+    window.setTimeout(() => setRipples((prev) => prev.filter((r) => r !== id)), 650)
+    handleMicToggle()
+  }
+
   const handleClose = () => {
     stopListening()
     setIsOpen(false)
@@ -175,15 +242,85 @@ export default function VoiceAssistant() {
     speechBufferRef.current = ''
   }
 
+  const bodyColor = isListening ? 'bg-red-600' : 'bg-black dark:bg-zinc-700'
+
+  const pressSquash = () => {
+    void squash.start({ scaleX: 1.14, scaleY: 0.84, transition: { type: 'spring', stiffness: 620, damping: 16 } })
+  }
+  const releaseSquash = () => {
+    void squash.start({
+      scaleX: [1.14, 0.9, 1.05, 0.98, 1],
+      scaleY: [0.84, 1.12, 0.96, 1.02, 1],
+      transition: { duration: 0.5, ease: 'easeOut' },
+    })
+  }
+
   return (
     <>
-      {/* Floating draggable mic button */}
+      {/* Floating draggable mic button. The visible body lives in a goo layer
+          with its trail, so pulling it draws out one continuous stretchy shape. */}
       <motion.div
         drag
         dragMomentum={false}
-        whileDrag={{ scale: 1.08 }}
+        dragElastic={0.12}
+        dragTransition={{ bounceStiffness: 500, bounceDamping: 24 }}
+        style={{ x: dragX, y: dragY }}
+        onPointerDown={pressSquash}
+        onPointerUp={releaseSquash}
+        onPointerCancel={releaseSquash}
+        onDragStart={() => {
+          draggedRef.current = true
+          setIsDragging(true)
+        }}
+        onDragEnd={() => {
+          setIsDragging(false)
+          releaseSquash()
+          // the click that follows pointer-up must not toggle the mic
+          window.setTimeout(() => {
+            draggedRef.current = false
+          }, 80)
+        }}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-[9999] w-14 h-14 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none"
       >
+        <svg width="0" height="0" className="absolute" aria-hidden="true" focusable="false">
+          <defs>
+            <filter id="va-goo" filterUnits="userSpaceOnUse" x="-400" y="-400" width="900" height="900">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="b" />
+              <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" />
+            </filter>
+          </defs>
+        </svg>
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ filter: 'url(#va-goo) drop-shadow(0 8px 12px rgba(0,0,0,0.35))' }}
+        >
+          <TrailBlob dragX={dragX} dragY={dragY} stiffness={240} size={0.9} colorClass={bodyColor} />
+          <TrailBlob dragX={dragX} dragY={dragY} stiffness={140} size={0.74} colorClass={bodyColor} />
+          <TrailBlob dragX={dragX} dragY={dragY} stiffness={85} size={0.58} colorClass={bodyColor} />
+          <TrailBlob dragX={dragX} dragY={dragY} stiffness={52} size={0.42} colorClass={bodyColor} />
+          <motion.span className="absolute inset-0" animate={squash} initial={{ scaleX: 1, scaleY: 1 }}>
+            {/* Rotation and stretch are separate elements: on one element the
+                stretch would apply along the screen axes, not along the pull. */}
+            <motion.span className="absolute inset-0" style={{ x: bodyX, y: bodyY, rotate: pullAngle }}>
+              <motion.span
+                aria-hidden="true"
+                className={`absolute inset-0 rounded-full transition-colors duration-300 ${bodyColor}`}
+                style={{ scaleX: stretchX, scaleY: stretchY }}
+              />
+            </motion.span>
+          </motion.span>
+        </div>
+
+        {/* Idle breathing halo */}
+        {!isListening && !isDragging && (
+          <motion.span
+            aria-hidden="true"
+            className="absolute -inset-1 rounded-full border border-white/25 dark:border-white/20 pointer-events-none"
+            animate={{ scale: [1, 1.22, 1], opacity: [0.5, 0, 0.5] }}
+            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        )}
+
         {/* Active recording sonar ring */}
         {isListening && (
           <>
@@ -195,15 +332,28 @@ export default function VoiceAssistant() {
           </>
         )}
 
+        {/* Tap ripples */}
+        <AnimatePresence>
+          {ripples.map((id) => (
+            <motion.span
+              key={id}
+              aria-hidden="true"
+              className="absolute inset-0 rounded-full border-2 border-white/70 pointer-events-none"
+              initial={{ scale: 1, opacity: 0.8 }}
+              animate={{ scale: 2.1, opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6, ease: 'easeOut' }}
+            />
+          ))}
+        </AnimatePresence>
+
         <motion.button
           type="button"
-          whileTap={{ scale: 0.94 }}
-          whileHover={{ scale: 1.06 }}
-          onClick={handleMicToggle}
-          className={`relative w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 pointer-events-auto ${
-            isListening
-              ? 'bg-red-600 text-white shadow-red-500/50 ring-4 ring-red-500/30'
-              : 'bg-black text-white hover:bg-gray-900 dark:hover:bg-card border border-white/10 shadow-xl'
+          whileHover={{ scale: 1.1 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 14 }}
+          onClick={handleButtonClick}
+          className={`relative w-14 h-14 rounded-full flex items-center justify-center pointer-events-auto text-white ${
+            isListening ? 'ring-4 ring-red-500/30' : ''
           }`}
           title={isListening ? (transcript ? `"${transcript}" — Click to send` : 'Listening... Click to send') : 'Gigidy AI — Tap to speak (Drag anywhere)'}
           aria-label={isListening ? 'Stop recording voice command' : 'Start recording voice command'}

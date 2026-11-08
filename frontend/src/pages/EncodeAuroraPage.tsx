@@ -21,6 +21,8 @@ import {
 import { playbackCommand } from '@/lib/judgesPlayback'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
 import { usePrefersReducedMotion } from '@/hooks/usePrefersReducedMotion'
+import { useScrollScrub } from '@/hooks/useScrollScrub'
+import type { ScrubRule } from '@/lib/scrollScrub'
 import MonkeyAgent3DFlow from '@/components/judges/MonkeyAgent3DFlow'
 import './encodeAurora.css'
 
@@ -29,6 +31,25 @@ const DEMO_VIDEO_URL = 'https://youtu.be/851MpwbjewY'
 const APPLICATION_URL = 'https://gigrr.vercel.app'
 const SOURCE_URL = 'https://github.com/0GigR/GigR'
 const CI_URL = 'https://github.com/0GigR/GigR/actions'
+
+const EA_SCRUB: readonly ScrubRule[] = [
+  { selector: '.ea-ambient-glow, .ea-grid-lines, .ea-scroll-line', kind: 'page' },
+  { selector: '.ea-eyebrow, .ea-title, .ea-lede', kind: 'exit', from: 0.1, to: -0.45 },
+  { selector: '.ea-brand-strip > li', from: 0.98, to: 0.8, stagger: 0.03 },
+  { selector: '.ea-stat', from: 0.98, to: 0.78, stagger: 0.03 },
+  { selector: '.ea-video-controls', from: 0.98, to: 0.84 },
+  { selector: '.ea-active-panel', from: 0.98, to: 0.74 },
+  { selector: '.ea-chapters-card', from: 0.98, to: 0.76 },
+  { selector: '.ea-chapter-list > li', from: 0.98, to: 0.8, stagger: 0.02 },
+  { selector: '.ea-monkey-head', from: 0.96, to: 0.76 },
+  { selector: '.ea-canvas-wrap', from: 1, to: 0.6 },
+  { selector: '.ea-narrative-card', from: 0.98, to: 0.76 },
+  { selector: '.ea-verify', from: 0.98, to: 0.78 },
+  { selector: '.ea-verify-badge', from: 0.86, to: 0.72 },
+  { selector: '.ea-docs-title, .ea-docs-subtitle', from: 0.96, to: 0.8 },
+  { selector: '.ea-docs-group', from: 1, to: 0.78, stagger: 0.03 },
+  { selector: '.ea-docs-list > li', from: 0.98, to: 0.84, stagger: 0.015 },
+]
 
 interface BrandTile {
   name: string
@@ -129,6 +150,8 @@ export default function EncodeAuroraPage() {
   const [visibleRatio, setVisibleRatio] = useState(0)
   const videoFrameRef = useRef<HTMLDivElement | null>(null)
   const reducedMotion = usePrefersReducedMotion()
+  const pageRef = useRef<HTMLDivElement | null>(null)
+  useScrollScrub(pageRef, EA_SCRUB, !reducedMotion)
 
   const handleTime = useCallback((seconds: number) => {
     const next = chapterIndexAt(seconds)
@@ -225,7 +248,7 @@ export default function EncodeAuroraPage() {
   )
 
   return (
-    <div className={`ea-page${isLightMode ? ' is-light' : ''}`}>
+    <div ref={pageRef} className={`ea-page${isLightMode ? ' is-light' : ''}`}>
       <div className="ea-ambient" aria-hidden="true">
         <div className="ea-ambient-glow ea-ambient-glow-a" />
         <div className="ea-ambient-glow ea-ambient-glow-b" />
@@ -262,6 +285,7 @@ export default function EncodeAuroraPage() {
             </OutboundLink>
           </div>
         </div>
+        <span className="ea-scroll-line" aria-hidden="true" />
       </header>
 
       <main className="ea-main">
